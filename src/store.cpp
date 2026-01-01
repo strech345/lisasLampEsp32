@@ -156,7 +156,7 @@ SystemSettings getDefaultSystemSettings() {
 
     // Initialize with default values
     strcpy(defaultSettings.internalSSID, "Lizas-Lamp"); // AP_SSID
-    strcpy(defaultSettings.internalPW, "myPassword");   // AP_PASSWORD
+    strcpy(defaultSettings.internalPW, "");   // AP_PASSWORD (empty for open network)
     strcpy(defaultSettings.externalSSID,
            "Gastzugang_test"); // STA_SSID
     strcpy(defaultSettings.externalPW,

@@ -118,7 +118,7 @@
   }
 
   .color-mode-select {
-    width: 150px;
+    width: 200px;
   }
 
   .color-input {
@@ -138,8 +138,8 @@
     }
 
     .color-mode-select {
-      width: 70px;
-      min-width: 70px;
+      width: 120px;
+      min-width: 120px;
     }
 
     .color-input {
