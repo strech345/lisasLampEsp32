@@ -180,11 +180,12 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         break;
     case RotaryEncoderEventType::LongBootClick:
         serialPrint("LongBootClick Event!");
+        serialPrint("Resetting configuration to defaults...");
         resetFullConfig();
         resetSystemSettings();
-        startWifi();
-        stopWifi();
-        // performWiFiTest(true);
+        serialPrint("Configuration reset. Restarting ESP...");
+        delay(1000); // Give time for serial to flush
+        ESP.restart();
         break;
     }
 }
@@ -207,7 +208,7 @@ void checkLampState() {
         lampState = LAMP_STATE_WARNING;
         return;
     } */
-    if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING) {
+    if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING || lampState == LAMP_STATE_SLEEP) {
         return; // stay in error/warning/success until cleared
     }
     if(isAlarmActive()) {
@@ -218,6 +219,12 @@ void checkLampState() {
         lampState = LAMP_STATE_GOOD_NIGHT;
         return;
     }
+    if(lampState == LAMP_STATE_GOOD_NIGHT && !isGoodNightModeActive()) {
+        serialPrint("Good night mode ended, returning to default lamp state");
+        lampState = LAMP_STATE_SLEEP;
+        return;
+    }
+
     lampState = LAMP_STATE_DEFAULT;
     /* if(lampState == LAMP_STATE_GOOD_NIGHT || lampState == LAMP_STATE_ALARM) {
         serialPrint("Returning to default lamp state");
@@ -240,6 +247,7 @@ void updateLed() {
     // State changes
     if(lampState == LAMP_STATE_DEFAULT && lastLampState != LAMP_STATE_DEFAULT) {
         setBrightnessLevel(appConfig.brightnessMode);
+
         checkAndApplyColorMode(appConfig);
     }
     if(lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
@@ -257,7 +265,7 @@ void updateLed() {
     if(lampState == LAMP_STATE_ALARM && lastLampState != LAMP_STATE_ALARM) {
         checkAndApplyColorMode(appConfig);
     }
-    if(lampState == LAMP_STATE_GOOD_NIGHT && lastLampState != LAMP_STATE_GOOD_NIGHT) {
+    if(lampState == LAMP_STATE_SLEEP && lastLampState == !LAMP_STATE_SLEEP) {
         setBrightnessLevel(0);
     }
     lastLampState = lampState;
@@ -283,16 +291,21 @@ void onShortPress() {
     if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING) {
         serialPrint("Clearing error/warning state");
         lampState = LAMP_STATE_DEFAULT;
+        return;
+    }
+    if(lampState == LAMP_STATE_SLEEP) {
+        serialPrint("stopping sleep mode");
+        lampState = LAMP_STATE_DEFAULT;
+        return;
     }
 
-    if(isAlarmActive()) {
-
+    if(lampState == LAMP_STATE_ALARM) {
         serialPrint("stop alarm");
         // blink one time red
         stopActiveAlarm();
         return;
     }
-    if(isGoodNightModeActive()) {
+    if(lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("stop good night");
         // blink one time red
         stopGoodNightMode();

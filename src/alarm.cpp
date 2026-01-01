@@ -151,6 +151,17 @@ void checkAlarmStates() {
 
     // Activate alarm
     for(int i = 0; i < MAX_ALARMS; i++) {
+       /*  if (alarms[i].active) {
+             serialPrint("Alarm[" + String(i) + "] Debug: " +
+                        "CurrDay=" + String(currentTimeInfo.day) +
+                        " vs LastTrig=" + String(last_triggered_day_for_alarm[i]) +
+                        ", AlmDay=" + String(alarms[i].day) +
+                        " vs CurrDoW=" + String(currentTimeInfo.dayOfWeek) +
+                        ", AlmHr=" + String(alarms[i].hour) +
+                        " vs CurrHr=" + String(currentTimeInfo.hour) +
+                        ", AlmMin=" + String(alarms[i].minute) +
+                        " vs CurrMin=" + String(currentTimeInfo.minute));
+        } */
         if(i != activeAlarmId && alarms[i].active
            && currentTimeInfo.day != last_triggered_day_for_alarm[i]
            && alarms[i].day == currentTimeInfo.dayOfWeek
@@ -224,7 +235,9 @@ byte getAlarmBrightness() {
         return 7; // Maximum brightness after 70% of duration
     }
     float progress = (float)elapsed_millis / brightness_duration_millis;
-    return 1 + (byte)(progress * (7 - 1));
+    byte brightness = 1 + (byte)(progress * (7 - 1));
+    serialPrint("Alarm brightness calculated: " + String(brightness) + " (progress: " + String(progress) + ")");
+    return brightness;
 }
 
 void resetAlarms() {

@@ -144,20 +144,6 @@
           {#if statusInfo}
             <div class="status-info">
               <div class="status-line">
-                <span class="status-label">WiFi Status:</span>
-                <span class="status-value {statusInfo.lastTestResult}">
-                  {#if statusInfo.lastTestResult === "success"}
-                    Connected & Synced
-                  {:else if statusInfo.lastTestResult === "connection_failed"}
-                    Connection Failed
-                  {:else if statusInfo.lastTestResult === "ntp_failed"}
-                    Connected, No Time Sync
-                  {:else}
-                    Unknown
-                  {/if}
-                </span>
-              </div>
-              <div class="status-line">
                 <span class="status-label">Last Test:</span>
                 <span class="status-value">{statusInfo.lastTestTime}</span>
               </div>

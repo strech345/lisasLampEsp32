@@ -41,7 +41,9 @@ byte getGoodNightBrightness(byte startBrightness) {
         return 0;
     }
     float progress = (float)elapsed / (float)GOOD_NIGHT_DURATION_MICROS;
-    return startBrightness - (byte)(progress * startBrightness);
+    byte result = startBrightness - (byte)(progress * startBrightness);
+    serialPrint("GoodNight Calc: Start=" + String(startBrightness) + " Elapsed=" + String((unsigned long)elapsed) + " Prog=" + String(progress) + " Res=" + String(result));
+    return result;
 }
 
 /**
