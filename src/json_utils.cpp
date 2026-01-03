@@ -1,7 +1,7 @@
 #include "json_utils.h"
 
 String createConfigJson(const FullConfig& config) {
-    StaticJsonDocument<1024> doc; // Adjust size if more data or complex structures are added
+    StaticJsonDocument<2048> doc; // Adjust size if more data or complex structures are added
 
     // Add RGB override color
     JsonObject colorObj = doc.createNestedObject("override_color");
@@ -13,6 +13,9 @@ String createConfigJson(const FullConfig& config) {
     // doc["selectedColorMode"] = 1; // Always active for frontend compatibility
     doc["colorMode"] = config.colorMode;
     doc["animationMode"] = config.animationMode;
+    doc["goodNightDuration"] = config.goodNightDuration;
+    doc["alarmDuration"] = config.alarmDuration;
+    doc["animationSpeed"] = config.animationSpeed;
 
     // Add alarms array
     JsonArray alarmsArray = doc.createNestedArray("alarms");
@@ -30,7 +33,7 @@ String createConfigJson(const FullConfig& config) {
 }
 
 bool parseConfigJson(const String& jsonString, FullConfig& config) {
-    StaticJsonDocument<1024> doc; // Adjust size if more data or complex structures are added
+    StaticJsonDocument<2048> doc; // Adjust size if more data or complex structures are added
 
     DeserializationError error = deserializeJson(doc, jsonString);
     if(error) {
@@ -62,6 +65,24 @@ bool parseConfigJson(const String& jsonString, FullConfig& config) {
         config.animationMode = doc["animationMode"];
     } else {
         config.animationMode = 1; // Default to Neutral White if not present
+    }
+
+    if(doc.containsKey("goodNightDuration")) {
+        config.goodNightDuration = doc["goodNightDuration"];
+    } else {
+        config.goodNightDuration = 30; // Default 30 min
+    }
+
+    if(doc.containsKey("alarmDuration")) {
+        config.alarmDuration = doc["alarmDuration"];
+    } else {
+        config.alarmDuration = 30; // Default 30 min
+    }
+
+    if(doc.containsKey("animationSpeed")) {
+        config.animationSpeed = doc["animationSpeed"];
+    } else {
+        config.animationSpeed = 200; // Default speed
     }
 
     // Parse alarms array
@@ -110,9 +131,9 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     StaticJsonDocument<512> doc;
 
     doc["internalSSID"] = systemSettings.internalSSID;
-    doc["internalPW"] = systemSettings.internalPW;
+    doc["internalPW"] = strlen(systemSettings.internalPW) > 0 ? PASSWORD_MASK : "";
     doc["externalSSID"] = systemSettings.externalSSID;
-    doc["externalPW"] = systemSettings.externalPW;
+    doc["externalPW"] = strlen(systemSettings.externalPW) > 0 ? PASSWORD_MASK : "";
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
@@ -128,9 +149,24 @@ bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSetti
     }
 
     strlcpy(systemSettings.internalSSID, doc["internalSSID"] | "", sizeof(systemSettings.internalSSID));
-    strlcpy(systemSettings.internalPW, doc["internalPW"] | "", sizeof(systemSettings.internalPW));
-    strlcpy(systemSettings.externalSSID, doc["externalSSID"] | "", sizeof(systemSettings.externalSSID));
-    strlcpy(systemSettings.externalPW, doc["externalPW"] | "", sizeof(systemSettings.externalPW));
+
+    if(doc.containsKey("internalPW")) {
+        const char* internalPW = doc["internalPW"] | "";
+        if(strlen(internalPW) > 0 && strcmp(internalPW, PASSWORD_MASK) != 0) {
+            strlcpy(systemSettings.internalPW, internalPW, sizeof(systemSettings.internalPW));
+        }
+    }
+
+    if(doc.containsKey("externalSSID")) {
+        strlcpy(systemSettings.externalSSID, doc["externalSSID"] | "", sizeof(systemSettings.externalSSID));
+    }
+
+    if(doc.containsKey("externalPW")) {
+        const char* externalPW = doc["externalPW"] | "";
+        if(strlen(externalPW) > 0 && strcmp(externalPW, PASSWORD_MASK) != 0) {
+            strlcpy(systemSettings.externalPW, externalPW, sizeof(systemSettings.externalPW));
+        }
+    }
 
     return true;
 }

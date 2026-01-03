@@ -5,6 +5,8 @@
 #include <ArduinoJson.h>
 #include "types.h" // For RGB and Alarm structs, and MAX_ALARMS
 
+const char* const PASSWORD_MASK = "******";
+
 /**
  * @brief Creates a JSON string containing override RGB color and alarms data.
  *

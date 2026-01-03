@@ -15,9 +15,8 @@ static RotaryEncoderCallback _rotaryEncoderCallback;
 #define BOOT_BUTTON_PIN 0
 
 // paramaters for button
-unsigned long shortPressAfterMiliseconds =
-    50; // how long short press shoud be. Do not set too low to avoid bouncing
-        // (false press events).
+unsigned long shortPressAfterMiliseconds = 50;  // how long short press shoud be. Do not set too low to avoid bouncing
+                                                // (false press events).
 unsigned long longPressAfterMiliseconds = 1000; // how long čong press shoud be.
 
 // Generally, you should use "unsigned long" for variables that hold time
@@ -27,9 +26,8 @@ unsigned long longPressAfterMiliseconds = 1000; // how long čong press shoud be
 // constants won't change :
 // const long interval = 1000;  // interval at which to blink (milliseconds)
 
-AiEsp32RotaryEncoder rotaryEncoder =
-    AiEsp32RotaryEncoder(ROTARY_ENCODER_CLK_PIN, ROTARY_ENCODER_DT_PIN,
-                         ROTARY_ENCODER_SW_PIN, -1, ROTARY_ENCODER_STEPS);
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_DT_PIN, ROTARY_ENCODER_CLK_PIN,
+                                                          ROTARY_ENCODER_SW_PIN, -1, ROTARY_ENCODER_STEPS);
 
 /**
  * @brief Interrupt service routine for the rotary encoder.
@@ -70,8 +68,7 @@ void handle_rotary_button(unsigned long currentMillis) {
     if(wasButtonDown) {
         if(currentMillis - lastTimeButtonDown >= longPressAfterMiliseconds) {
             _rotaryEncoderCallback(RotaryEncoderEventType::LongClick, 0);
-        } else if(currentMillis - lastTimeButtonDown
-                  >= shortPressAfterMiliseconds) {
+        } else if(currentMillis - lastTimeButtonDown >= shortPressAfterMiliseconds) {
             _rotaryEncoderCallback(RotaryEncoderEventType::ShortClick, 0);
         }
     }
@@ -98,8 +95,7 @@ void handle_boot_button(unsigned long currentMillis) {
     if(wasButtonDown) {
         if(currentMillis - lastTimeButtonDown >= longPressAfterMiliseconds) {
             _rotaryEncoderCallback(RotaryEncoderEventType::LongBootClick, 0);
-        } else if(currentMillis - lastTimeButtonDown
-                  >= shortPressAfterMiliseconds) {
+        } else if(currentMillis - lastTimeButtonDown >= shortPressAfterMiliseconds) {
             _rotaryEncoderCallback(RotaryEncoderEventType::ShortBootClick, 0);
         }
     }
@@ -112,8 +108,7 @@ void handleRotation() {
 
     // for some cases we only want to know if value is increased or decreased
     // (typically for menu items)
-    if(encoderDelta != 0
-       && _rotaryEncoderCallback) { // Check if callback is set
+    if(encoderDelta != 0 && _rotaryEncoderCallback) { // Check if callback is set
         int16_t encoderValue = rotaryEncoder.readEncoder();
         _rotaryEncoderCallback(RotaryEncoderEventType::Rotate, encoderValue);
     }

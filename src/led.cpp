@@ -38,6 +38,7 @@ void ledUpdate() {
 }
 
 void setBrightness(uint8_t brightness) {
+    Serial.println("Setting brightness to " + String(brightness));
     ws2812fx.setBrightness(brightness);
 }
 
@@ -59,6 +60,11 @@ void setAnimationMode(uint8_t mode) {
     }
 }
 
+void setAnimationSpeed(uint16_t speed) {
+    Serial.println("Setting animation speed to " + String(speed));
+    ws2812fx.setSpeed(speed);
+}
+
 void nextEffect() {
     uint8_t mode = (ws2812fx.getMode() + 1) % ws2812fx.getModeCount();
     ws2812fx.setMode(mode);
@@ -77,11 +83,16 @@ void previousEffect() {
  * @param level Brightness level (0-7)
  */
 void setBrightnessLevel(uint8_t level) {
-    ws2812fx.getBrightness();
-    if(level == 0 && ws2812fx.isRunning()) {
-        ws2812fx.stop();
-    } else if(!ws2812fx.isRunning()) {
-        ws2812fx.start();
+    if(level == 0) {
+        if(ws2812fx.isRunning()) {
+            Serial.println("Stopping WS2812FX (brightness 0)");
+            ws2812fx.stop();
+        }
+    } else {
+        if(!ws2812fx.isRunning()) {
+            Serial.println("Starting WS2812FX (brightness > 0)");
+            ws2812fx.start();
+        }
     }
     static const uint8_t brightnessMap[8] = {0, 32, 64, 96, 128, 160, 200, 255};
     if(level > 7)
@@ -99,6 +110,7 @@ uint8_t getEffectCount() {
     return ws2812fx.getModeCount();
 } */
 void restoreLedState() {
+    Serial.println("Restoring LED state after stay mode");
     ws2812fx.setColor(savedLedState.color);
     ws2812fx.setBrightness(savedLedState.brightness);
     ws2812fx.setMode(savedLedState.mode);
@@ -106,6 +118,8 @@ void restoreLedState() {
 }
 
 void stay(uint8_t r, uint8_t g, uint8_t b, uint8_t level, unsigned long timeMs) {
+    Serial.println("Setting stay mode: R" + String(r) + ",G" + String(g) + ",B" + String(b) + ", level " + String(level)
+                   + " for " + String(timeMs) + " ms");
     // Save current state
     savedLedState.color = ws2812fx.getColor();
     savedLedState.brightness = ws2812fx.getBrightness();

@@ -24,6 +24,7 @@ static FullConfig appConfig;
 static SystemSettings systemSettings;
 static LampState lampState = LAMP_STATE_DEFAULT;
 static WiFiTestTracker wifiTracker;
+static LampState lastNormalState = LAMP_STATE_DEFAULT;
 
 void onStateUpdatedFromWifi(StateChangeType type, void* data);
 void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value);
@@ -50,6 +51,7 @@ void setup() {
 
     ledInit();
     setBrightnessLevel(appConfig.brightnessMode);
+    serialPrint("Brightness set to: " + String(appConfig.brightnessMode));
     initRotaryEncoder(appConfig.brightnessMode, myRotaryEncoderCallback);
     // Apply color mode on startup
     checkAndApplyColorMode(appConfig);
@@ -78,10 +80,10 @@ void loop() {
     rotary_loop();
     // performWiFiTest();
     //  checkWifiStop();
-    checkAlarmStates();
+    checkAlarmStates(appConfig.alarmDuration);
     checkLampState();
     updateLed();
-    checkGoodNightMode();
+    checkGoodNightMode(appConfig.goodNightDuration);
     checkToSave();
 }
 
@@ -116,6 +118,7 @@ void checkAndApplyColorMode(const FullConfig& config) {
 
     setLedColor(colorToApply.r, colorToApply.g, colorToApply.b);
     setAnimationMode(config.animationMode);
+    setAnimationSpeed(config.animationSpeed);
     serialPrint("LED color set to " + modeName + ": R=" + String(colorToApply.r) + " G=" + String(colorToApply.g)
                 + " B=" + String(colorToApply.b));
 }
@@ -124,10 +127,12 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
     switch(type) {
     case STATE_CHANGE_CONFIG: {
         const FullConfig* newConfig = static_cast<const FullConfig*>(data);
-        appConfig = *newConfig;
-        checkAndApplyColorMode(*newConfig);
-        setAlarms(newConfig->alarms);
-        saveFullConfig(*newConfig, true);
+        FullConfig tempConfig = *newConfig;
+        tempConfig.brightnessMode = appConfig.brightnessMode; // Preserve brightness
+        appConfig = tempConfig;
+        checkAndApplyColorMode(appConfig);
+        setAlarms(appConfig.alarms);
+        saveFullConfig(appConfig, true);
         // stay(0, 255, 0, 7, 2000); // green for 2 seconds
         serialPrint("Full configuration updated via WiFi controller generic callback.");
         break;
@@ -172,6 +177,9 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
                     + String(")"));
         saveFullConfig(appConfig, true);
         setBrightnessLevel(appConfig.brightnessMode);
+        if(lampState == LAMP_STATE_GOOD_NIGHT) {
+            lampState = LAMP_STATE_DEFAULT;
+        }
         break;
     }
     case RotaryEncoderEventType::ShortBootClick:
@@ -200,29 +208,47 @@ void checkLampState() {
     }
     lastCheck = currentTime;
 
+    /* bool hasSomeWarnings = false; // isWifiActiveAndNotUsed(); throw some errors
+
+    if(lampState != LAMP_STATE_WARNING && hasSomeWarnings) {
+        serialPrint("AP mode active and no users connected, changing to warning");
+        lastNormalState = lampState;
+        lampState = LAMP_STATE_WARNING;
+        return;
+    }
+    if(lampState == LAMP_STATE_WARNING && !hasSomeWarnings) {
+        serialPrint("AP mode user connected or AP mode inactive, restoring previous state");
+        lampState = lastNormalState;
+        return;
+    } */
+
     /* if(hasActiveAlarms() && !wifiTracker.clockSynced) {
         lampState = LAMP_STATE_ERROR;
         return;
     } */
-    /* if(isWifiActiveAndNotUsed()) {
-        lampState = LAMP_STATE_WARNING;
-        return;
-    } */
-    if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING || lampState == LAMP_STATE_SLEEP) {
+    if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING) {
         return; // stay in error/warning/success until cleared
     }
     if(isAlarmActive()) {
         lampState = LAMP_STATE_ALARM;
         return;
     }
+    if(lampState == LAMP_STATE_ALARM) {
+        serialPrint("change from alarm to sleep mode");
+        lampState = LAMP_STATE_SLEEP;
+        return;
+    }
     if(isGoodNightModeActive()) {
         lampState = LAMP_STATE_GOOD_NIGHT;
         return;
     }
-    if(lampState == LAMP_STATE_GOOD_NIGHT && !isGoodNightModeActive()) {
+    if(lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("Good night mode ended, returning to default lamp state");
         lampState = LAMP_STATE_SLEEP;
         return;
+    }
+    if(lampState == LAMP_STATE_SLEEP) {
+        return; // stay in error/warning/success until cleared
     }
 
     lampState = LAMP_STATE_DEFAULT;
@@ -251,11 +277,11 @@ void updateLed() {
         checkAndApplyColorMode(appConfig);
     }
     if(lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
-        setBrightnessLevel(appConfig.brightnessMode || 7);
+        setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
         setLedColor(255, 0, 0); // blink red until time is synced
     }
     if(lampState == LAMP_STATE_WARNING && lastLampState != LAMP_STATE_WARNING) {
-        setBrightnessLevel(appConfig.brightnessMode || 7);
+        setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
         setLedColor(255, 255, 0); // blink yellow until wifi is not used
     }
     /* if(lampState == LAMP_STATE_SUCCESS && lastLampState !=
@@ -265,22 +291,23 @@ void updateLed() {
     if(lampState == LAMP_STATE_ALARM && lastLampState != LAMP_STATE_ALARM) {
         checkAndApplyColorMode(appConfig);
     }
-    if(lampState == LAMP_STATE_SLEEP && lastLampState == !LAMP_STATE_SLEEP) {
+    if(lampState == LAMP_STATE_SLEEP && lastLampState != LAMP_STATE_SLEEP) {
         setBrightnessLevel(0);
     }
     lastLampState = lampState;
 
     // Stay same
-    if(currentTime - lastCheck < 10000) {
+    if(currentTime - lastCheck < 5000) {
         return;
     }
     lastCheck = currentTime;
+    Serial.println("Lamp state check: " + String(lampState));
 
     if(lampState == LAMP_STATE_ALARM) {
-        setBrightnessLevel(getAlarmBrightness());
+        setBrightnessLevel(getAlarmBrightness(appConfig.alarmDuration));
     }
     if(lampState == LAMP_STATE_GOOD_NIGHT) {
-        setBrightnessLevel(getGoodNightBrightness(appConfig.brightnessMode));
+        setBrightnessLevel(getGoodNightBrightness(appConfig.brightnessMode, appConfig.goodNightDuration));
     }
     if(lampState == LAMP_STATE_DEFAULT) {
         // setBrightnessLevel(appConfig.brightnessMode);
@@ -290,7 +317,7 @@ void updateLed() {
 void onShortPress() {
     if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING) {
         serialPrint("Clearing error/warning state");
-        lampState = LAMP_STATE_DEFAULT;
+        lampState = lastNormalState;
         return;
     }
     if(lampState == LAMP_STATE_SLEEP) {
@@ -301,13 +328,13 @@ void onShortPress() {
 
     if(lampState == LAMP_STATE_ALARM) {
         serialPrint("stop alarm");
-        // blink one time red
+        lampState = LAMP_STATE_DEFAULT;
         stopActiveAlarm();
         return;
     }
     if(lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("stop good night");
-        // blink one time red
+        lampState = LAMP_STATE_DEFAULT;
         stopGoodNightMode();
         return;
     }

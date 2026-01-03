@@ -16,6 +16,10 @@ static const WiFiTestTracker* g_wifiTracker = nullptr;
 static GenericStateUpdateCallback g_stateCallback = nullptr;
 
 // Root handler moved here from main.cpp to group route implementations.
+void handlePing(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "text/plain", "pong");
+}
+
 void handleRoot(AsyncWebServerRequest* request, const String&) {
     Serial.print("handleRoot: ");
     Serial.println(request->url());
@@ -122,7 +126,7 @@ void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
     }
     serialPrint("Received /set_config body: " + body);
 
-    FullConfig newConfig;
+    FullConfig newConfig = *g_config;
 
     if(!parseConfigJson(body, newConfig)) {
         request->send(400, "text/plain", "Invalid JSON or parsing failed.");
@@ -158,7 +162,7 @@ void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
     }
     serialPrint("Received /set_system_config body: " + body);
 
-    SystemSettings newSystemSettings;
+    SystemSettings newSystemSettings = *g_systemSettings;
 
     if(!parseSystemConfigJson(body, newSystemSettings)) {
         request->send(400, "text/plain", "Invalid JSON or parsing failed.");
@@ -217,5 +221,6 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/set_config", HTTP_POST, handleSetConfig},
             {"/get_system_config", HTTP_GET, handleGetSystemConfig},
             {"/set_system_config", HTTP_POST, handleSetSystemConfig},
-            {"/get_status", HTTP_GET, handleGetStatus}};
+            {"/get_status", HTTP_GET, handleGetStatus},
+            {"/ping", HTTP_GET, handlePing}};
 }

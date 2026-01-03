@@ -15,9 +15,9 @@ int getActiveAlarmIndex();
 void setActiveAlarm(int index);
 void stopActiveAlarm();
 
-void checkAlarmStates();
+void checkAlarmStates(uint16_t durationMinutes);
 
-bool getAlarmColor(unsigned long currentMillis, RGB& color);
+bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMinutes);
 
 /**
  * @brief Returns the time in milliseconds until the next active alarm event.
@@ -26,6 +26,6 @@ bool getAlarmColor(unsigned long currentMillis, RGB& color);
 long getMillisToNextAlarm();
 
 bool isAlarmActive();
-byte getAlarmBrightness();
+byte getAlarmBrightness(uint16_t durationMinutes);
 bool hasActiveAlarms();
 #endif // ALARM_H

@@ -93,6 +93,9 @@ FullConfig getDefaultFullConfig() {
     for(int i = 0; i < MAX_ALARMS; ++i) {
         defaultConfig.alarms[i] = {0, 0, 0, false}; // day=0 (not set), hour=0, minute=0, active=false
     }
+    defaultConfig.goodNightDuration = 30;
+    defaultConfig.alarmDuration = 30;
+    defaultConfig.animationSpeed = 200;
 
     return defaultConfig;
 }

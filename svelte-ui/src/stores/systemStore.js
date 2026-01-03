@@ -35,7 +35,6 @@ function createSystemStore() {
     },
 
     async post() {
-      debugger;
       try {
         const currentSettings = get(systemStoreData);
 

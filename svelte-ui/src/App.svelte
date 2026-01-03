@@ -1,17 +1,71 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import AlarmTable from "./components/AlarmTable.svelte";
   import ColorPicker from "./components/ColorPicker.svelte";
   import MessageAlert from "./components/MessageAlert.svelte";
   import SystemSettings from "./components/SystemSettings.svelte";
   import { configStore } from "./stores/configStore.js";
   import { systemStore } from "./stores/systemStore.js";
+  import { messageStore } from "./stores/messageStore.js";
+
+  $: goodNightDuration = $configStore.goodNightDuration || 30;
+  $: alarmDuration = $configStore.alarmDuration || 30;
+
+  function handleGoodNightChange(event) {
+    const value = parseInt(event.target.value);
+    if (!isNaN(value)) {
+      configStore.updateDuration("goodNightDuration", value);
+    }
+  }
+
+  function handleAlarmChange(event) {
+    const value = parseInt(event.target.value);
+    if (!isNaN(value)) {
+      configStore.updateDuration("alarmDuration", value);
+    }
+  }
 
   let showSystemModal = false;
+  let isOffline = false;
+  let pingInterval;
+
+  async function checkConnectivity() {
+    try {
+      const response = await fetch("/ping", { signal: AbortSignal.timeout(5000) });
+      
+      if (response.ok) {
+        if (isOffline) {
+          isOffline = false;
+          messageStore.hide();
+          console.log("Connected to lamp again.");
+          // Reload data if we just came back online
+          configStore.load();
+          systemStore.load();
+        }
+      } else {
+        throw new Error("Ping failed");
+      }
+    } catch (error) {
+      if (!isOffline) {
+        isOffline = true;
+        messageStore.showPersistent("error", "Verbindung zur Lampe verloren...");
+        console.error("Lamp is offline:", error);
+      }
+    }
+  }
 
   onMount(() => {
     configStore.load();
     systemStore.load();
+    
+    // Start periodic connectivity check every second
+    pingInterval = setInterval(checkConnectivity, 10000);
+  });
+
+  onDestroy(() => {
+    if (pingInterval) {
+      clearInterval(pingInterval);
+    }
   });
 
   function openSystemModal() {
@@ -37,6 +91,34 @@
     <section aria-labelledby="section-general">
       <h3 id="section-general">Color</h3>
       <ColorPicker />
+    </section>
+
+    <section aria-labelledby="section-durations">
+      <h3 id="section-durations">Durations</h3>
+      <div class="duration-container">
+        <div class="duration-item">
+          <label for="goodNightDuration">Good Night:</label>
+          <input
+            type="number"
+            id="goodNightDuration"
+            value={goodNightDuration}
+            on:change={handleGoodNightChange}
+            min="1"
+            max="1440"
+          />
+        </div>
+        <div class="duration-item">
+          <label for="alarmDuration">Alarm:</label>
+          <input
+            type="number"
+            id="alarmDuration"
+            value={alarmDuration}
+            on:change={handleAlarmChange}
+            min="1"
+            max="1440"
+          />
+        </div>
+      </div>
     </section>
 
     <section aria-labelledby="section-alarms">
@@ -118,4 +200,27 @@
   .container {
     padding-top: var(--pico-spacing);
   }
+
+  .duration-container {
+    display: flex;
+    gap: 1rem;
+    flex-direction: column;
+  }
+
+  .duration-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .duration-item label {
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  .duration-item input[type="number"] {
+    width: 80px;
+  }
+
+
 </style>

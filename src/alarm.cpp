@@ -50,7 +50,7 @@ static int activeAlarmId = -1; // -1 means no alarm is active. Otherwise, it's
 static unsigned long alarm_start_millis =
     0; // Stores the millis() time when the alarm started.
 
-#define WAKEUP_DURATION_MINUTES 2
+// #define WAKEUP_DURATION_MINUTES 2
 
 /**
  * @brief Returns a pointer to the global alarms array.
@@ -129,7 +129,7 @@ void stopActiveAlarm() {
  * This function should be called periodically from the main
  * loop.
  */
-void checkAlarmStates() {
+void checkAlarmStates(uint16_t durationMinutes) {
     static unsigned long lastCheck = 0;
     unsigned long currentTime = millis();
 
@@ -143,7 +143,7 @@ void checkAlarmStates() {
 
     TimeInfo currentTimeInfo = getCurrentTimeInfo();
     // First, check if a currently active alarm needs to be disabled
-    if(activeAlarmId != -1 && runningMs > WAKEUP_DURATION_MINUTES * 60 * 1000) {
+    if(activeAlarmId != -1 && runningMs > (unsigned long)durationMinutes * 60 * 1000) {
         serialPrint("Stopping active alarm after duration here : "
                     + String(activeAlarmId));
         stopActiveAlarm();
@@ -186,7 +186,7 @@ void checkAlarmStates() {
  * @return true if an alarm is active and a color was
  * calculated, false otherwise.
  */
-bool getAlarmColor(unsigned long currentMillis, RGB& color) {
+bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMinutes) {
     if(activeAlarmId == -1) {
         return false;
     }
@@ -195,7 +195,7 @@ bool getAlarmColor(unsigned long currentMillis, RGB& color) {
     // alarm animation started
     unsigned long elapsed_millis = currentMillis - alarm_start_millis;
     const unsigned long wakeup_duration_millis =
-        WAKEUP_DURATION_MINUTES * 60 * 1000;
+        (unsigned long)durationMinutes * 60 * 1000;
 
     // The check_alarms() function is responsible for
     // stopping the alarm after its duration. This
@@ -222,13 +222,13 @@ bool getAlarmColor(unsigned long currentMillis, RGB& color) {
  * Starts at 1 and ramps to 7 over 70% of the alarm duration.
  * @return Brightness value from 1 to 7, or 0 if no alarm is active.
  */
-byte getAlarmBrightness() {
+byte getAlarmBrightness(uint16_t durationMinutes) {
     if(activeAlarmId == -1) {
         return 0;
     }
     unsigned long elapsed_millis = millis() - alarm_start_millis;
     const unsigned long total_duration_millis =
-        WAKEUP_DURATION_MINUTES * 60 * 1000;
+        (unsigned long)durationMinutes * 60 * 1000;
     const unsigned long brightness_duration_millis =
         (total_duration_millis * 70) / 100;
     if(elapsed_millis >= brightness_duration_millis) {

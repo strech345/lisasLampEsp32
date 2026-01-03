@@ -21,7 +21,7 @@
         "success",
         "System settings saved! Please wait a moment and reconnect to the WiFi network."
       );
-      show = false;
+    show = false;
     }
   }
 
@@ -117,7 +117,7 @@
 
         <label for="internalPW">Internal Password</label>
         <input
-          type="text"
+          type="password"
           id="internalPW"
           value={$systemStore.internalPW}
           on:input={(e) => handleFieldChange("internalPW", e)}
@@ -133,7 +133,7 @@
 
         <label for="externalPW">External Password</label>
         <input
-          type="text"
+          type="password"
           id="externalPW"
           value={$systemStore.externalPW}
           on:input={(e) => handleFieldChange("externalPW", e)}
@@ -272,8 +272,7 @@
     color: #22c55e;
   }
 
-  .status-value.connection_failed,
-  .status-value.ntp_failed {
+  .status-value.connection_failed {
     color: #ef4444;
   }
 </style>

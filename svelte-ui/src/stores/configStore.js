@@ -17,6 +17,9 @@ const defaultConfig = {
       minute: 0,
       active: false,
     })),
+  goodNightDuration: 30,
+  alarmDuration: 30,
+  animationSpeed: 200,
 };
 
 function createConfigStore() {
@@ -110,6 +113,22 @@ function createConfigStore() {
       update((config) => ({
         ...config,
         animationMode: modeId,
+      }));
+      this.post();
+    },
+
+    setAnimationSpeed(speed) {
+      update((config) => ({
+        ...config,
+        animationSpeed: speed,
+      }));
+      this.post();
+    },
+    
+    updateDuration(type, value) {
+      update((config) => ({
+        ...config,
+        [type]: value,
       }));
       this.post();
     },

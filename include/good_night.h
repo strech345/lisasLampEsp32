@@ -7,8 +7,8 @@
 
 void activateGoodNightMode();
 void stopGoodNightMode();
-void checkGoodNightMode();
+void checkGoodNightMode(uint16_t durationMinutes);
 bool isGoodNightModeActive();
-byte getGoodNightBrightness(byte startBrightness);
+byte getGoodNightBrightness(byte startBrightness, uint16_t durationMinutes);
 
 #endif // GOOD_NIGHT_H

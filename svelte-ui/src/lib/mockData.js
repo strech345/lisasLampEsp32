@@ -16,6 +16,9 @@ export const mockConfig = {
     { day: 0, hour: 0, minute: 0, active: false },
     { day: 0, hour: 0, minute: 0, active: false },
   ],
+  goodNightDuration: 30,
+  alarmDuration: 30,
+  animationSpeed: 200,
 };
 
 export const mockSystemSettings = {

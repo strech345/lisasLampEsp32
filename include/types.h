@@ -39,6 +39,9 @@ struct FullConfig {
     byte colorMode;     // 0=Cool White, 1=Neutral White, 2=Warm White, 3=Custom
     byte animationMode; // 0=Static, 1=Breathing
     Alarm alarms[MAX_ALARMS];
+    uint16_t goodNightDuration; // in minutes
+    uint16_t alarmDuration;     // in minutes
+    uint16_t animationSpeed;
 };
 
 // Network settings used for internal AP and external STA connections

@@ -8,6 +8,7 @@
 
 // Route handlers implemented by the application (main)
 // Handler functions for requests (all now match Route signature)
+void handlePing(AsyncWebServerRequest* request, const String& body);
 void handleRoot(AsyncWebServerRequest* request, const String& body);
 void handlePicoCSS(AsyncWebServerRequest* request, const String& body);
 void handleAppJS(AsyncWebServerRequest* request, const String& body);

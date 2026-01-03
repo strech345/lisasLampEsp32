@@ -34,6 +34,7 @@
   );
   $: selectedMode = $configStore.colorMode || 0;
   $: selectedAnimationMode = $configStore.animationMode || 0;
+  $: animationSpeed = $configStore.animationSpeed || 200;
   $: isCustomMode = selectedMode === 3;
 
   function handleColorChange(event) {
@@ -52,6 +53,11 @@
     console.log("animation mode change", modeId);
     configStore.setAnimationMode(modeId);
   }
+
+  function handleAnimationSpeedChange(event) {
+    const speed = parseInt(event.target.value);
+    configStore.setAnimationSpeed(speed);
+  }
 </script>
 
 <form>
@@ -67,6 +73,22 @@
         <option value={mode.id}>{mode.name}</option>
       {/each}
     </select>
+    {#if selectedAnimationMode !== 0}
+      <div class="speed-control">
+        <label for="animationSpeed">Speed:</label>
+        <input
+          type="range"
+          id="animationSpeed"
+          min="10"
+          max="5000"
+          step="10"
+          value={animationSpeed}
+          on:change={handleAnimationSpeedChange}
+          style="margin-bottom: 0;"
+        />
+        <span class="muted">{animationSpeed}ms</span>
+      </div>
+    {/if}
   </div>
 
   <div class="color-picker-container">
@@ -146,5 +168,24 @@
       width: 2.5rem;
       height: 2rem;
     }
+  }
+
+  .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-grow: 1;
+    min-width: 250px;
+  }
+
+  .speed-control input[type="range"] {
+    flex-grow: 1;
+  }
+
+  .muted {
+    font-size: 0.8rem;
+    color: #888;
+    white-space: nowrap;
+    min-width: 50px;
   }
 </style>

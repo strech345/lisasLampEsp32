@@ -117,7 +117,7 @@ void tryReconnectSta() {
         return;
 
     Serial.println("Attempting to reconnect STA...");
-    // WiFi.reconnect();
+    WiFi.reconnect();
     // syncTimeWithNTP();
 }
 
@@ -160,6 +160,21 @@ void stopWifi() {
 bool isWiFiActive() {
     wifi_mode_t currentMode = WiFi.getMode();
     return currentMode == WIFI_MODE_AP || currentMode == WIFI_MODE_APSTA;
+}
+
+bool isWifiActiveAndNotUsed() {
+    wifi_mode_t currentMode = WiFi.getMode();
+
+    // If we are connected to an external WiFi (STA), we don't need a warning
+    /* if(currentMode == WIFI_MODE_APSTA && WiFi.status() == WL_CONNECTED) {
+        return false;
+    } */
+
+    // Check if we are in AP mode and if no stations are connected to our internal AP
+    if((currentMode == WIFI_MODE_AP || currentMode == WIFI_MODE_APSTA) && WiFi.softAPgetStationNum() == 0) {
+        return true;
+    }
+    return false;
 }
 
 void syncTimeWithNTP() {
@@ -284,16 +299,39 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
             // For POST routes, capture body and pass to handler
             server.on(
                 r.uri, r.method,
-                [r](AsyncWebServerRequest* request) {
-                    // Body will be available in the body handler callback
-                    r.handler(request, String(""));
+                [](AsyncWebServerRequest* request) {
+                    // Do nothing in the initial request handler for POST
+                    // The body handler will trigger the actual logic
                 },
                 NULL,
                 [r](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
-                    String body = String((char*)data);
-                    body = body.substring(0, len);
-                    // Call handler with actual body data
-                    r.handler(request, body);
+                    if(index == 0) {
+                        // Start of body, initialize buffer
+                        request->_tempObject = new String("");
+                        if(request->_tempObject == nullptr) {
+                            request->send(500, "text/plain", "Buffer Allocation Failed");
+                            return;
+                        }
+                    }
+
+                    String* body = (String*)request->_tempObject;
+                    if(body) {
+                        // Append this chunk
+                        for(size_t i = 0; i < len; i++) {
+                            body->concat((char)data[i]);
+                        }
+                    }
+
+                    if(index + len == total) {
+                        // Full body received
+                        if(body) {
+                            r.handler(request, *body);
+                            delete body;
+                            request->_tempObject = nullptr;
+                        } else {
+                            request->send(400, "text/plain", "Bad Request: Body lost");
+                        }
+                    }
                 });
         } else {
             // For GET routes, pass empty body

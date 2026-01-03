@@ -30,6 +30,18 @@ function createMessageStore() {
         });
       }, 5000);
     },
+    showPersistent(type, text) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
+      set({
+        show: true,
+        type,
+        text
+      });
+    },
     hide() {
       if (timeoutId) {
         clearTimeout(timeoutId);

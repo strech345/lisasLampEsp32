@@ -6,6 +6,7 @@ void ledUpdate();
 void setBrightness(uint8_t brightness);
 void setLedColor(uint8_t r, uint8_t g, uint8_t b);
 void setAnimationMode(uint8_t mode);
+void setAnimationSpeed(uint16_t speed);
 void nextEffect();
 void previousEffect();
 const char* getEffectName();
