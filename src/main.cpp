@@ -15,6 +15,10 @@
 #include "types.h"
 #include "preferences_utils.h"
 #include "wifi_controller.h" // New include
+#include <system_utils.h>
+#include <esp_sleep.h>
+#include "alerts.h"
+#include "celebration.h"
 
 #define DEBUG
 
@@ -32,8 +36,11 @@ void checkAndApplyColorMode(const FullConfig& config);
 void checkLampState();
 void onShortPress();
 void updateLed();
+void checkToGoSleep();
+void enterDeepSleep(uint64_t sleepTimeMs);
 
 void setup() {
+    setCpuFrequencyMhz(80);
 #ifdef DEBUG
     Serial.begin(115200);
 #endif
@@ -50,9 +57,7 @@ void setup() {
     }
 
     ledInit();
-    setBrightnessLevel(appConfig.brightnessMode);
-    serialPrint("Brightness set to: " + String(appConfig.brightnessMode));
-    initRotaryEncoder(appConfig.brightnessMode, myRotaryEncoderCallback);
+    statusLedOn();
     // Apply color mode on startup
     checkAndApplyColorMode(appConfig);
 
@@ -62,10 +67,35 @@ void setup() {
         systemSettings = getDefaultSystemSettings();
     }
 
+    setAlarms(appConfig.alarms); // Restore alarms and calculate next trigger
+
     // Initialize route handlers with state and get routes
     apRoutes = initRouteHandlers(&appConfig, &systemSettings, &wifiTracker, onStateUpdatedFromWifi);
     initWiFiController(systemSettings, apRoutes, wifiTracker);
     startWifi();
+
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    switch(wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0:
+    case ESP_SLEEP_WAKEUP_EXT1:
+        lampState = LAMP_STATE_DEFAULT;
+        appConfig.brightnessMode = 1;
+        serialPrint("Wakeup caused by external signal (Rotary Encoder)");
+        // If user woke it up, maybe turn it on?
+        // For now, it will start in DEFAULT or SLEEP based on saved config.
+        break;
+    case ESP_SLEEP_WAKEUP_TIMER:
+        lampState = LAMP_STATE_SLEEP;
+        serialPrint("Wakeup caused by timer (Alarm/WiFi)");
+        break;
+    default:
+        serialPrint("Wakeup was not caused by deep sleep: " + String(wakeup_reason));
+        break;
+    }
+
+    serialPrint("Brightness set to: " + String(appConfig.brightnessMode));
+    setBrightnessLevel(appConfig.brightnessMode);
+    initRotaryEncoder(appConfig.brightnessMode, myRotaryEncoderCallback);
 
     serialPrint("Initialized");
 }
@@ -78,13 +108,18 @@ void loop() {
     ledUpdate();
     wifiLoop();
     rotary_loop();
-    // performWiFiTest();
-    //  checkWifiStop();
+
+    // effected stated
     checkAlarmStates(appConfig.alarmDuration);
-    checkLampState();
-    updateLed();
+    checkAlertState();
     checkGoodNightMode(appConfig.goodNightDuration);
+    checkCelebrationLogic();
+    checkLampState(); // lamp state check needs be at last
+
+    // other
+    updateLed();
     checkToSave();
+    checkToGoSleep();
 }
 
 void checkAndApplyColorMode(const FullConfig& config) {
@@ -128,12 +163,12 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
     case STATE_CHANGE_CONFIG: {
         const FullConfig* newConfig = static_cast<const FullConfig*>(data);
         FullConfig tempConfig = *newConfig;
-        tempConfig.brightnessMode = appConfig.brightnessMode; // Preserve brightness
+        // tempConfig.brightnessMode = appConfig.brightnessMode; // Preserve brightness - REMOVED to allow remote update
         appConfig = tempConfig;
         checkAndApplyColorMode(appConfig);
+        setBrightnessLevel(appConfig.brightnessMode);
         setAlarms(appConfig.alarms);
         saveFullConfig(appConfig, true);
-        // stay(0, 255, 0, 7, 2000); // green for 2 seconds
         serialPrint("Full configuration updated via WiFi controller generic callback.");
         break;
     }
@@ -141,7 +176,7 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         const SystemSettings* newSettings = static_cast<const SystemSettings*>(data);
         systemSettings = *newSettings;
         saveSystemSettings(systemSettings);
-        stay(0, 255, 0, 7, 2000); // green for 2 seconds
+        startAlert(ALERT_OK, 2000); // Trigger green alert for 2s
         stopWifi();
         startWifi();
         //  performWiFiTest(true);
@@ -156,13 +191,11 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
     switch(eventType) {
     case RotaryEncoderEventType::ShortClick:
         serialPrint("ShortClick Event!");
-        // startWifi();
-        ////return;
         onShortPress();
         break;
     case RotaryEncoderEventType::LongClick:
         serialPrint("LongClick Event!");
-        stay(255, 255, 0, 7, 2000); // yellow for 2 seconds
+        startAlert(ALERT_WARNING, 5000);
         startWifi();
         break;
     case RotaryEncoderEventType::Rotate: {
@@ -199,36 +232,32 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
 }
 
 void checkLampState() {
-    static unsigned long lastCheck = 0;
-    unsigned long currentTime = millis();
+    /*  static unsigned long lastCheck = 0;
+     unsigned long currentTime = millis(); */
 
     // Only check every 1 seconds
-    if(currentTime - lastCheck < 1000) {
-        return;
-    }
-    lastCheck = currentTime;
-
-    /* bool hasSomeWarnings = false; // isWifiActiveAndNotUsed(); throw some errors
-
-    if(lampState != LAMP_STATE_WARNING && hasSomeWarnings) {
-        serialPrint("AP mode active and no users connected, changing to warning");
-        lastNormalState = lampState;
-        lampState = LAMP_STATE_WARNING;
-        return;
-    }
-    if(lampState == LAMP_STATE_WARNING && !hasSomeWarnings) {
-        serialPrint("AP mode user connected or AP mode inactive, restoring previous state");
-        lampState = lastNormalState;
-        return;
-    } */
-
     /* if(hasActiveAlarms() && !wifiTracker.clockSynced) {
         lampState = LAMP_STATE_ERROR;
         return;
     } */
-    if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING) {
-        return; // stay in error/warning/success until cleared
+
+    switch(getActiveAlertType()) {
+    case ALERT_ERROR:
+        lampState = LAMP_STATE_ERROR;
+        return;
+    case ALERT_WARNING:
+        lampState = LAMP_STATE_WARNING;
+        return;
+    case ALERT_OK:
+        lampState = LAMP_STATE_SUCCESS;
+        return;
     }
+
+    if(isCelebrationActive()) {
+        lampState = LAMP_STATE_CELEBRATION;
+        return;
+    }
+
     if(isAlarmActive()) {
         lampState = LAMP_STATE_ALARM;
         return;
@@ -248,21 +277,10 @@ void checkLampState() {
         return;
     }
     if(lampState == LAMP_STATE_SLEEP) {
-        return; // stay in error/warning/success until cleared
+        return;
     }
 
     lampState = LAMP_STATE_DEFAULT;
-    /* if(lampState == LAMP_STATE_GOOD_NIGHT || lampState == LAMP_STATE_ALARM) {
-        serialPrint("Returning to default lamp state");
-        ////////////////////////// GOTO SLEEP MODE //////////////////////////
-        lampState = LAMP_STATE_DEFAULT;
-        return;
-    }
-    if(lampState != LAMP_STATE_DEFAULT) {
-        setBrightnessLevel(appConfig.brightnessMode);
-        lampState = LAMP_STATE_DEFAULT;
-        return;
-    } */
 }
 
 void updateLed() {
@@ -273,8 +291,10 @@ void updateLed() {
     // State changes
     if(lampState == LAMP_STATE_DEFAULT && lastLampState != LAMP_STATE_DEFAULT) {
         setBrightnessLevel(appConfig.brightnessMode);
-
         checkAndApplyColorMode(appConfig);
+    }
+    if(lampState == LAMP_STATE_CELEBRATION && lastLampState != LAMP_STATE_CELEBRATION) {
+        startCelebrationEffect();
     }
     if(lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
         setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
@@ -315,8 +335,9 @@ void updateLed() {
 }
 
 void onShortPress() {
-    if(lampState == LAMP_STATE_ERROR || lampState == LAMP_STATE_WARNING) {
-        serialPrint("Clearing error/warning state");
+    if(getActiveAlertType() != ALERT_NONE) {
+        serialPrint("Clearing alert via button");
+        stopAlert();
         lampState = lastNormalState;
         return;
     }
@@ -338,31 +359,81 @@ void onShortPress() {
         stopGoodNightMode();
         return;
     }
+    if(lampState == LAMP_STATE_CELEBRATION) {
+        serialPrint("stop celebration");
+        lampState = LAMP_STATE_DEFAULT;
+        stopCelebration();
+        return;
+    }
     serialPrint("activate good night");
     // TODO show green preview
     activateGoodNightMode();
 }
 
 void checkToGoSleep() {
-    if(lampState != LAMP_STATE_DEFAULT || appConfig.brightnessMode > 0 /* || isWiFiActive() */
-       || getMillisToNextAlarm() < 15 * 60 * 1000)
+    static unsigned long lastCheckMs = 0;
+    if(!isTimeForAction(&lastCheckMs, 10 * 1000))
         return;
-    // if millis to low stay active
 
-    // otherwise go to sleep
+    long msToNextAlarm = getMillisToNextAlarm();
+    long msToNextCelebration = getMillisToNextCelebration();
+
+    serialPrint("Millis to next alarm: " + String(msToNextAlarm));
+    if(msToNextCelebration > 0) {
+        serialPrint("Millis to next celebration: " + String(msToNextCelebration));
+    }
+
+    if(lampState != LAMP_STATE_DEFAULT && lampState != LAMP_STATE_SLEEP)
+        return;
+
+    if(lampState == LAMP_STATE_DEFAULT && appConfig.brightnessMode != 0)
+        return;
+
+    if(msToNextAlarm == 0) // if alarm is active
+        return;
+
+    if(isWiFiActive())
+        return;
+
+    // Determine how long we can sleep. Start with the WiFi schedule.
+    unsigned long sleepTimeMs = START_WIFI_AFTER_MS;
+
+    // If an alarm is sooner, sleep until then.
+    if(msToNextAlarm > 0 && (unsigned long)msToNextAlarm < sleepTimeMs) {
+        sleepTimeMs = (unsigned long)msToNextAlarm;
+    }
+
+    // If a celebration is sooner, sleep until then.
+    if(msToNextCelebration > 0 && (unsigned long)msToNextCelebration < sleepTimeMs) {
+        sleepTimeMs = (unsigned long)msToNextCelebration;
+    }
+
+    // Don't sleep if it's too short (less than 2 minutes)
+    if(sleepTimeMs < 2LL * 60LL * 1000LL) {
+        return;
+    }
+
+    // Deduct 1 minute for a safe wakeup before an alarm or activity
+    sleepTimeMs -= 60LL * 1000LL;
+
+    enterDeepSleep(sleepTimeMs);
 }
 
-/**
- * on press first check if modus is active
- * if true stop modus
- *
- * value change always change brightness
- *
- *
- *
- * button moenu
- * - 0 default (helligkeit)
- *  <> change brightness
-    short next mode
- - 1 go sleep
- */
+void enterDeepSleep(uint64_t sleepTimeMs) {
+    serialPrint("Auto-entering deep sleep (idle) for " + String((unsigned long)(sleepTimeMs / 1000)) + "s");
+
+    // Timer wakeup
+    esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
+
+    // Rotary Encoder Switch (Pin 4) - Wake on LOW
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_4, 0);
+
+    // Rotary Encoder CLK (Pin 32) - Wake on LOW
+    // Use ext1 for this; it can only wake on ALL_LOW or ANY_HIGH
+    // Mode ANY_LOW is not supported on original ESP32, but for a single pin, ALL_LOW is the same as wake on LOW.
+    esp_sleep_enable_ext1_wakeup(1ULL << 32, ESP_EXT1_WAKEUP_ALL_LOW);
+
+    Serial.flush();
+    statusLedOff();
+    esp_deep_sleep_start();
+}

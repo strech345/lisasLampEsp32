@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <WS2812FX.h>
 #include "debug_utils.h"
+#include "led.h"
 
 // Structure to hold LED state
 struct LedState {
@@ -11,17 +12,15 @@ struct LedState {
 };
 
 static LedState savedLedState;
-static bool isStayActive = false;
-static unsigned long stayEndMillis = 0;
 
 #define LED_PIN 27
 #define LED_COUNT 1
-
-void restoreLedState();
+#define STATUS_LED_PIN 2
 
 WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 void ledInit() {
+    statusLedInit();
     ws2812fx.init();
     // ws2812fx.setBrightness(100);
     ws2812fx.setSpeed(200);
@@ -32,9 +31,6 @@ void ledInit() {
 
 void ledUpdate() {
     ws2812fx.service();
-    if(isStayActive && millis() >= stayEndMillis) {
-        restoreLedState();
-    }
 }
 
 void setBrightness(uint8_t brightness) {
@@ -102,39 +98,20 @@ void setBrightnessLevel(uint8_t level) {
     setBrightness(brightnessMap[level]);
 }
 
-/* const char* getEffectName() {
-    return ws2812fx.getModeName(ws2812fx.getMode());
+void startCelebrationEffect() {
+    ws2812fx.setMode(FX_MODE_RAINBOW);
+    ws2812fx.setSpeed(1000);
+    setBrightnessLevel(7);
 }
 
-uint8_t getEffectCount() {
-    return ws2812fx.getModeCount();
-} */
-void restoreLedState() {
-    Serial.println("Restoring LED state after stay mode");
-    ws2812fx.setColor(savedLedState.color);
-    ws2812fx.setBrightness(savedLedState.brightness);
-    ws2812fx.setMode(savedLedState.mode);
-    isStayActive = false;
+void statusLedInit() {
+    pinMode(STATUS_LED_PIN, OUTPUT);
 }
 
-void stay(uint8_t r, uint8_t g, uint8_t b, uint8_t level, unsigned long timeMs) {
-    Serial.println("Setting stay mode: R" + String(r) + ",G" + String(g) + ",B" + String(b) + ", level " + String(level)
-                   + " for " + String(timeMs) + " ms");
-    // Save current state
-    savedLedState.color = ws2812fx.getColor();
-    savedLedState.brightness = ws2812fx.getBrightness();
-    savedLedState.mode = ws2812fx.getMode();
-    isStayActive = true;
-    stayEndMillis = millis() + timeMs;
+void statusLedOn() {
+    digitalWrite(STATUS_LED_PIN, HIGH);
+}
 
-    // Map level (0-7) to brightness
-    static const uint8_t brightnessMap[8] = {0, 32, 64, 96, 128, 160, 200, 255};
-    if(level > 7)
-        level = 7;
-    uint8_t brightness = brightnessMap[level];
-
-    // Apply new style
-    ws2812fx.setColor((r << 16) | (g << 8) | b);
-    ws2812fx.setBrightness(brightness);
-    ws2812fx.setMode(0); // Use mode 0 (usually static) for stay
+void statusLedOff() {
+    digitalWrite(STATUS_LED_PIN, LOW);
 }

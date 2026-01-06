@@ -73,7 +73,7 @@
         <option value={mode.id}>{mode.name}</option>
       {/each}
     </select>
-    {#if selectedAnimationMode !== 0}
+    <!-- {#if selectedAnimationMode !== 0}
       <div class="speed-control">
         <label for="animationSpeed">Speed:</label>
         <input
@@ -88,7 +88,7 @@
         />
         <span class="muted">{animationSpeed}ms</span>
       </div>
-    {/if}
+    {/if} -->
   </div>
 
   <div class="color-picker-container">
@@ -170,7 +170,7 @@
     }
   }
 
-  .speed-control {
+  /* .speed-control {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -187,5 +187,5 @@
     color: #888;
     white-space: nowrap;
     min-width: 50px;
-  }
+  } */
 </style>

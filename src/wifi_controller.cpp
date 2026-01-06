@@ -15,11 +15,7 @@
 #define WIFI_CHANNEL 6
 #define DNS_INTERVAL 30
 
-static const unsigned long nextTestIntervalOnSuccess = 12 * 60 * 60 * 1000; // 12 hours
-static const unsigned long nextTestIntervalOnFailure = 2 * 60 * 1000;       // 2 minutes
-static const unsigned long WIFI_IDLE_TIMEOUT = 100 * 30 * 1000;             // 60 seconds
-static const unsigned long WIFI_IDLE_TIME = 1 * 60 * 1000;                  // 5 minutes max
-static const IPAddress localIP(4, 3, 2, 1);                                 // Samsung need to be in public space
+static const IPAddress localIP(4, 3, 2, 1); // Samsung need to be in public space
 static const IPAddress subnetMask(255, 255, 255, 0);
 static const SystemSettings* g_systemSettings = nullptr;
 static std::vector<Route> g_routes;
@@ -70,12 +66,12 @@ void handleClientRequests() {
 
 void checkWifiStop() {
     static unsigned long lastRunMs = 0;
-    if(!isWiFiActive() || WiFi.softAPgetStationNum() > 0) {
+    if(!isWiFiActive() || hasWifiClients()) {
         lastRunMs = millis();
         return;
     }
 
-    if(isTimeForAction(&lastRunMs, WIFI_IDLE_TIMEOUT)) {
+    if(isTimeForAction(&lastRunMs, STOP_WIFI_AFTER_MS)) {
         stopWifi();
         lastRunMs = 0;
     }
@@ -88,7 +84,7 @@ void checkWifiStart() {
         return;
     }
 
-    if(isTimeForAction(&lastRunMs, WIFI_IDLE_TIME)) {
+    if(isTimeForAction(&lastRunMs, START_WIFI_AFTER_MS)) {
         startWifi();
         lastRunMs = 0;
     }
@@ -160,6 +156,10 @@ void stopWifi() {
 bool isWiFiActive() {
     wifi_mode_t currentMode = WiFi.getMode();
     return currentMode == WIFI_MODE_AP || currentMode == WIFI_MODE_APSTA;
+}
+
+bool hasWifiClients() {
+    return WiFi.softAPgetStationNum() > 0;
 }
 
 bool isWifiActiveAndNotUsed() {
@@ -316,10 +316,8 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
 
                     String* body = (String*)request->_tempObject;
                     if(body) {
-                        // Append this chunk
-                        for(size_t i = 0; i < len; i++) {
-                            body->concat((char)data[i]);
-                        }
+                        // Append this chunk efficiently
+                        body->concat((const char*)data, len);
                     }
 
                     if(index + len == total) {
@@ -330,6 +328,12 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
                             request->_tempObject = nullptr;
                         } else {
                             request->send(400, "text/plain", "Bad Request: Body lost");
+                        }
+                    } else if(request->client() && !request->client()->connected()) {
+                        // Client disconnected before full body received, clean up
+                        if(body) {
+                            delete body;
+                            request->_tempObject = nullptr;
                         }
                     }
                 });

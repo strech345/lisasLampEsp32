@@ -48,58 +48,47 @@ void initRotaryEncoder(byte value, RotaryEncoderCallback callback) {
     rotaryEncoder.setEncoderValue(value); // start in the middle
 }
 
-void handle_rotary_button(unsigned long currentMillis) {
-    static unsigned long lastTimeButtonDown = 0;
-    static bool wasButtonDown = false;
+struct LampButtonState {
+    unsigned long lastTimeButtonDown = 0;
+    bool wasButtonDown = false;
+    bool longPressHandled = false;
+};
 
-    bool isEncoderButtonDown = rotaryEncoder.isEncoderButtonDown();
-    if(isEncoderButtonDown) {
-        Serial.print("+"); // REMOVE THIS LINE IF YOU DONT WANT TO SEE
-        if(!wasButtonDown) {
+void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent, RotaryEncoderEventType longEvent, unsigned long currentMillis) {
+    if(isDown) {
+        if(!state.wasButtonDown) {
             // start measuring
-            lastTimeButtonDown = currentMillis;
+            state.lastTimeButtonDown = currentMillis;
+            state.longPressHandled = false;
+        } else if(!state.longPressHandled && (currentMillis - state.lastTimeButtonDown >= longPressAfterMiliseconds)) {
+            if(_rotaryEncoderCallback) {
+                _rotaryEncoderCallback(longEvent, 0);
+            }
+            state.longPressHandled = true;
         }
-        // else we wait since button is still down
-        wasButtonDown = true;
+        state.wasButtonDown = true;
         return;
     }
 
     // button is up
-    if(wasButtonDown) {
-        if(currentMillis - lastTimeButtonDown >= longPressAfterMiliseconds) {
-            _rotaryEncoderCallback(RotaryEncoderEventType::LongClick, 0);
-        } else if(currentMillis - lastTimeButtonDown >= shortPressAfterMiliseconds) {
-            _rotaryEncoderCallback(RotaryEncoderEventType::ShortClick, 0);
+    if(state.wasButtonDown && !state.longPressHandled) {
+        if(currentMillis - state.lastTimeButtonDown >= shortPressAfterMiliseconds) {
+            if(_rotaryEncoderCallback) {
+                _rotaryEncoderCallback(shortEvent, 0);
+            }
         }
     }
-    wasButtonDown = false;
+    state.wasButtonDown = false;
+}
+
+void handle_rotary_button(unsigned long currentMillis) {
+    static LampButtonState rotaryState;
+    process_button(rotaryEncoder.isEncoderButtonDown(), rotaryState, RotaryEncoderEventType::ShortClick, RotaryEncoderEventType::LongClick, currentMillis);
 }
 
 void handle_boot_button(unsigned long currentMillis) {
-    static unsigned long lastTimeButtonDown = 0;
-    static bool wasButtonDown = false;
-
-    int isBootButtonDown = digitalRead(BOOT_BUTTON_PIN) == LOW;
-    if(isBootButtonDown) {
-        Serial.print("+"); // REMOVE THIS LINE IF YOU DONT WANT TO SEE
-        if(!wasButtonDown) {
-            // start measuring
-            lastTimeButtonDown = currentMillis;
-        }
-        // else we wait since button is still down
-        wasButtonDown = true;
-        return;
-    }
-
-    // button is up
-    if(wasButtonDown) {
-        if(currentMillis - lastTimeButtonDown >= longPressAfterMiliseconds) {
-            _rotaryEncoderCallback(RotaryEncoderEventType::LongBootClick, 0);
-        } else if(currentMillis - lastTimeButtonDown >= shortPressAfterMiliseconds) {
-            _rotaryEncoderCallback(RotaryEncoderEventType::ShortBootClick, 0);
-        }
-    }
-    wasButtonDown = false;
+    static LampButtonState bootState;
+    process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick, RotaryEncoderEventType::LongBootClick, currentMillis);
 }
 
 void handleRotation() {

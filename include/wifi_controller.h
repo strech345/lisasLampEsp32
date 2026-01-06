@@ -7,6 +7,9 @@
 #include "types.h"
 #include <DNSServer.h>
 
+static const unsigned long STOP_WIFI_AFTER_MS = 60 * 1000;                  // 30 seconds
+static const unsigned long START_WIFI_AFTER_MS = 5 * 60 * 60 * 1000;        // 5 hours
+
 void wifiLoop();
 void startWifi();
 void stopWifi();
@@ -23,5 +26,7 @@ bool isTimeSyncedWithNTP();
 void updateTelemetryWiFiStatus();
 void tryReconnectSta();
 void syncTimeWithNTP();
+bool hasActiveClients();
+bool hasWifiClients();
 
 #endif // WIFI_CONTROLLER_H

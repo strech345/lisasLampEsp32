@@ -16,6 +16,7 @@ void setActiveAlarm(int index);
 void stopActiveAlarm();
 
 void checkAlarmStates(uint16_t durationMinutes);
+void calculateMillisToNextAlarm();
 
 bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMinutes);
 

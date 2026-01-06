@@ -5,8 +5,25 @@
   import MessageAlert from "./components/MessageAlert.svelte";
   import SystemSettings from "./components/SystemSettings.svelte";
   import { configStore } from "./stores/configStore.js";
-  import { systemStore } from "./stores/systemStore.js";
   import { messageStore } from "./stores/messageStore.js";
+  import Snowfall from "./components/Snowfall.svelte";
+  import Balloons from "./components/Balloons.svelte";
+
+  const now = new Date();
+  const month = now.getMonth(); // 0-11
+  const day = now.getDate();
+  
+  const isCelebration = (month === 0 && day === 1) || // Jan 1
+                         (month === 7 && day === 8) || // Aug 8
+                         (month === 8 && day === 2) || // Sep 2 
+                         (month === 12 && day === 24); // Dec 24
+  
+  // Winter: Mid Nov (10/15) to Mid Feb (1/15)
+  // month 10 is November, 1 is February
+  const isWinter = (month === 10 && day >= 15) || // Nov 15-30
+                   (month === 11) ||             // Dec
+                   (month === 0) ||              // Jan
+                   (month === 1 && day <= 15);   // Feb 1-15
 
   $: goodNightDuration = $configStore.goodNightDuration || 30;
   $: alarmDuration = $configStore.alarmDuration || 30;
@@ -30,8 +47,12 @@
   let pingInterval;
 
   async function checkConnectivity() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
-      const response = await fetch("/ping", { signal: AbortSignal.timeout(5000) });
+      const response = await fetch("/ping", { signal: controller.signal });
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         if (isOffline) {
@@ -40,7 +61,6 @@
           console.log("Connected to lamp again.");
           // Reload data if we just came back online
           configStore.load();
-          systemStore.load();
         }
       } else {
         throw new Error("Ping failed");
@@ -56,7 +76,6 @@
 
   onMount(() => {
     configStore.load();
-    systemStore.load();
     
     // Start periodic connectivity check every second
     pingInterval = setInterval(checkConnectivity, 10000);
@@ -74,13 +93,20 @@
 </script>
 
 <main class="container">
+  {#if isCelebration}
+    <Balloons />
+  {/if}
+  {#if isWinter}
+    <Snowfall />
+  {/if}
   <div class="main-wrapper">
     <button
       class="btn-smallblue square btn-icon system"
       on:click={openSystemModal}><span class="gear-icon">⚙︎</span></button
     >
+    <img src="/meerkat.avif" alt="Meerkat" class="meerkat-img" />
     <header class="app-header">
-      <h1>{$systemStore.internalSSID || "Lisa's Lampe"}</h1>
+      <h1>Lisa's Lampe</h1>
     </header>
     <p class="muted" style="display: block;">
       Viel Spaß mit deiner smarten Lampe ;-)!
@@ -162,6 +188,15 @@
     position: relative;
     text-align: center;
     margin-bottom: 2rem;
+  }
+
+  .meerkat-img {
+    height: 50px;
+    width: auto;
+        position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    z-index: 10;
   }
 
   .main-wrapper {

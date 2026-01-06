@@ -6,20 +6,20 @@
 #include <debug_utils.h>
 
 static bool goodNightModeActive = false;
-static unsigned long long goodNightStartTimeMicros = 0;
-// const unsigned long long GOOD_NIGHT_DURATION_MICROS =
-//     60 * 1000; // 1 minute in microseconds
-// 30 * 60 * 1000000ULL; // 30 minutes in microseconds
+static unsigned long goodNightStartTimeMs = 0;
+// const unsigned long GOOD_NIGHT_DURATION_MS =
+//     60 * 1000; // 1 minute in milliseconds
+// 30 * 60 * 1000ULL; // 30 minutes in milliseconds
 
 void activateGoodNightMode() {
     goodNightModeActive = true;
-    goodNightStartTimeMicros = millis();
+    goodNightStartTimeMs = millis();
     serialPrint("Lstart good night");
 }
 
 void stopGoodNightMode() {
     goodNightModeActive = false;
-    goodNightStartTimeMicros = 0;
+    goodNightStartTimeMs = 0;
 }
 
 bool isGoodNightModeActive() {
@@ -36,12 +36,12 @@ byte getGoodNightBrightness(byte startBrightness, uint16_t durationMinutes) {
     if(!goodNightModeActive) {
         return 0;
     }
-    unsigned long long durationMicros = (unsigned long long)durationMinutes * 60 * 1000;
-    unsigned long long elapsed = millis() - goodNightStartTimeMicros;
-    if(elapsed >= durationMicros) {
+    unsigned long durationMs = (unsigned long)durationMinutes * 60 * 1000;
+    unsigned long elapsed = millis() - goodNightStartTimeMs;
+    if(elapsed >= durationMs) {
         return 0;
     }
-    float progress = (float)elapsed / (float)durationMicros;
+    float progress = (float)elapsed / (float)durationMs;
     byte result = startBrightness - (byte)(progress * startBrightness);
     serialPrint("GoodNight Calc: Start=" + String(startBrightness) + " Elapsed=" + String((unsigned long)elapsed) + " Prog=" + String(progress) + " Res=" + String(result));
     return result;
@@ -60,9 +60,9 @@ void checkGoodNightMode(uint16_t durationMinutes) {
     }
     lastCheck = currentTime;
 
-    unsigned long long durationMicros = (unsigned long long)durationMinutes * 60 * 1000;
+    unsigned long durationMs = (unsigned long)durationMinutes * 60 * 1000;
     if(goodNightModeActive
-       && (millis() - goodNightStartTimeMicros > durationMicros)) {
+       && (millis() - goodNightStartTimeMs > durationMs)) {
         stopGoodNightMode();
     }
 }

@@ -12,6 +12,7 @@ String createConfigJson(const FullConfig& config) {
     // Add color mode
     // doc["selectedColorMode"] = 1; // Always active for frontend compatibility
     doc["colorMode"] = config.colorMode;
+    doc["brightnessMode"] = config.brightnessMode;
     doc["animationMode"] = config.animationMode;
     doc["goodNightDuration"] = config.goodNightDuration;
     doc["alarmDuration"] = config.alarmDuration;
@@ -61,6 +62,13 @@ bool parseConfigJson(const String& jsonString, FullConfig& config) {
     } else {
         config.colorMode = 1; // Default to Neutral White if not present
     }
+
+    if(doc.containsKey("brightnessMode")) {
+        config.brightnessMode = doc["brightnessMode"];
+    } else {
+        config.brightnessMode = 7; // Default to max brightness
+    }
+
     if(doc.containsKey("animationMode")) {
         config.animationMode = doc["animationMode"];
     } else {

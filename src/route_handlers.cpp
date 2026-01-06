@@ -205,6 +205,16 @@ void handleGetStatus(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", createWiFiStatusJson(status));
 }
 
+void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
+    const char* imagePath = "/meerkat.avif";
+    if(!LittleFS.exists(imagePath)) {
+        serialPrint("meerkat.avif not found");
+        request->send(404, "text/plain", "Image Not Found");
+        return;
+    }
+    request->send(LittleFS, imagePath, "image/avif");
+}
+
 // Initialization functions to set global state and return routes
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback) {
@@ -222,5 +232,6 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/get_system_config", HTTP_GET, handleGetSystemConfig},
             {"/set_system_config", HTTP_POST, handleSetSystemConfig},
             {"/get_status", HTTP_GET, handleGetStatus},
+            {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
             {"/ping", HTTP_GET, handlePing}};
 }

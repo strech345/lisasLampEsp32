@@ -45,10 +45,11 @@ if the data has changed. putValue(preferences,
 // reset on boot.
 static int last_triggered_day_for_alarm[MAX_ALARMS];
 
-static int activeAlarmId = -1; // -1 means no alarm is active. Otherwise, it's
-                               // the index in the alarms array.
-static unsigned long alarm_start_millis =
-    0; // Stores the millis() time when the alarm started.
+static int activeAlarmId = -1;               // -1 means no alarm is active. Otherwise, it's
+                                             // the index in the alarms array.
+static unsigned long alarm_start_millis = 0; // Stores the millis() time when the alarm started.
+
+long msToNextAlarm = -1;
 
 // #define WAKEUP_DURATION_MINUTES 2
 
@@ -71,8 +72,7 @@ void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
     // Copy the new alarm data into the global alarms array
     memcpy(alarms, newAlarms, sizeof(alarms));
 
-    // Save the newly updated alarms to persistent storage
-    // save_alarms();
+    calculateMillisToNextAlarm();
 }
 
 /**
@@ -144,38 +144,36 @@ void checkAlarmStates(uint16_t durationMinutes) {
     TimeInfo currentTimeInfo = getCurrentTimeInfo();
     // First, check if a currently active alarm needs to be disabled
     if(activeAlarmId != -1 && runningMs > (unsigned long)durationMinutes * 60 * 1000) {
-        serialPrint("Stopping active alarm after duration here : "
-                    + String(activeAlarmId));
+        serialPrint("Stopping active alarm after duration here : " + String(activeAlarmId));
         stopActiveAlarm();
     }
 
     // Activate alarm
     for(int i = 0; i < MAX_ALARMS; i++) {
-       /*  if (alarms[i].active) {
-             serialPrint("Alarm[" + String(i) + "] Debug: " +
-                        "CurrDay=" + String(currentTimeInfo.day) +
-                        " vs LastTrig=" + String(last_triggered_day_for_alarm[i]) +
-                        ", AlmDay=" + String(alarms[i].day) +
-                        " vs CurrDoW=" + String(currentTimeInfo.dayOfWeek) +
-                        ", AlmHr=" + String(alarms[i].hour) +
-                        " vs CurrHr=" + String(currentTimeInfo.hour) +
-                        ", AlmMin=" + String(alarms[i].minute) +
-                        " vs CurrMin=" + String(currentTimeInfo.minute));
-        } */
-        if(i != activeAlarmId && alarms[i].active
-           && currentTimeInfo.day != last_triggered_day_for_alarm[i]
-           && alarms[i].day == currentTimeInfo.dayOfWeek
-           && alarms[i].hour == currentTimeInfo.hour
+        /*  if (alarms[i].active) {
+              serialPrint("Alarm[" + String(i) + "] Debug: " +
+                         "CurrDay=" + String(currentTimeInfo.day) +
+                         " vs LastTrig=" + String(last_triggered_day_for_alarm[i]) +
+                         ", AlmDay=" + String(alarms[i].day) +
+                         " vs CurrDoW=" + String(currentTimeInfo.dayOfWeek) +
+                         ", AlmHr=" + String(alarms[i].hour) +
+                         " vs CurrHr=" + String(currentTimeInfo.hour) +
+                         ", AlmMin=" + String(alarms[i].minute) +
+                         " vs CurrMin=" + String(currentTimeInfo.minute));
+         } */
+        if(i != activeAlarmId && alarms[i].active && currentTimeInfo.day != last_triggered_day_for_alarm[i]
+           && alarms[i].day == currentTimeInfo.dayOfWeek && alarms[i].hour == currentTimeInfo.hour
            && alarms[i].minute == currentTimeInfo.minute) {
-            serialPrint("Alarm[" + String(i) + "]: day=" + String(alarms[i].day)
-                        + ", hour=" + String(alarms[i].hour) + ", minute="
-                        + String(alarms[i].minute) + ", last_triggered="
-                        + String(last_triggered_day_for_alarm[i]));
+            serialPrint("Alarm[" + String(i) + "]: day=" + String(alarms[i].day) + ", hour=" + String(alarms[i].hour)
+                        + ", minute=" + String(alarms[i].minute)
+                        + ", last_triggered=" + String(last_triggered_day_for_alarm[i]));
 
             setActiveAlarm(i);
-            return;
+            break; // Only activate one alarm at a time
         }
     }
+
+    calculateMillisToNextAlarm();
 }
 /**
  * @brief If an alarm is active, calculates the RGB color
@@ -194,8 +192,7 @@ bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMin
     // Calculate how many milliseconds have passed since the
     // alarm animation started
     unsigned long elapsed_millis = currentMillis - alarm_start_millis;
-    const unsigned long wakeup_duration_millis =
-        (unsigned long)durationMinutes * 60 * 1000;
+    const unsigned long wakeup_duration_millis = (unsigned long)durationMinutes * 60 * 1000;
 
     // The check_alarms() function is responsible for
     // stopping the alarm after its duration. This
@@ -227,10 +224,8 @@ byte getAlarmBrightness(uint16_t durationMinutes) {
         return 0;
     }
     unsigned long elapsed_millis = millis() - alarm_start_millis;
-    const unsigned long total_duration_millis =
-        (unsigned long)durationMinutes * 60 * 1000;
-    const unsigned long brightness_duration_millis =
-        (total_duration_millis * 70) / 100;
+    const unsigned long total_duration_millis = (unsigned long)durationMinutes * 60 * 1000;
+    const unsigned long brightness_duration_millis = (total_duration_millis * 70) / 100;
     if(elapsed_millis >= brightness_duration_millis) {
         return 7; // Maximum brightness after 70% of duration
     }
@@ -269,40 +264,56 @@ TimeInfo getCurrentTimeInfo() {
 /**
  * @brief Returns the time in milliseconds until the next active alarm event.
  * If no alarm is set, returns -1.
+ * If an alarm is currently active, returns 0.
  */
-long getMillisToNextAlarm() {
-    TimeInfo now = getCurrentTimeInfo();
+void calculateMillisToNextAlarm() {
+    if(isAlarmActive()) {
+        msToNextAlarm = 0;
+        return;
+    }
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    time_t now = tv.tv_sec;
+    struct tm* ptm = localtime(&now);
+
     long minMillis = -1;
     for(int i = 0; i < MAX_ALARMS; i++) {
         const Alarm& alarm = alarms[i];
         if(!alarm.active || alarm.day == 0)
             continue;
 
+        struct tm target = *ptm;
+        target.tm_hour = alarm.hour;
+        target.tm_min = alarm.minute;
+        target.tm_sec = 0;
+
         // Calculate days until next occurrence
-        int daysDelta = alarm.day - now.dayOfWeek;
+        int currentDoW = ptm->tm_wday == 0 ? 7 : ptm->tm_wday; // 1-7 (Mon-Sun)
+        int daysDelta = alarm.day - currentDoW;
         if(daysDelta < 0)
             daysDelta += 7;
 
-        // Calculate time for the alarm event
-        int alarmTotalMinutes = alarm.hour * 60 + alarm.minute;
-        int nowTotalMinutes = now.hour * 60 + now.minute;
-
-        long millisToAlarm = daysDelta * 24L * 60L * 60L * 1000L;
-        millisToAlarm += (alarmTotalMinutes - nowTotalMinutes) * 60L * 1000L;
+        target.tm_mday += daysDelta;
+        time_t alarmEpoch = mktime(&target);
 
         // If alarm is today but time already passed, roll to next week
-        if(daysDelta == 0 && alarmTotalMinutes <= nowTotalMinutes) {
-            millisToAlarm += 7L * 24L * 60L * 60L * 1000L;
+        if(alarmEpoch <= now) {
+            target.tm_mday += 7;
+            alarmEpoch = mktime(&target);
         }
 
-        // If negative, skip
-        if(millisToAlarm < 0)
-            continue;
-        if(minMillis == -1 || millisToAlarm < minMillis) {
-            minMillis = millisToAlarm;
+        long diffMs = (alarmEpoch - now) * 1000L - (tv.tv_usec / 1000);
+
+        if(minMillis == -1 || diffMs < minMillis) {
+            minMillis = diffMs;
         }
     }
-    return minMillis;
+    msToNextAlarm = minMillis;
+}
+
+long getMillisToNextAlarm() {
+    return msToNextAlarm;
 }
 
 bool hasActiveAlarms() {

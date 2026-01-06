@@ -71,7 +71,8 @@ enum LampState {
     LAMP_STATE_ERROR = 3,
     LAMP_STATE_SUCCESS = 4,
     LAMP_STATE_WARNING = 5,
-    LAMP_STATE_SLEEP = 6
+    LAMP_STATE_SLEEP = 6,
+    LAMP_STATE_CELEBRATION = 7
 };
 
 enum WiFiTestResult {
