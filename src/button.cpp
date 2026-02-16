@@ -8,11 +8,11 @@
 // Static variable to store the rotary encoder event callback
 static RotaryEncoderCallback _rotaryEncoderCallback;
 
-#define ROTARY_ENCODER_CLK_PIN 32 // D32
-#define ROTARY_ENCODER_DT_PIN 21  // D21
-#define ROTARY_ENCODER_SW_PIN 4   // D4
+#define ROTARY_ENCODER_CLK_PIN 1
+#define ROTARY_ENCODER_DT_PIN 2
+#define ROTARY_ENCODER_SW_PIN 3
 #define ROTARY_ENCODER_STEPS 4
-#define BOOT_BUTTON_PIN 0
+#define BOOT_BUTTON_PIN 9
 
 // paramaters for button
 unsigned long shortPressAfterMiliseconds = 50;  // how long short press shoud be. Do not set too low to avoid bouncing
@@ -41,6 +41,7 @@ void initRotaryEncoder(byte value, RotaryEncoderCallback callback) {
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
     _rotaryEncoderCallback = callback;
     rotaryEncoder.begin();
+    // pinMode(ROTARY_ENCODER_SW_PIN, INPUT_PULLDOWN);
     rotaryEncoder.setup(readEncoderISR);
     bool circleValues = false;
     Serial.print("Initializing rotary encoder with value: " + String(value));
@@ -53,8 +54,10 @@ struct LampButtonState {
     bool wasButtonDown = false;
     bool longPressHandled = false;
 };
-
-void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent, RotaryEncoderEventType longEvent, unsigned long currentMillis) {
+void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent,
+                    RotaryEncoderEventType longEvent, unsigned long currentMillis) {
+    // void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent,
+    //                    RotaryEncoderEventType longEvent, unsigned long currentMillis) {
     if(isDown) {
         if(!state.wasButtonDown) {
             // start measuring
@@ -83,12 +86,32 @@ void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType 
 
 void handle_rotary_button(unsigned long currentMillis) {
     static LampButtonState rotaryState;
-    process_button(rotaryEncoder.isEncoderButtonDown(), rotaryState, RotaryEncoderEventType::ShortClick, RotaryEncoderEventType::LongClick, currentMillis);
+    // Debugging logic: Print pin state every 500ms
+    /* static unsigned long lastDebug = 0;
+    if (currentMillis - lastDebug > 500) {
+        lastDebug = currentMillis;
+        Serial.print("DEBUG: SW Pin Raw: ");
+        Serial.print(digitalRead(ROTARY_ENCODER_SW_PIN));
+        Serial.print(" | Lib isDown: ");
+        Serial.println(rotaryEncoder.isEncoderButtonDown());
+    } */
+
+    // Fix: Treat HIGH as pressed because pin reads LOW (0) when idle.
+    // This handles cases like Active High buttons or NC switches to GND.
+    // bool kButtonDown = digitalRead(ROTARY_ENCODER_SW_PIN) == HIGH;
+    process_button(rotaryEncoder.isEncoderButtonDown(), rotaryState, RotaryEncoderEventType::ShortClick,
+                   RotaryEncoderEventType::LongClick, currentMillis);
+
+    // process_button(kButtonDown, rotaryState, RotaryEncoderEventType::ShortClick, RotaryEncoderEventType::LongClick,
+    //                currentMillis);
 }
 
 void handle_boot_button(unsigned long currentMillis) {
     static LampButtonState bootState;
-    process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick, RotaryEncoderEventType::LongBootClick, currentMillis);
+    process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
+                   RotaryEncoderEventType::LongBootClick, currentMillis);
+    // process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
+    //               RotaryEncoderEventType::LongBootClick, currentMillis);
 }
 
 void handleRotation() {

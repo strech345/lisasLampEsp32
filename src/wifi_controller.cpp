@@ -33,9 +33,10 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
     g_routes = routes;
     g_wifiTracker = &tracker;
 
-    configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
+    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
     WiFi.onEvent(WiFiEvent);
-    WiFi.softAPConfig(localIP, localIP, subnetMask); // will change the mode
+    // Moved to startWifi for correct ordering
+    // WiFi.softAPConfig(localIP, localIP, subnetMask); 
     WiFi.mode(WIFI_MODE_NULL);
 
     setUpDNSServer(dnsServer, localIP);
@@ -109,7 +110,7 @@ void tryReconnectSta() {
     }
 
     static unsigned long lastRunMs = 0;
-    if(!isTimeForAction(&lastRunMs, 10 * 1000)) // every 10 seconds
+    if(!isTimeForAction(&lastRunMs, 60 * 1000)) // every 60 seconds
         return;
 
     Serial.println("Attempting to reconnect STA...");
@@ -126,15 +127,19 @@ void startWifi() {
 
     if(strlen(s->externalSSID) > 0) {
         Serial.println("Start APSta: " + String(s->externalSSID));
-        WiFi.begin(s->externalSSID, s->externalPW);
-        WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
         WiFi.mode(WIFI_MODE_APSTA);
+        WiFi.softAPConfig(localIP, localIP, subnetMask); 
+        WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
+        WiFi.begin(s->externalSSID, s->externalPW);
     } else {
-        Serial.println("Start AP");
+        Serial.println("Start AP: " + String(s->internalSSID));
         WiFi.mode(WIFI_MODE_AP);
+        WiFi.softAPConfig(localIP, localIP, subnetMask); 
+        WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
     }
     server.begin();
     dnsServer.start(53, "*", localIP);
+    Serial.println("AP IP address: " + WiFi.softAPIP().toString());
 }
 
 void stopWifi() {
@@ -211,7 +216,7 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 
         if(WiFi.getMode() == WIFI_MODE_APSTA) {
             g_wifiTracker->staConfigValid = false;
-            if(retryCount < 10) {
+            if(retryCount < 3) {
                 // delay(200);
                 Serial.println("Retrying STA connection, attempt " + String(retryCount + 1));
                 retryCount++;
@@ -268,6 +273,9 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
     server.on("/generate_204", [localIPURL](AsyncWebServerRequest* request) {
         request->redirect(localIPURL);
     }); // android captive portal redirect
+    server.on("/gen_204", [localIPURL](AsyncWebServerRequest* request) {
+        request->redirect(localIPURL);
+    }); // android captive portal redirect (alternative)
     server.on("/redirect",
               [localIPURL](AsyncWebServerRequest* request) { request->redirect(localIPURL); }); // microsoft redirect
     server.on("/hotspot-detect.html",
@@ -346,11 +354,7 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
     // the catch all
     server.onNotFound([localIPURL](AsyncWebServerRequest* request) {
         request->redirect(localIPURL);
-        Serial.print("onnotfound ");
-        Serial.print(request->host()); // This gives some insight into whatever was being
-                                       // requested on the serial monitor
-        Serial.print(" ");
-        Serial.print(request->url());
-        Serial.print(" sent redirect to " + localIPURL + "\n");
+        Serial.printf("onnotfound [Host: %s][URL: %s] -> redirect to %s\n", 
+                     request->host().c_str(), request->url().c_str(), localIPURL.c_str());
     });
 }

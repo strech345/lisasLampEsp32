@@ -17,8 +17,11 @@
 #include "wifi_controller.h" // New include
 #include <system_utils.h>
 #include <esp_sleep.h>
+#include <esp_task_wdt.h>
 #include "alerts.h"
 #include "celebration.h"
+#include <soc/rtc.h>
+#include <nvs_flash.h>
 
 #define DEBUG
 
@@ -38,11 +41,28 @@ void onShortPress();
 void updateLed();
 void checkToGoSleep();
 void enterDeepSleep(uint64_t sleepTimeMs);
+void enterPowerSaveMode(uint64_t sleepTimeMs);
 
 void setup() {
-    setCpuFrequencyMhz(80);
+    //  setCpuFrequencyMhz(80);
 #ifdef DEBUG
+    // Give the USB CDC time to enumerate and the monitor time to connect
+    // delay(2000);
+
     Serial.begin(115200);
+    // Wait for USB CDC to connect (max 5s)
+    unsigned long startWait = millis();
+    while(!Serial && millis() - startWait < 5000) {
+        delay(10);
+    }
+    // Extra safety delay to let the host terminal catch up
+    delay(1000);
+
+    Serial.println("\n\n");
+    Serial.println("----------------------------------------");
+    Serial.println("   ESP32-C3 STATUS: SERIAL CONNECTED    ");
+    Serial.println("----------------------------------------");
+    Serial.println("Serial connected or timeout reached");
 #endif
     if(!LittleFS.begin()) {
         Serial.println("LittleFS mount failed");
@@ -56,6 +76,8 @@ void setup() {
         appConfig = getDefaultFullConfig();
     }
 
+    serialPrint("RTC Clock Source Frequency: " + String(rtc_clk_slow_freq_get_hz()) + " Hz");
+
     ledInit();
     statusLedOn();
     // Apply color mode on startup
@@ -67,22 +89,31 @@ void setup() {
         systemSettings = getDefaultSystemSettings();
     }
 
+    // nvs_flash_erase(); // Löscht die gesamte NVS-Partition
+    // nvs_flash_init();  // Initialisiert sie leer neu
+
+    // 3. WiFi-Zugangsdaten explizit löschen (viele Libraries puffern diese noch)
+    // WiFi.disconnect(true, true);
+
     setAlarms(appConfig.alarms); // Restore alarms and calculate next trigger
 
     // Initialize route handlers with state and get routes
     apRoutes = initRouteHandlers(&appConfig, &systemSettings, &wifiTracker, onStateUpdatedFromWifi);
     initWiFiController(systemSettings, apRoutes, wifiTracker);
     startWifi();
+    // startSimpleAP();
+    /*  WiFi.disconnect(true); // Clear stored WiFi credentials
+     WiFi.persistent(false);
+     WiFi.mode(WIFI_AP);
+     delay(100);
+     WiFi.softAP("Lisas_Lamp_Setup", "myPassword2", 1, false, 1); */
 
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     switch(wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0:
-    case ESP_SLEEP_WAKEUP_EXT1:
+    case ESP_SLEEP_WAKEUP_GPIO:
         lampState = LAMP_STATE_DEFAULT;
         appConfig.brightnessMode = 1;
-        serialPrint("Wakeup caused by external signal (Rotary Encoder)");
-        // If user woke it up, maybe turn it on?
-        // For now, it will start in DEFAULT or SLEEP based on saved config.
+        serialPrint("Wakeup caused by GPIO (Rotary Encoder)");
         break;
     case ESP_SLEEP_WAKEUP_TIMER:
         lampState = LAMP_STATE_SLEEP;
@@ -97,6 +128,12 @@ void setup() {
     setBrightnessLevel(appConfig.brightnessMode);
     initRotaryEncoder(appConfig.brightnessMode, myRotaryEncoderCallback);
 
+    struct tm timeinfo;
+    if(getLocalTime(&timeinfo, 0)) {
+        serialPrint("Current system time: " + String(asctime(&timeinfo)));
+    } else {
+        serialPrint("Current system time: Not synchronized yet");
+    }
     serialPrint("Initialized");
 }
 
@@ -128,34 +165,37 @@ void checkAndApplyColorMode(const FullConfig& config) {
     String modeName;
 
     // Check colorMode to determine which color to use
+    uint32_t colorHex = 0;
     switch(config.colorMode) {
-    case 0: // Cool White
-        colorToApply = {173, 216, 230};
+    case 0:                    // Cool White
+        colorHex = 0xFF000080; // White channel + some Blue
         modeName = "Cool White";
         break;
-    case 1: // Neutral White
-        colorToApply = {255, 255, 255};
+    case 1:                    // Neutral White
+        colorHex = 0xFF503000; // White channel + slight Red/Green for better Neutral
         modeName = "Neutral White";
         break;
-    case 2: // Warm White
-        colorToApply = {255, 200, 150};
+    case 2:                    // Warm White
+        colorHex = 0xFF804000; // White channel + some Red/Green
         modeName = "Warm White";
         break;
     case 3: // Custom
         colorToApply = config.color;
+        // Convert RGB struct to uint32_t (White channel 0)
+        colorHex = (uint32_t(0) << 24) | (uint32_t(colorToApply.r) << 16) | (uint32_t(colorToApply.g) << 8)
+            | uint32_t(colorToApply.b);
         modeName = "Custom";
         break;
     default: // Default to Neutral White
-        colorToApply = {255, 255, 255};
+        colorHex = 0xFF000000;
         modeName = "Neutral White (default)";
         break;
     }
 
-    setLedColor(colorToApply.r, colorToApply.g, colorToApply.b);
+    setLedColor(colorHex);
     setAnimationMode(config.animationMode);
     setAnimationSpeed(config.animationSpeed);
-    serialPrint("LED color set to " + modeName + ": R=" + String(colorToApply.r) + " G=" + String(colorToApply.g)
-                + " B=" + String(colorToApply.b));
+    serialPrint("LED color set to " + modeName + " (Hex: " + String(colorHex, HEX) + ")");
 }
 
 void onStateUpdatedFromWifi(StateChangeType type, void* data) {
@@ -252,12 +292,6 @@ void checkLampState() {
         lampState = LAMP_STATE_SUCCESS;
         return;
     }
-
-    if(isCelebrationActive()) {
-        lampState = LAMP_STATE_CELEBRATION;
-        return;
-    }
-
     if(isAlarmActive()) {
         lampState = LAMP_STATE_ALARM;
         return;
@@ -274,6 +308,10 @@ void checkLampState() {
     if(lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("Good night mode ended, returning to default lamp state");
         lampState = LAMP_STATE_SLEEP;
+        return;
+    }
+    if(isCelebrationActive()) {
+        lampState = LAMP_STATE_CELEBRATION;
         return;
     }
     if(lampState == LAMP_STATE_SLEEP) {
@@ -298,11 +336,11 @@ void updateLed() {
     }
     if(lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
         setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
-        setLedColor(255, 0, 0); // blink red until time is synced
+        setLedColor(0x00FF0000); // blink red until time is synced
     }
     if(lampState == LAMP_STATE_WARNING && lastLampState != LAMP_STATE_WARNING) {
         setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
-        setLedColor(255, 255, 0); // blink yellow until wifi is not used
+        setLedColor(0x00FFFF00); // blink yellow until wifi is not used
     }
     /* if(lampState == LAMP_STATE_SUCCESS && lastLampState !=
     LAMP_STATE_SUCCESS) { setBrightnessLevel(appConfig.brightnessMode || 7);
@@ -416,7 +454,7 @@ void checkToGoSleep() {
     // Deduct 1 minute for a safe wakeup before an alarm or activity
     sleepTimeMs -= 60LL * 1000LL;
 
-    enterDeepSleep(sleepTimeMs);
+    // enterPowerSaveMode(sleepTimeMs);
 }
 
 void enterDeepSleep(uint64_t sleepTimeMs) {
@@ -425,15 +463,97 @@ void enterDeepSleep(uint64_t sleepTimeMs) {
     // Timer wakeup
     esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
 
-    // Rotary Encoder Switch (Pin 4) - Wake on LOW
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_4, 0);
+    // GPIO wakeup for C3 (Rotary Encoder Switch and CLK)
+    // GPIO 3 (SW): Active High, Idle Low -> Wake on HIGH
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << 3, ESP_GPIO_WAKEUP_GPIO_LOW);
+    gpio_pulldown_en(GPIO_NUM_3);
+    gpio_pullup_dis(GPIO_NUM_3);
 
-    // Rotary Encoder CLK (Pin 32) - Wake on LOW
-    // Use ext1 for this; it can only wake on ALL_LOW or ANY_HIGH
-    // Mode ANY_LOW is not supported on original ESP32, but for a single pin, ALL_LOW is the same as wake on LOW.
-    esp_sleep_enable_ext1_wakeup(1ULL << 32, ESP_EXT1_WAKEUP_ALL_LOW);
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << 1, ESP_GPIO_WAKEUP_GPIO_LOW);
+    gpio_pullup_en(GPIO_NUM_1); // Ensure default pull-up
+    gpio_pulldown_dis(GPIO_NUM_1);
+
+    // GPIO 1 (CLK): Dynamic Wakeup
+    // Determine current state and wake on change (opposite level)
+    /* gpio_pullup_en(GPIO_NUM_1); // Ensure default pull-up
+    gpio_pulldown_dis(GPIO_NUM_1);
+    delay(10); // Allow pull-up to settle
+
+    // Idle Low -> Wake on HIGH !!!!!!!!!!!!!!!!!
+    Serial.println("Rotary Encoder CLK pin is LOW, setting wake on HIGH");
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << 1, ESP_GPIO_WAKEUP_GPIO_HIGH); */
 
     Serial.flush();
     statusLedOff();
     esp_deep_sleep_start();
+}
+
+#include <esp_task_wdt.h>
+
+void enterPowerSaveMode(uint64_t sleepTimeMs) {
+    serialPrint("Preparing Light Sleep...");
+
+    statusLedOff();
+
+    // 1. WiFi/Modem-Sleep Vorbereitung
+    // Es ist ratsam, WiFi kurz "ruhen" zu lassen, damit async_tcp keine aktiven Timer hat
+    delay(100);
+
+    // 2. Watchdog umkonfigurieren statt abzuschalten
+    // Da deinit fehlschlagen kann (wenn andere Tasks noch registriert sind),
+    // erhöhen wir einfach den Timeout auf die Schlafdauer + Puffer.
+
+    // Sicherstellen, dass der aktuelle Task überwacht wird, bevor wir ihn resetten oder rekonfigurieren
+    if(esp_task_wdt_add(NULL) != ESP_OK) {
+        // Task war evtl. schon hinzugefügt oder Fehler, wir machen trotzdem weiter
+    }
+
+    uint32_t wdt_timeout_ms = (uint32_t)sleepTimeMs + 60000; // sleep + 1 Minute Puffer
+    esp_task_wdt_config_t sleep_twdt_config = {
+        .timeout_ms = wdt_timeout_ms,
+        .idle_core_mask = (1 << 0),
+        .trigger_panic = true,
+    };
+    esp_task_wdt_reconfigure(&sleep_twdt_config);
+    esp_task_wdt_reset(); // Watchdog füttern bevor wir schlafen
+
+    // 3. Schlaf-Konfiguration
+    esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
+    gpio_wakeup_enable(GPIO_NUM_3, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable(GPIO_NUM_1, GPIO_INTR_LOW_LEVEL);
+    esp_sleep_enable_gpio_wakeup();
+
+    Serial.println("Entering Light Sleep now...");
+    Serial.flush();
+
+    // 4. In den Light Sleep gehen
+    esp_light_sleep_start();
+
+    // --- HIER WACHT ER WIEDER AUF ---
+
+    // 5. Watchdog wieder normalisieren
+    esp_task_wdt_config_t normal_twdt_config = {
+        .timeout_ms = 30000,
+        .idle_core_mask = (1 << 0),
+        .trigger_panic = true,
+    };
+    esp_task_wdt_reconfigure(&normal_twdt_config);
+    esp_task_wdt_add(NULL); // Sicherstellen, dass wir registriert sind
+
+    // Wakeup Grund prüfen und Status aktualisieren
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    if(wakeup_reason == ESP_SLEEP_WAKEUP_GPIO) {
+        serialPrint("Wakeup caused by GPIO - Restoring Lamp State");
+        lampState = LAMP_STATE_DEFAULT;
+        if(appConfig.brightnessMode == 0) {
+            appConfig.brightnessMode = 1;
+        }
+        setBrightnessLevel(appConfig.brightnessMode);
+    } else {
+        serialPrint("Wakeup caused by Timer/Other: " + String(wakeup_reason));
+    }
+
+    statusLedOn();
+
+    serialPrint("Woke up. Watchdog reconfigured.");
 }

@@ -13,11 +13,11 @@ struct LedState {
 
 static LedState savedLedState;
 
-#define LED_PIN 27
-#define LED_COUNT 1
-#define STATUS_LED_PIN 2
+#define LED_PIN 7
+#define LED_COUNT 5
+#define STATUS_LED_PIN 8
 
-WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 void ledInit() {
     statusLedInit();
@@ -40,6 +40,13 @@ void setBrightness(uint8_t brightness) {
 
 void setLedColor(uint8_t r, uint8_t g, uint8_t b) {
     uint32_t color = (r << 16) | (g << 8) | b;
+    const uint32_t current = ws2812fx.getColor();
+    if(color == current)
+        return; // No change needed
+    setLedColor(color);
+}
+
+void setLedColor(uint32_t color) {
     const uint32_t current = ws2812fx.getColor();
     if(color == current)
         return; // No change needed
@@ -109,9 +116,9 @@ void statusLedInit() {
 }
 
 void statusLedOn() {
-    digitalWrite(STATUS_LED_PIN, HIGH);
+    digitalWrite(STATUS_LED_PIN, LOW);
 }
 
 void statusLedOff() {
-    digitalWrite(STATUS_LED_PIN, LOW);
+    digitalWrite(STATUS_LED_PIN, HIGH);
 }
