@@ -35,6 +35,10 @@ void checkCelebrationLogic() {
         lastTriggeredDay = -1;
     }
 
+    if(ptm->tm_year < (2020 - 1900)) {
+        return; // time not yet synced (epoch 0 or invalid)
+    }
+
     if(isCelebrationDate(ptm->tm_mon + 1, ptm->tm_mday)) {
         // Trigger at 7:00 AM if not already running and not manually stopped today
         if(ptm->tm_hour >= 7 && !celebrationActive && lastTriggeredDay == -1) {
