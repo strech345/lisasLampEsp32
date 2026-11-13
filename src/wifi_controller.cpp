@@ -23,6 +23,7 @@ static WiFiTestTracker* g_wifiTracker = nullptr;
 
 DNSServer dnsServer;
 AsyncWebServer server(80);
+static bool serverStarted = false;
 
 void initWiFiController(const SystemSettings& settings, const std::vector<Route>& routes, WiFiTestTracker& tracker) {
     Serial.println("Initializing WiFi controller");
@@ -105,17 +106,26 @@ void updateTelemetryWiFiStatus() {
 }
 
 void tryReconnectSta() {
-    if(g_wifiTracker->staConfigValid || WiFi.getMode() != WIFI_MODE_APSTA) {
+    if(g_wifiTracker->staConfigValid) {
+        return;
+    }
+    if(strlen(g_systemSettings->externalSSID) == 0) {
         return;
     }
 
     static unsigned long lastRunMs = 0;
-    if(!isTimeForAction(&lastRunMs, 60 * 1000)) // every 60 seconds
+    if(!isTimeForAction(&lastRunMs, 5 * 60 * 1000)) // every 5 minutes
         return;
 
-    Serial.println("Attempting to reconnect STA...");
-    WiFi.reconnect();
-    // syncTimeWithNTP();
+    wifi_mode_t mode = WiFi.getMode();
+    if(mode == WIFI_MODE_APSTA) {
+        Serial.println("tryReconnectSta: reconnecting STA...");
+        WiFi.reconnect();
+    } else if(mode == WIFI_MODE_AP) {
+        Serial.println("tryReconnectSta: restoring APSTA mode...");
+        WiFi.mode(WIFI_MODE_APSTA);
+        WiFi.begin(g_systemSettings->externalSSID, g_systemSettings->externalPW);
+    }
 }
 
 void startWifi() {
@@ -137,7 +147,10 @@ void startWifi() {
         WiFi.softAPConfig(localIP, localIP, subnetMask); 
         WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
     }
-    server.begin();
+    if(!serverStarted) {
+        server.begin();
+        serverStarted = true;
+    }
     dnsServer.start(53, "*", localIP);
     Serial.println("AP IP address: " + WiFi.softAPIP().toString());
 }
@@ -150,9 +163,6 @@ void stopWifi() {
     }
 
     dnsServer.stop();
-    server.end();
-    // WiFi.disconnect(true);
-    // WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_MODE_NULL);
 
     Serial.println("stopWifi: All WiFi services stopped");
@@ -222,9 +232,9 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
                 retryCount++;
                 return;
             } else {
+                retryCount = 0;
                 WiFi.mode(WIFI_MODE_AP);
-                // g_wifiTracker->staConfigValid = false;
-                Serial.println("Max retry attempts reached. Switching to AP mode only.");
+                Serial.println("Max retry attempts reached. Falling back to AP mode (tryReconnectSta will retry).");
             }
         }
         break;
