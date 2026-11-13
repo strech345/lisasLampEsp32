@@ -33,6 +33,32 @@
     systemStore.updateField(field, event.target.value);
   }
 
+  let firmwareFiles = null;
+  let otaUploading = false;
+
+  async function handleOtaUpload() {
+    if (!firmwareFiles || firmwareFiles.length === 0) return;
+    const formData = new FormData();
+    formData.append("firmware", firmwareFiles[0]);
+    otaUploading = true;
+    try {
+      const res = await fetch("/ota", { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.status === "ok") {
+        messageStore.show("success", "Firmware uploaded! Device is rebooting...");
+        show = false;
+      } else {
+        messageStore.show("error", "Update failed: " + (data.message || "unknown error"));
+      }
+    } catch {
+      // Device may reboot before the response arrives — treat as success.
+      messageStore.show("success", "Firmware uploaded! Device is rebooting...");
+      show = false;
+    } finally {
+      otaUploading = false;
+    }
+  }
+
   async function loadStatusInfo() {
     try {
       const response = await fetch("/get_status");
@@ -139,6 +165,27 @@
           on:input={(e) => handleFieldChange("externalPW", e)}
         />
       </form>
+
+      <hr />
+      <section class="ota-section">
+        <h3>Firmware Update</h3>
+        <div class="ota-row">
+          <input
+            type="file"
+            accept=".bin"
+            on:change={(e) => (firmwareFiles = e.target.files)}
+          />
+          <button
+            class="btn-small btn-blue"
+            type="button"
+            disabled={!firmwareFiles || otaUploading}
+            on:click={handleOtaUpload}
+          >
+            {otaUploading ? "Uploading…" : "Upload"}
+          </button>
+        </div>
+      </section>
+
       <footer>
         <div class="footer-left">
           {#if statusInfo}
@@ -274,5 +321,21 @@
 
   .status-value.connection_failed {
     color: #ef4444;
+  }
+
+  .ota-section h3 {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .ota-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .ota-row input[type="file"] {
+    flex: 1;
+    font-size: 0.85rem;
   }
 </style>
