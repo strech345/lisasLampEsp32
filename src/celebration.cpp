@@ -35,8 +35,10 @@ void checkCelebrationLogic() {
         lastTriggeredDay = -1;
     }
 
+    // tm_year is years since 1900, so (2020 - 1900) == year 2020.
+    // Any date before 2020 means the clock was never synced (epoch 0 = 1970).
     if(ptm->tm_year < (2020 - 1900)) {
-        return; // time not yet synced (epoch 0 or invalid)
+        return;
     }
 
     if(isCelebrationDate(ptm->tm_mon + 1, ptm->tm_mday)) {
