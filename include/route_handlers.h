@@ -27,4 +27,8 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
 // Let main register a callback which gets invoked when a new config is set via /set_config
 void setOnStateChangedCallback(GenericStateUpdateCallback cb);
 
+// Register the OTA firmware-upload endpoint on the given server.
+// Must be called after setUpWebserver() so the catch-all handler is already in place.
+void registerOtaRoute(AsyncWebServer& server);
+
 #endif // ROUTE_HANDLERS_H

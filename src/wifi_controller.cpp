@@ -7,6 +7,7 @@
 #include <time.h>
 #include <esp_task_wdt.h>
 #include "wifi_controller.h"
+#include "route_handlers.h"
 #include "types.h"
 #include "system_utils.h"
 #include "store.h"
@@ -43,6 +44,7 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
 
     setUpDNSServer(dnsServer, localIP);
     setUpWebserver(server, localIP, g_routes);
+    registerOtaRoute(server);
 
     Serial.println("WiFi controller initialized");
 }

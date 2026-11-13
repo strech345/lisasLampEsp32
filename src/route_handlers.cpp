@@ -8,6 +8,7 @@
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Update.h>
 
 // Global state pointers for handlers
 static const FullConfig* g_config = nullptr;
@@ -213,6 +214,43 @@ void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
         return;
     }
     request->send(LittleFS, imagePath, "image/avif");
+}
+
+void registerOtaRoute(AsyncWebServer& server) {
+    server.on(
+        "/ota", HTTP_POST,
+        // Called when the full upload is done — send response and reboot on success.
+        [](AsyncWebServerRequest* request) {
+            bool ok = !Update.hasError();
+            request->send(200, "application/json",
+                          ok ? "{\"status\":\"ok\"}" : "{\"status\":\"error\",\"message\":\"Update failed\"}");
+            if(ok) {
+                delay(500);
+                ESP.restart();
+            }
+        },
+        // Called for each chunk of the uploaded binary.
+        [](AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final) {
+            if(index == 0) {
+                serialPrint("OTA start: " + filename);
+                // UPDATE_SIZE_UNKNOWN lets the ESP32 use the full OTA partition.
+                if(!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                    serialPrint("OTA begin failed: " + String(Update.errorString()));
+                    return;
+                }
+            }
+            if(Update.write(data, len) != len) {
+                serialPrint("OTA write failed: " + String(Update.errorString()));
+                return;
+            }
+            if(final) {
+                if(!Update.end(true)) {
+                    serialPrint("OTA end failed: " + String(Update.errorString()));
+                } else {
+                    serialPrint("OTA complete: " + String(index + len) + " bytes");
+                }
+            }
+        });
 }
 
 // Initialization functions to set global state and return routes
