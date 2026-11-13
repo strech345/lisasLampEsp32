@@ -181,21 +181,6 @@ bool hasWifiClients() {
     return WiFi.softAPgetStationNum() > 0;
 }
 
-bool isWifiActiveAndNotUsed() {
-    wifi_mode_t currentMode = WiFi.getMode();
-
-    // If we are connected to an external WiFi (STA), we don't need a warning
-    /* if(currentMode == WIFI_MODE_APSTA && WiFi.status() == WL_CONNECTED) {
-        return false;
-    } */
-
-    // Check if we are in AP mode and if no stations are connected to our internal AP
-    if((currentMode == WIFI_MODE_AP || currentMode == WIFI_MODE_APSTA) && WiFi.softAPgetStationNum() == 0) {
-        return true;
-    }
-    return false;
-}
-
 void syncTimeWithNTP() {
     sntp_restart(); // sntp_init();
 }

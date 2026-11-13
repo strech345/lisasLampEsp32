@@ -28,7 +28,8 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
 void setOnStateChangedCallback(GenericStateUpdateCallback cb);
 
 // Register the OTA firmware-upload endpoint on the given server.
-// Must be called after setUpWebserver() so the catch-all handler is already in place.
+// Must be called before server.begin() and before the catch-all handler,
+// so that /ota is matched first and not redirected by the captive portal.
 void registerOtaRoute(AsyncWebServer& server);
 
 #endif // ROUTE_HANDLERS_H

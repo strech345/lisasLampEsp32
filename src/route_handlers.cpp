@@ -225,7 +225,8 @@ void registerOtaRoute(AsyncWebServer& server) {
             request->send(200, "application/json",
                           ok ? "{\"status\":\"ok\"}" : "{\"status\":\"error\",\"message\":\"Update failed\"}");
             if(ok) {
-                delay(500);
+                // Small delay to ensure the HTTP response is sent before rebooting.
+                delay(300);
                 ESP.restart();
             }
         },
@@ -240,6 +241,7 @@ void registerOtaRoute(AsyncWebServer& server) {
                 }
             }
             if(Update.write(data, len) != len) {
+                Update.abort();
                 serialPrint("OTA write failed: " + String(Update.errorString()));
                 return;
             }

@@ -17,7 +17,6 @@ void handleClientRequests();
 void checkWifiStart();
 void checkWifiStop();
 bool isWiFiActive();
-bool isWifiActiveAndNotUsed();
 void setUpDNSServer(DNSServer& dnsServer, const IPAddress& localIP);
 void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std::vector<Route>& routes);
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
@@ -26,7 +25,6 @@ bool isTimeSyncedWithNTP();
 void updateTelemetryWiFiStatus();
 void tryReconnectSta();
 void syncTimeWithNTP();
-bool hasActiveClients();
 bool hasWifiClients();
 
 #endif // WIFI_CONTROLLER_H
