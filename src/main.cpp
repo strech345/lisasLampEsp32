@@ -8,13 +8,12 @@
 #include "button.h"
 #include "debug_utils.h" // For serialPrint
 #include "route_handlers.h"
-/* #include "state.h" */
 #include "good_night.h"
 #include "led.h"
 #include "store.h"
 #include "types.h"
 #include "preferences_utils.h"
-#include "wifi_controller.h" // New include
+#include "wifi_controller.h"
 #include <system_utils.h>
 #include <esp_sleep.h>
 #include <esp_task_wdt.h>
@@ -495,7 +494,6 @@ void enterDeepSleep(uint64_t sleepTimeMs) {
     esp_deep_sleep_start();
 }
 
-#include <esp_task_wdt.h>
 
 void enterPowerSaveMode(uint64_t sleepTimeMs) {
     serialPrint("Preparing Light Sleep...");

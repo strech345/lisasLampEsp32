@@ -13,11 +13,8 @@ static Preferences preferences;
 const char* PREF_NAMESPACE = "lisas_lamp_cfg";
 const char* CONFIG_KEY = "fullConfig";
 
-// Debounced save support
 static FullConfig pendingConfig;
-// static bool savePending = false;
 static unsigned long lastSaveRequestTime = 0;
-// static unsigned long lastSavedTime = 0;
 
 bool saveFullConfig(const FullConfig& config, bool debounce) {
     if(debounce) {
@@ -40,8 +37,6 @@ bool saveFullConfig(const FullConfig& config, bool debounce) {
 
     if(bytesWritten == sizeof(FullConfig)) {
         serialPrint("FullConfig saved successfully!");
-        // lastSavedTime = millis();
-        // savePending = false;
         return true;
     } else {
         serialPrint("Failed to save FullConfig. Bytes written: " + String(bytesWritten));
@@ -55,7 +50,6 @@ void checkToSave() {
         if(millis() - lastSaveRequestTime >= 5000) {
             serialPrint("Debounced: Saving FullConfig after 5s");
             saveFullConfig(pendingConfig, false);
-            // lastSaveRequestTime = 0; // Reset debounce timer
         }
     }
 }
@@ -158,12 +152,10 @@ SystemSettings getDefaultSystemSettings() {
     SystemSettings defaultSettings;
 
     // Initialize with default values
-    strcpy(defaultSettings.internalSSID, "Lizas-Lamp"); // AP_SSID
-    strcpy(defaultSettings.internalPW, "");   // AP_PASSWORD (empty for open network)
-    strcpy(defaultSettings.externalSSID,
-           "Gastzugang_test"); // STA_SSID
-    strcpy(defaultSettings.externalPW,
-           "AufstehenIstSchoen43="); // STA_PASSWORD
+    strcpy(defaultSettings.internalSSID, "Lizas-Lamp");
+    strcpy(defaultSettings.internalPW, "");
+    strcpy(defaultSettings.externalSSID, "");
+    strcpy(defaultSettings.externalPW, "");
 
     return defaultSettings;
 }

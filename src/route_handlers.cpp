@@ -200,7 +200,7 @@ void handleGetStatus(AsyncWebServerRequest* request, const String&) {
             status.currentTime = String(buf);
         }
     }
-    serialPrint("send status " + status.clockSynced);
+    serialPrint(String("send status clockSynced=") + (status.clockSynced ? "true" : "false"));
 
     request->send(200, "application/json", createWiFiStatusJson(status));
 }
@@ -223,7 +223,7 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
     g_wifiTracker = wifiTracker;
     g_stateCallback = stateCallback;
 
-    return {{"/", HTTP_ANY, handleRoot},
+    return {{"/", HTTP_GET, handleRoot},
             {"/pico.min.css", HTTP_GET, handlePicoCSS},
             {"/app.js", HTTP_GET, handleAppJS},
             {"/app.css", HTTP_GET, handleAppCSS},

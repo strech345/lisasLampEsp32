@@ -8,10 +8,7 @@
 #include "rgb_effects.h"       // For sunrise_fade
 #include "debug_utils.h"       // For serialPrint
 
-#define MAX_ALARMS 10
-// ...existing code...
-
-// === END OF FILE: TimeInfo struct and getCurrentTimeInfo implementation ===
+// === TimeInfo struct and getCurrentTimeInfo implementation ===
 struct TimeInfo {
     int hour;
     int minute;
