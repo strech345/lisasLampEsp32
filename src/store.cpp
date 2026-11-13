@@ -222,6 +222,23 @@ bool resetSystemSettings() {
     return true;
 }
 
+static const char* LAST_TIME_KEY = "lastKnownTime";
+
+void saveLastKnownTime(time_t t) {
+    if(!preferences.begin(PREF_NAMESPACE, false))
+        return;
+    preferences.putULong64(LAST_TIME_KEY, (uint64_t)t);
+    preferences.end();
+}
+
+time_t loadLastKnownTime() {
+    if(!preferences.begin(PREF_NAMESPACE, true))
+        return 0;
+    uint64_t t = preferences.getULong64(LAST_TIME_KEY, 0);
+    preferences.end();
+    return (time_t)t;
+}
+
 bool ensureSystemSettingsExistsAndResetIfNot() {
     serialPrint("Checking if SystemSettings exists...");
 

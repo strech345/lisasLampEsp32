@@ -9,6 +9,7 @@
 #include "wifi_controller.h"
 #include "types.h"
 #include "system_utils.h"
+#include "store.h"
 #include "esp_sntp.h"
 
 #define MAX_CLIENTS 4 // ESP32 supports up to 10 but I have not tested it yet
@@ -101,6 +102,7 @@ void updateTelemetryWiFiStatus() {
     g_wifiTracker->lastTestTime = millis();
     if(g_wifiTracker->clockSynced) {
         g_wifiTracker->lastSucceededTestTime = millis();
+        saveLastKnownTime(time(NULL));
     }
     Serial.println("Updated telemetry " + String(g_wifiTracker->clockSynced ? "synced" : "not synced"));
 }

@@ -65,6 +65,9 @@ bool resetSystemSettings();
  */
 bool ensureSystemSettingsExistsAndResetIfNot();
 
+void saveLastKnownTime(time_t t);
+time_t loadLastKnownTime();
+
 /**
  * @brief Initializes the FullConfig object in EEPROM if it doesn't exist.
  * @param force If true, forces re-initialization even if config exists.

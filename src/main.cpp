@@ -132,7 +132,14 @@ void setup() {
     if(getLocalTime(&timeinfo, 0)) {
         serialPrint("Current system time: " + String(asctime(&timeinfo)));
     } else {
-        serialPrint("Current system time: Not synchronized yet");
+        time_t saved = loadLastKnownTime();
+        if(saved > 0) {
+            struct timeval tv = { .tv_sec = saved, .tv_usec = 0 };
+            settimeofday(&tv, nullptr);
+            serialPrint("Restored last known time from NVS: " + String((unsigned long)saved));
+        } else {
+            serialPrint("Current system time: Not synchronized yet, no saved time");
+        }
     }
     serialPrint("Initialized");
 }
