@@ -1,5 +1,6 @@
 #include "json_utils.h"
 
+// Passwort nur übernehmen wenn es gesetzt und nicht die Maske "******" ist
 static void applyPasswordField(const char* src, char* dst, size_t dstSize) {
     if(src && strlen(src) > 0 && strcmp(src, PASSWORD_MASK) != 0)
         strlcpy(dst, src, dstSize);

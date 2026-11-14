@@ -6,27 +6,23 @@
 
 extern Alarm alarms[MAX_ALARMS];
 
-// Core functions for managing the alarm state machine
 Alarm* getAlarms();
-void setAlarms(const Alarm newAlarms[MAX_ALARMS]);
+void setAlarms(const Alarm newAlarms[MAX_ALARMS]); // Alarme übernehmen und nächste Auslösezeit berechnen
 void resetAlarms();
 
 int getActiveAlarmIndex();
 void setActiveAlarm(int index);
 void stopActiveAlarm();
 
-void checkAlarmStates(uint16_t durationMinutes);
-void calculateMillisToNextAlarm();
+void checkAlarmStates(uint16_t durationMinutes); // Prüft ob ein Alarm ausgelöst werden soll
+void calculateMillisToNextAlarm();               // Berechnet ms bis zum nächsten Alarm für Deep Sleep
 
 bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMinutes);
 
-/**
- * @brief Returns the time in milliseconds until the next active alarm event.
- * If no alarm is set, returns -1.
- */
+// Gibt ms bis zum nächsten aktiven Alarm zurück; -1 wenn kein Alarm konfiguriert
 long getMillisToNextAlarm();
 
 bool isAlarmActive();
-byte getAlarmBrightness(uint16_t durationMinutes);
+byte getAlarmBrightness(uint16_t durationMinutes); // Helligkeit steigt linear über die Alarmdauer an
 bool hasActiveAlarms();
 #endif // ALARM_H

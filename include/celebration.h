@@ -3,24 +3,16 @@
 
 #include <Arduino.h>
 
-/**
- * @brief Periodically check if a celebration should start or stop based on the current date and time.
- */
+// Prüft ob heute ein Feiertagsdatum ist und startet/stoppt den Feier-Modus entsprechend
 void checkCelebrationLogic();
 
-/**
- * @brief Manually stop the current celebration.
- */
+// Beendet den Feier-Modus manuell (z.B. durch langen Tastendruck)
 void stopCelebration();
 
-/**
- * @brief Returns true if celebration mode is currently active.
- */
+// Gibt true zurück wenn der Feier-Modus aktiv ist
 bool isCelebrationActive();
 
-/**
- * @brief Returns the milliseconds until the next celebration starts.
- */
+// Gibt ms bis zur nächsten Feier zurück (für Deep-Sleep-Berechnung)
 int64_t getMillisToNextCelebration();
 
 #endif // CELEBRATION_H

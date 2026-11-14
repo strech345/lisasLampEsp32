@@ -12,12 +12,13 @@
 #include <ArduinoJson.h>
 #include <Update.h>
 
-// Global state pointers for handlers
+// Zeiger auf globalen Zustand — werden in initRouteHandlers gesetzt
 static const FullConfig* g_config = nullptr;
 static const SystemSettings* g_systemSettings = nullptr;
 static const WiFiTestTracker* g_wifiTracker = nullptr;
 static GenericStateUpdateCallback g_stateCallback = nullptr;
 
+// Sendet eine gzip-komprimierte Datei aus LittleFS mit korrekten Cache-Headern
 static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const char* mimeType) {
     if(!LittleFS.exists(path)) {
         request->send(404, "text/plain", "Not Found");
@@ -33,7 +34,6 @@ static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const
     }
 }
 
-// Root handler moved here from main.cpp to group route implementations.
 void handlePing(AsyncWebServerRequest* request, const String&) {
     request->send(200, "text/plain", "pong");
 }
@@ -184,25 +184,26 @@ void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
     request->send(LittleFS, imagePath, "image/avif");
 }
 
+// Registriert den OTA-Endpunkt für Firmware-Updates per HTTP-Upload
 void registerOtaRoute(AsyncWebServer& server) {
     server.on(
         "/ota", HTTP_POST,
-        // Called when the full upload is done — send response and reboot on success.
+        // Wird aufgerufen wenn der Upload vollständig ist — Antwort senden, dann Neustart
         [](AsyncWebServerRequest* request) {
             bool ok = !Update.hasError();
             request->send(200, "application/json",
                           ok ? "{\"status\":\"ok\"}" : "{\"status\":\"error\",\"message\":\"Update failed\"}");
             if(ok) {
-                // Small delay to ensure the HTTP response is sent before rebooting.
+                // Kurze Pause damit die HTTP-Antwort noch gesendet werden kann
                 delay(300);
                 ESP.restart();
             }
         },
-        // Called for each chunk of the uploaded binary.
+        // Wird für jeden Datenblock der Firmware-Binary aufgerufen
         [](AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final) {
             if(index == 0) {
                 serialPrint("OTA start: " + filename);
-                // UPDATE_SIZE_UNKNOWN lets the ESP32 use the full OTA partition.
+                // UPDATE_SIZE_UNKNOWN: gesamte OTA-Partition verwenden
                 if(!Update.begin(UPDATE_SIZE_UNKNOWN)) {
                     serialPrint("OTA begin failed: " + String(Update.errorString()));
                     return;
@@ -284,7 +285,7 @@ void handleSetDeepSleep(AsyncWebServerRequest* request, const String& body) {
     request->send(200, "application/json", "{\"status\":\"success\"}");
 }
 
-// Initialization functions to set global state and return routes
+// Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback) {
     g_config = config;
@@ -292,6 +293,7 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
     g_wifiTracker = wifiTracker;
     g_stateCallback = stateCallback;
 
+    // --- Routentabelle: URL → Handler ---
     return {{"/", HTTP_GET, handleRoot},
             {"/pico.min.css", HTTP_GET, handlePicoCSS},
             {"/app.js", HTTP_GET, handleAppJS},

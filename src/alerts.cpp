@@ -4,7 +4,7 @@
 
 static AlertType currentAlert = ALERT_NONE;
 static unsigned long alertStartTime = 0;
-static unsigned long alertDuration = 0; // 0 means persistent
+static unsigned long alertDuration = 0; // 0 = dauerhaft, sonst Millisekunden
 
 static const char* alertTypeName(AlertType t) {
     switch(t) {

@@ -1,55 +1,42 @@
 #include <Arduino.h>
 #include <system_utils.h>
 
-// intervall, start on first run
+// Gibt true zurück wenn intervalMs seit dem letzten Aufruf vergangen sind; beim ersten Aufruf immer true
 bool isTimeForAction(unsigned long* lastRunTime, unsigned long intervalMs) {
     unsigned long currentTime = millis();
 
-    // Check if the required time has passed using the subtraction method
+    // Subtraktion statt Vergleich, damit millis()-Überlauf nach ~49 Tagen korrekt behandelt wird
     if(currentTime - *lastRunTime >= intervalMs) {
-        // Update the last run time
         *lastRunTime = currentTime;
-        return true; // Time to execute the action
+        return true;
     }
 
-    return false; // Not yet time for the action
+    return false;
 }
 
-/**
- * @brief Manages a non-blocking, time-limited process.
- * * @param pTimerMs A pointer to the static unsigned long variable tracking the
- * process start time.
- * @param startSignal TRUE to start/restart the timer; FALSE to continue
- * checking.
- * @param durationMs The maximum time allowed for the process before it times
- * out.
- * @return ProcessStatus The current state of the process.
- */
+// Verwaltet einen nicht-blockierenden Prozess mit Timeout
 ProcessStatus getTimeoutState(unsigned long* pTimerMs, const bool startSignal,
                               const unsigned long durationMs) {
     unsigned long currentTime = millis();
 
-    // 1. START/RESTART LOGIC
+    // --- Start ---
     if(startSignal && *pTimerMs == 0) {
-        // Reset and start the timer
         *pTimerMs = currentTime;
         return PROCESS_STARTING;
     }
 
-    // 2. CHECK IF ACTIVE
+    // --- Inaktiv ---
     if(*pTimerMs == 0) {
-        // Timer is not active and no start signal was given
         return PROCESS_INACTIVE;
     }
 
-    // 3. TIMEOUT LOGIC
+    // --- Abgelaufen ---
     if(currentTime - *pTimerMs >= durationMs) {
-        // Timer expired
-        *pTimerMs = 0; // Reset the timer state
+        *pTimerMs = 0;
         return PROCESS_TIMED_OUT;
     }
 
-    // 4. STILL RUNNING
+    // --- Läuft noch ---
     return PROCESS_RUNNING;
 }
 

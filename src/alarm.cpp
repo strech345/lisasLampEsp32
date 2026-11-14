@@ -1,62 +1,45 @@
-
 #include "alarm.h"
-#include <string.h>      // For memcpy
-#include <time.h>        // For time functions
-#include "rgb_effects.h" // For sunrise_fade
-#include "debug_utils.h" // For serialPrint
+#include <string.h>
+#include <time.h>
+#include "rgb_effects.h"
+#include "debug_utils.h"
 
-// === TimeInfo struct and getCurrentTimeInfo implementation ===
+// Hilfsstruct: aktuelle Uhrzeit und Wochentag
 struct TimeInfo {
     int hour;
     int minute;
-    int dayOfWeek; // 1-7 (Sun=7)
-    int day;
+    int dayOfWeek; // 1–7 (Mo–So)
+    int day;       // Tag des Jahres (0–365), zur Entdopplung genutzt
 };
 
 TimeInfo getCurrentTimeInfo();
 
 Alarm alarms[MAX_ALARMS];
 
-// === ALARM LOGIC ===
+// --- Alarmstatus ---
 
-// A volatile array to track the day of the year an alarm
-// was last triggered. This is NOT saved to flash and will
-// reset on boot.
+// Speichert den Jahrestag (tm_yday) des letzten Auslösens pro Alarm.
+// Nicht im Flash — wird bei jedem Boot zurückgesetzt.
 static int last_triggered_day_for_alarm[MAX_ALARMS];
 
-static int activeAlarmId = -1;               // -1 means no alarm is active. Otherwise, it's
-                                             // the index in the alarms array.
-static unsigned long alarm_start_millis = 0; // Stores the millis() time when the alarm started.
+static int activeAlarmId = -1;               // -1 = kein aktiver Alarm
+static unsigned long alarm_start_millis = 0; // millis()-Wert beim Alarmstart
 
 long msToNextAlarm = -1;
 
-/**
- * @brief Returns a pointer to the global alarms array.
- * @return A pointer to the alarms array.
- */
+// Gibt Zeiger auf das globale Alarm-Array zurück
 Alarm* getAlarms() {
     return alarms;
 }
 
-/**
- * @brief Overwrites the current alarms with a new set and
- * saves them to persistent storage.
- * @param newAlarms An array containing the new alarm data.
- * Must have MAX_ALARMS elements.
- */
+// Ersetzt alle Alarme durch neue Werte und berechnet den nächsten Auslösezeitpunkt
 void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
     resetAlarms();
-    // Copy the new alarm data into the global alarms array
     memcpy(alarms, newAlarms, sizeof(alarms));
-
     calculateMillisToNextAlarm();
 }
 
-/**
- * @brief Returns the index of the currently active alarm.
- * @return The index (0-9) of the active alarm, or -1 if no
- * alarm is active.
- */
+// Gibt den Index des aktuell laufenden Alarms zurück (-1 wenn keiner aktiv)
 int getActiveAlarmIndex() {
     return activeAlarmId;
 }
@@ -65,12 +48,7 @@ bool isAlarmActive() {
     return activeAlarmId != -1;
 }
 
-/**
- * @brief Sets the active alarm index and records the start
- * time.
- * @param index The index of the alarm to set as active, or
- * -1 to deactivate all.
- */
+// Aktiviert einen Alarm per Index und merkt die Startzeit; -1 deaktiviert
 void setActiveAlarm(int index) {
     if(index < -1 || index >= MAX_ALARMS || activeAlarmId == index) {
         return;
@@ -80,49 +58,43 @@ void setActiveAlarm(int index) {
 
     if(activeAlarmId != -1) {
         TimeInfo currentTimeInfo = getCurrentTimeInfo();
+        // Merken an welchem Jahrestag der Alarm ausgelöst hat, damit er heute nicht doppelt feuert
         last_triggered_day_for_alarm[activeAlarmId] = currentTimeInfo.day;
-        alarm_start_millis = millis(); // Record the start time of
-                                       // the alarm animation
+        alarm_start_millis = millis();
     }
     serialPrint("Active alarm set to: " + String(activeAlarmId));
 }
 
-/**
- * @brief Disables any currently active alarm and marks it
- * as handled for today.
- */
+// Stoppt den laufenden Alarm
 void stopActiveAlarm() {
     if(activeAlarmId != -1) {
         setActiveAlarm(-1);
     }
 }
 
-/**
- * @brief Checks alarms against the internal RTC time.
- * This function should be called periodically from the main
- * loop.
- */
+// Prüft alle 10 Sekunden ob ein Alarm starten oder stoppen soll
 void checkAlarmStates(uint16_t durationMinutes) {
     static unsigned long lastCheck = 0;
     unsigned long currentTime = millis();
 
-    // Only check every 10 seconds
     if(currentTime - lastCheck < 10000) {
         return;
     }
     lastCheck = currentTime;
 
     unsigned long runningMs = millis() - alarm_start_millis;
-
     TimeInfo currentTimeInfo = getCurrentTimeInfo();
-    // First, check if a currently active alarm needs to be disabled
+
+    // --- Laufenden Alarm stoppen wenn Dauer überschritten ---
     if(activeAlarmId != -1 && runningMs > (unsigned long)durationMinutes * 60 * 1000) {
         serialPrint("Stopping active alarm after duration here : " + String(activeAlarmId));
         stopActiveAlarm();
     }
 
-    // Activate alarm
+    // --- Alarm starten wenn Wochentag, Stunde und Minute passen ---
     for(int i = 0; i < MAX_ALARMS; i++) {
+        // Überspringen wenn: anderer Alarm aktiv, Alarm deaktiviert,
+        // heute schon ausgelöst, oder Zeit stimmt nicht
         if(i != activeAlarmId && alarms[i].active && currentTimeInfo.day != last_triggered_day_for_alarm[i]
            && alarms[i].day == currentTimeInfo.dayOfWeek && alarms[i].hour == currentTimeInfo.hour
            && alarms[i].minute == currentTimeInfo.minute) {
@@ -131,65 +103,45 @@ void checkAlarmStates(uint16_t durationMinutes) {
                         + ", last_triggered=" + String(last_triggered_day_for_alarm[i]));
 
             setActiveAlarm(i);
-            break; // Only activate one alarm at a time
+            break; // Nur einen Alarm gleichzeitig starten
         }
     }
 
     calculateMillisToNextAlarm();
 }
-/**
- * @brief If an alarm is active, calculates the RGB color
- * based on elapsed animation time.
- * @param currentMillis The current time from millis() for
- * high-precision animation.
- * @param color A reference to the RGB struct to be filled.
- * @return true if an alarm is active and a color was
- * calculated, false otherwise.
- */
+
+// Gibt die aktuelle Alarm-Farbe zurück basierend auf dem Animations-Fortschritt (Sonnenaufgang)
 bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMinutes) {
     if(activeAlarmId == -1) {
         return false;
     }
 
-    // Calculate how many milliseconds have passed since the
-    // alarm animation started
     unsigned long elapsed_millis = currentMillis - alarm_start_millis;
     const unsigned long wakeup_duration_millis = (unsigned long)durationMinutes * 60 * 1000;
 
-    // The check_alarms() function is responsible for
-    // stopping the alarm after its duration. This
-    // calculation just determines the color for the current
-    // moment in the animation.
     if(elapsed_millis > wakeup_duration_millis) {
-        // As a fallback, show the final color if we are
-        // past the duration
+        // Dauer überschritten → Endfarbe zeigen
         color = sunriseFade(1.0);
         return true;
     }
 
-    // Calculate the progress of the wakeup effect (0.0
-    // to 1.0)
+    // Fortschritt 0.0–1.0 berechnen
     float progress = (float)elapsed_millis / wakeup_duration_millis;
-
-    // Get the color from the RGB effects function
     color = sunriseFade(progress);
     return true;
 }
 
-/**
- * @brief Gets the interpolated brightness for the current alarm.
- * Starts at 1 and ramps to 7 over 70% of the alarm duration.
- * @return Brightness value from 1 to 7, or 0 if no alarm is active.
- */
+// Gibt die interpolierte Helligkeit zurück: startet bei 1, steigt auf 7 in den ersten 70% der Alarm-Dauer
 byte getAlarmBrightness(uint16_t durationMinutes) {
     if(activeAlarmId == -1) {
         return 0;
     }
     unsigned long elapsed_millis = millis() - alarm_start_millis;
     const unsigned long total_duration_millis = (unsigned long)durationMinutes * 60 * 1000;
+    // Helligkeit steigt nur in den ersten 70% der Dauer
     const unsigned long brightness_duration_millis = (total_duration_millis * 70) / 100;
     if(elapsed_millis >= brightness_duration_millis) {
-        return 7; // Maximum brightness after 70% of duration
+        return 7;
     }
     float progress = (float)elapsed_millis / brightness_duration_millis;
     byte brightness = 1 + (byte)(progress * (7 - 1));
@@ -197,6 +149,7 @@ byte getAlarmBrightness(uint16_t durationMinutes) {
     return brightness;
 }
 
+// Setzt alle Alarm-Zustände zurück (kein Alarm aktiv, Auslösetage geleert)
 void resetAlarms() {
     serialPrint("Resetting all alarms and active states");
     stopActiveAlarm();
@@ -207,10 +160,7 @@ void resetAlarms() {
     alarm_start_millis = 0;
 }
 
-/**
- * @brief Returns current hour, minute, and dayOfWeek for now (no input param).
- * @return TimeInfo struct
- */
+// Liest aktuelle Systemzeit und gibt Stunde, Minute, Wochentag und Jahrestag zurück
 TimeInfo getCurrentTimeInfo() {
     time_t now;
     time(&now);
@@ -218,16 +168,14 @@ TimeInfo getCurrentTimeInfo() {
     TimeInfo info;
     info.hour = ptm->tm_hour;
     info.minute = ptm->tm_min;
+    // tm_wday: 0=Sonntag → umrechnen auf 1=Montag bis 7=Sonntag
     info.dayOfWeek = ptm->tm_wday == 0 ? 7 : ptm->tm_wday;
     info.day = ptm->tm_yday;
     return info;
 }
 
-/**
- * @brief Returns the time in milliseconds until the next active alarm event.
- * If no alarm is set, returns -1.
- * If an alarm is currently active, returns 0.
- */
+// Berechnet Millisekunden bis zum nächsten Alarm und speichert in msToNextAlarm
+// Berücksichtigt den Fall dass der Alarm in dieser Woche schon vorbei ist → nächste Woche
 void calculateMillisToNextAlarm() {
     if(isAlarmActive()) {
         msToNextAlarm = 0;
@@ -250,8 +198,8 @@ void calculateMillisToNextAlarm() {
         target.tm_min = alarm.minute;
         target.tm_sec = 0;
 
-        // Calculate days until next occurrence
-        int currentDoW = ptm->tm_wday == 0 ? 7 : ptm->tm_wday; // 1-7 (Mon-Sun)
+        // Tage bis zum nächsten Auslösetag berechnen (0 = heute)
+        int currentDoW = ptm->tm_wday == 0 ? 7 : ptm->tm_wday;
         int daysDelta = alarm.day - currentDoW;
         if(daysDelta < 0)
             daysDelta += 7;
@@ -259,7 +207,7 @@ void calculateMillisToNextAlarm() {
         target.tm_mday += daysDelta;
         time_t alarmEpoch = mktime(&target);
 
-        // If alarm is today but time already passed, roll to next week
+        // Wenn Alarmzeit heute bereits vorbei ist → auf nächste Woche schieben
         if(alarmEpoch <= now) {
             target.tm_mday += 7;
             alarmEpoch = mktime(&target);
@@ -274,10 +222,12 @@ void calculateMillisToNextAlarm() {
     msToNextAlarm = minMillis;
 }
 
+// Gibt den berechneten Wert zurück (-1 = kein Alarm gesetzt, 0 = Alarm läuft gerade)
 long getMillisToNextAlarm() {
     return msToNextAlarm;
 }
 
+// Prüft ob mindestens ein Alarm aktiv und mit Wochentag gesetzt ist
 bool hasActiveAlarms() {
     for(int i = 0; i < MAX_ALARMS; i++) {
         if(alarms[i].active && alarms[i].day != 0) {

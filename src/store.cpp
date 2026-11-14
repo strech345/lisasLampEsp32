@@ -9,10 +9,10 @@
 
 static Preferences preferences;
 
-// Define a namespace for preferences to avoid conflicts
 const char* PREF_NAMESPACE = "lisas_lamp_cfg";
 const char* CONFIG_KEY = "fullConfig";
 
+// Generischer Helfer: speichert ein beliebiges Struct in den Flash-Speicher
 template<typename T>
 static bool saveStruct(const char* key, const T& data) {
     if(!preferences.begin(PREF_NAMESPACE, false)) {
@@ -32,18 +32,19 @@ static bool saveStruct(const char* key, const T& data) {
 static FullConfig pendingConfig;
 static unsigned long lastSaveRequestTime = 0;
 
+// Speichert die Konfiguration; mit debounce=true wird der Schreibvorgang um 5 Sekunden verzögert
+// (verhindert Flash-Verschleiß bei häufigem Drehen am Encoder)
 bool saveFullConfig(const FullConfig& config, bool debounce) {
     if(debounce) {
         pendingConfig = config;
-        // savePending = true;
         lastSaveRequestTime = millis();
         return true;
     }
-    lastSaveRequestTime = 0; // Reset debounce timer
+    lastSaveRequestTime = 0;
     return saveStruct(CONFIG_KEY, config);
 }
 
-// Call this regularly (e.g. from loop)
+// Führt verzögerten Schreibvorgang aus wenn 5 Sekunden seit letzter Änderung vergangen sind
 void checkToSave() {
     if(lastSaveRequestTime != 0) {
         if(millis() - lastSaveRequestTime >= 5000) {
@@ -53,16 +54,15 @@ void checkToSave() {
     }
 }
 
+// Lädt die gespeicherte Konfiguration aus dem Flash-Speicher
 bool loadFullConfig(FullConfig& config) {
-    if(!preferences.begin(PREF_NAMESPACE,
-                          true)) { // Open preferences in Read-only mode
+    if(!preferences.begin(PREF_NAMESPACE, true)) {
         serialPrint("Failed to open preferences for reading");
         return false;
     }
 
-    // Use getBytes to load the entire struct
     size_t bytesRead = preferences.getBytes(CONFIG_KEY, &config, sizeof(FullConfig));
-    preferences.end(); // Close preferences
+    preferences.end();
 
     if(bytesRead == sizeof(FullConfig)) {
         serialPrint("FullConfig loaded successfully!");
@@ -73,18 +73,17 @@ bool loadFullConfig(FullConfig& config) {
     }
 }
 
+// Gibt eine Konfiguration mit Standardwerten zurück
 FullConfig getDefaultFullConfig() {
     FullConfig defaultConfig;
 
-    // Default RGB color (e.g., white)
     defaultConfig.color = {255, 255, 255};
-    defaultConfig.colorMode = 1;      // Default to Neutral White
-    defaultConfig.animationMode = 1;  // Default to Breathing
-    defaultConfig.brightnessMode = 7; // Default to maximum brightness
+    defaultConfig.colorMode = 1;      // Neutralweiß
+    defaultConfig.animationMode = 1;  // Atmungs-Effekt
+    defaultConfig.brightnessMode = 7; // Maximale Helligkeit
 
-    // Default alarms (all inactive)
     for(int i = 0; i < MAX_ALARMS; ++i) {
-        defaultConfig.alarms[i] = {0, 0, 0, false}; // day=0 (not set), hour=0, minute=0, active=false
+        defaultConfig.alarms[i] = {0, 0, 0, false};
     }
     defaultConfig.goodNightDuration = 30;
     defaultConfig.alarmDuration = 30;
@@ -93,29 +92,19 @@ FullConfig getDefaultFullConfig() {
     return defaultConfig;
 }
 
+// Überschreibt die gespeicherte Konfiguration mit den Standardwerten
 bool resetFullConfig() {
     serialPrint("Resetting FullConfig to defaults...");
-
-    // 1. Delete existing config
-    /* if (!deleteFullConfig()) {
-        serialPrint("Failed to delete existing config during reset.");
-        //return false;
-    } */
-
-    // 2. Get default config
     FullConfig defaultConfig = getDefaultFullConfig();
-
-    // 3. Save default config
     if(!saveFullConfig(defaultConfig, false)) {
         serialPrint("Failed to save default config during reset.");
         return false;
     }
-
     serialPrint("FullConfig successfully reset to defaults.");
-
     return true;
 }
 
+// Prüft ob ein Struct im Flash existiert und die richtige Größe hat; bei Abweichung Reset aufrufen
 static bool ensureStructExists(const char* key, size_t expectedSize, bool (*resetFn)()) {
     if(!preferences.begin(PREF_NAMESPACE, true)) {
         preferences.end();
@@ -126,11 +115,13 @@ static bool ensureStructExists(const char* key, size_t expectedSize, bool (*rese
     if(storedSize == 0) {
         return resetFn();
     } else if(storedSize != expectedSize) {
+        // Größenänderung durch Firmware-Update → neu initialisieren
         return resetFn();
     }
     return true;
 }
 
+// Stellt sicher dass eine gültige FullConfig im Flash vorhanden ist
 bool ensureConfigExistsAndResetIfNot() {
     serialPrint("Checking if FullConfig exists...");
     return ensureStructExists(CONFIG_KEY, sizeof(FullConfig), resetFullConfig);
@@ -138,10 +129,9 @@ bool ensureConfigExistsAndResetIfNot() {
 
 const char* SYSTEM_SETTINGS_KEY = "systemSettings";
 
+// Gibt Systemeinstellungen mit Standardwerten zurück (eigener AP, kein externes WLAN)
 SystemSettings getDefaultSystemSettings() {
     SystemSettings defaultSettings;
-
-    // Initialize with default values
     strcpy(defaultSettings.internalSSID, "Lizas-Lamp");
     strcpy(defaultSettings.internalPW, "");
     strcpy(defaultSettings.externalSSID, "");
@@ -150,7 +140,6 @@ SystemSettings getDefaultSystemSettings() {
     strcpy(defaultSettings.externalPW2, "");
     defaultSettings.warningsEnabled = true;
     defaultSettings.deepSleepEnabled = true;
-
     return defaultSettings;
 }
 
@@ -158,6 +147,7 @@ bool saveSystemSettings(const SystemSettings& settings) {
     return saveStruct(SYSTEM_SETTINGS_KEY, settings);
 }
 
+// Lädt die Systemeinstellungen aus dem Flash-Speicher
 bool loadSystemSettings(SystemSettings& settings) {
     if(!preferences.begin(PREF_NAMESPACE, true)) {
         serialPrint("Failed to open preferences for reading");
@@ -172,30 +162,30 @@ bool loadSystemSettings(SystemSettings& settings) {
         return true;
     } else {
         serialPrint("Failed to load SystemSettings. Bytes read: " + String(bytesRead));
-        // If loading fails, initialize with default values
-        memset(&settings, 0, sizeof(SystemSettings)); // Zero out the struct
+        memset(&settings, 0, sizeof(SystemSettings));
         return false;
     }
 }
 
 bool resetSystemSettings() {
     serialPrint("Resetting SystemSettings to defaults...");
-
-    // Get default settings
     SystemSettings defaultSettings = getDefaultSystemSettings();
-
-    // Save default settings
     if(!saveSystemSettings(defaultSettings)) {
         serialPrint("Failed to save default system settings during reset.");
         return false;
     }
-
     serialPrint("SystemSettings successfully reset to defaults.");
     return true;
 }
 
+bool ensureSystemSettingsExistsAndResetIfNot() {
+    serialPrint("Checking if SystemSettings exists...");
+    return ensureStructExists(SYSTEM_SETTINGS_KEY, sizeof(SystemSettings), resetSystemSettings);
+}
+
 static const char* LAST_TIME_KEY = "lastKnownTime";
 
+// Speichert den aktuellen Unix-Timestamp damit er nach einem Neustart ohne Internet wiederhergestellt werden kann
 void saveLastKnownTime(time_t t) {
     if(!preferences.begin(PREF_NAMESPACE, false))
         return;
@@ -203,16 +193,11 @@ void saveLastKnownTime(time_t t) {
     preferences.end();
 }
 
+// Gibt den zuletzt gespeicherten Unix-Timestamp zurück (0 wenn noch nie gespeichert)
 time_t loadLastKnownTime() {
     if(!preferences.begin(PREF_NAMESPACE, true))
         return 0;
     uint64_t t = preferences.getULong64(LAST_TIME_KEY, 0);
     preferences.end();
     return (time_t)t;
-}
-
-
-bool ensureSystemSettingsExistsAndResetIfNot() {
-    serialPrint("Checking if SystemSettings exists...");
-    return ensureStructExists(SYSTEM_SETTINGS_KEY, sizeof(SystemSettings), resetSystemSettings);
 }

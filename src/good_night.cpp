@@ -1,4 +1,3 @@
-
 #include <stdint.h>
 
 #include "good_night.h"
@@ -8,10 +7,11 @@
 static bool goodNightModeActive = false;
 static unsigned long goodNightStartTimeMs = 0;
 
+// Startet den Gute-Nacht-Modus und merkt den Startzeitpunkt
 void activateGoodNightMode() {
     goodNightModeActive = true;
     goodNightStartTimeMs = millis();
-    serialPrint("Lstart good night");
+    serialPrint("Good night mode started");
 }
 
 void stopGoodNightMode() {
@@ -23,12 +23,7 @@ bool isGoodNightModeActive() {
     return goodNightModeActive;
 }
 
-/**
- * @brief Gets the interpolated brightness for good night mode.
- * @param startBrightness The starting brightness (0-7)
- * @return Brightness value from startBrightness to 0 (fades out), or 0 if not
- * active.
- */
+// Berechnet die interpolierte Helligkeit: von startBrightness gleichmäßig auf 0 über die konfigurierte Dauer
 byte getGoodNightBrightness(byte startBrightness, uint16_t durationMinutes) {
     if(!goodNightModeActive) {
         return 0;
@@ -36,7 +31,7 @@ byte getGoodNightBrightness(byte startBrightness, uint16_t durationMinutes) {
     unsigned long durationMs = (unsigned long)durationMinutes * 60 * 1000;
     unsigned long elapsed = millis() - goodNightStartTimeMs;
     if(elapsed >= durationMs) {
-        return 0;
+        return 0; // Dauer überschritten → komplett aus
     }
     float progress = (float)elapsed / (float)durationMs;
     byte result = startBrightness - (byte)(progress * startBrightness);
@@ -44,22 +39,18 @@ byte getGoodNightBrightness(byte startBrightness, uint16_t durationMinutes) {
     return result;
 }
 
-/**
- * @brief Checks if good night mode is active and stops it if duration elapsed.
- */
+// Prüft alle 10 Sekunden ob die konfigurierte Dauer abgelaufen ist und stoppt den Modus dann
 void checkGoodNightMode(uint16_t durationMinutes) {
     static unsigned long lastCheck = 0;
     unsigned long currentTime = millis();
 
-    // Only check every 10 seconds
     if(currentTime - lastCheck < 10000) {
         return;
     }
     lastCheck = currentTime;
 
     unsigned long durationMs = (unsigned long)durationMinutes * 60 * 1000;
-    if(goodNightModeActive
-       && (millis() - goodNightStartTimeMs > durationMs)) {
+    if(goodNightModeActive && (millis() - goodNightStartTimeMs > durationMs)) {
         stopGoodNightMode();
     }
 }

@@ -3,11 +3,7 @@
 
 #include "types.h"
 
-/**
- * @brief Calculates a color for a sunrise effect based on progress.
- * @param progress The progress of the sunrise, from 0.0 (start) to 1.0 (end).
- * @return The calculated RGB color.
- */
+// Berechnet die Farbe für einen Sonnenaufgangs-Effekt anhand des Fortschritts (0.0–1.0)
 RGB sunriseFade(float progress);
 
 #endif // RGB_EFFECTS_H

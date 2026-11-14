@@ -8,20 +8,22 @@
 
 struct LogEvent {
     unsigned long uptimeMs;
-    uint32_t unixTime; // 0 = time was unknown at time of event
+    uint32_t unixTime; // 0 = Uhrzeit war zum Zeitpunkt des Eintrags unbekannt
     char msg[EVENT_MSG_LEN];
 };
 
+// Ringpuffer: s_head zeigt auf den ältesten Eintrag, s_count auf die Anzahl
 static LogEvent s_log[MAX_LOG_EVENTS];
-static uint8_t s_head = 0;  // index of oldest entry
-static uint8_t s_count = 0; // number of stored entries
+static uint8_t s_head = 0;
+static uint8_t s_count = 0;
+// Mutex weil logEvent() auch aus ISR-Kontext (WiFi-Events) aufgerufen werden kann
 static portMUX_TYPE s_logMux = portMUX_INITIALIZER_UNLOCKED;
 
 void logEvent(const char* message) {
     uint8_t idx;
     taskENTER_CRITICAL(&s_logMux);
     if(s_count == MAX_LOG_EVENTS) {
-        // Overwrite oldest entry
+        // Puffer voll: ältesten Eintrag überschreiben
         idx = s_head;
         s_head = (s_head + 1) % MAX_LOG_EVENTS;
     } else {
@@ -49,7 +51,7 @@ String getEventLogJson() {
     json += ",\"events\":[";
 
     bool first = true;
-    // Newest first: iterate from s_count-1 down to 0
+    // Neueste Einträge zuerst ausgeben (s_count-1 = neuester Eintrag)
     for(int i = (int)s_count - 1; i >= 0; i--) {
         uint8_t idx = (s_head + (uint8_t)i) % MAX_LOG_EVENTS;
         if(!first) json += ",";

@@ -4,50 +4,38 @@
 #include <Preferences.h>
 #include <string.h> // for memcmp
 
-// This header provides generic, type-safe wrapper functions for the Preferences library.
-// The `putValue` functions automatically check if the data has changed before writing to flash,
-// making them more efficient and reducing flash wear.
+// Typsichere Wrapper für die Preferences-Bibliothek.
+// Schreibt nur wenn sich der Wert geändert hat — schont den Flash-Speicher (begrenzte Schreibzyklen).
 
-// --- SETTERS (PUT) ---
+// --- Schreiben ---
 
-/**
- * @brief Generic template to save a data blob (like a struct or array) to Preferences.
- */
+// Speichert einen beliebigen Datentyp (Struct, Array) als Byte-Blob
 template<typename T>
 inline void putValue(Preferences& prefs, const char* key, const T& value) {
-    // Check if the key exists and if the existing data is the same as the new data.
     T existingValue;
     if (prefs.getBytes(key, &existingValue, sizeof(T)) != sizeof(T) || memcmp(&existingValue, &value, sizeof(T)) != 0) {
-        // If it doesn't exist or is different, write the new data.
         prefs.putBytes(key, &value, sizeof(T));
     }
 }
 
-/**
- * @brief Overload for saving an integer.
- */
+// Speichert einen Integer (nur schreiben wenn geändert)
 inline void putValue(Preferences& prefs, const char* key, int32_t value) {
-    if (prefs.getInt(key, ~value) != value) { // Use inverted value as an unlikely default for the check
+    if (prefs.getInt(key, ~value) != value) {
         prefs.putInt(key, value);
     }
 }
 
-/**
- * @brief Overload for saving a boolean.
- */
+// Speichert einen Boolean (nur schreiben wenn geändert)
 inline void putValue(Preferences& prefs, const char* key, bool value) {
-    if (prefs.getBool(key, !value) != value) { // Use inverted value for the check
+    if (prefs.getBool(key, !value) != value) {
         prefs.putBool(key, value);
     }
 }
 
 
-// --- GETTERS (GET) ---
+// --- Lesen ---
 
-/**
- * @brief Generic template to retrieve a data blob (like a struct or array) from Preferences.
- *        NOTE: This returns by value, so it is not efficient for very large structs or arrays.
- */
+// Liest einen beliebigen Datentyp; gibt defaultValue zurück wenn Schlüssel nicht existiert
 template<typename T>
 inline T getValue(Preferences& prefs, const char* key, const T& defaultValue) {
     T value;
@@ -57,16 +45,12 @@ inline T getValue(Preferences& prefs, const char* key, const T& defaultValue) {
     return defaultValue;
 }
 
-/**
- * @brief Overload for retrieving an integer.
- */
+// Liest einen Integer
 inline int32_t getValue(Preferences& prefs, const char* key, int32_t defaultValue) {
     return prefs.getInt(key, defaultValue);
 }
 
-/**
- * @brief Overload for retrieving a boolean.
- */
+// Liest einen Boolean
 inline bool getValue(Preferences& prefs, const char* key, bool defaultValue) {
     return prefs.getBool(key, defaultValue);
 }

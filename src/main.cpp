@@ -24,8 +24,9 @@
 
 #define DEBUG
 
+// --- Globale Zustandsvariablen ---
 static std::vector<Route> apRoutes;
-static uint32_t s_pendingFlash = 0; // set by button handlers, applied in updateLed()
+static uint32_t s_pendingFlash = 0; // wird von Button-Handlern gesetzt, in updateLed() angewendet
 
 static FullConfig appConfig;
 static SystemSettings systemSettings;
@@ -35,19 +36,16 @@ static LampState lastNormalState = LAMP_STATE_DEFAULT;
 
 void onStateUpdatedFromWifi(StateChangeType type, void* data);
 
+// Einmalige Initialisierung beim Start
 void setup() {
-    //  setCpuFrequencyMhz(80);
 #ifdef DEBUG
-    // Give the USB CDC time to enumerate and the monitor time to connect
-    // delay(2000);
-
     Serial.begin(115200);
-    // Wait for USB CDC to connect (max 5s)
+    // Warte bis USB-CDC bereit ist (max. 5 Sekunden)
     unsigned long startWait = millis();
     while(!Serial && millis() - startWait < 5000) {
         delay(10);
     }
-    // Extra safety delay to let the host terminal catch up
+    // Kurze Pause damit das Terminal die ersten Ausgaben nicht verliert
     delay(1000);
 
     Serial.println("\n\n");
@@ -56,10 +54,13 @@ void setup() {
     Serial.println("----------------------------------------");
     Serial.println("Serial connected or timeout reached");
 #endif
+
+    // --- Dateisystem ---
     if(!LittleFS.begin()) {
         Serial.println("LittleFS mount failed");
     }
 
+    // --- Konfiguration laden ---
     ensureConfigExistsAndResetIfNot();
     if(loadFullConfig(appConfig)) {
         serialPrint("Loaded FullConfig from storage");
@@ -70,37 +71,41 @@ void setup() {
 
     serialPrint("RTC Clock Source Frequency: " + String(rtc_clk_slow_freq_get_hz()) + " Hz");
 
+    // --- LED initialisieren ---
     ledInit();
     statusLedOn();
 
+    // --- Systemeinstellungen laden ---
     ensureSystemSettingsExistsAndResetIfNot();
     if(!loadSystemSettings(systemSettings)) {
         serialPrint("Using default system settings");
         systemSettings = getDefaultSystemSettings();
     }
 
+    // --- Module mit Zeigern auf globalen Zustand initialisieren ---
     initLampState(&lampState, &lastNormalState, &systemSettings.warningsEnabled, &appConfig, &wifiTracker, &s_pendingFlash);
     initSleepManager(&systemSettings.deepSleepEnabled, &lampState, &appConfig);
     initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
 
-    // Apply color mode on startup
     checkAndApplyColorMode(appConfig);
+    setAlarms(appConfig.alarms); // Alarme wiederherstellen und nächste Auslösezeit berechnen
 
-    setAlarms(appConfig.alarms); // Restore alarms and calculate next trigger
-
-    // Initialize route handlers with state and get routes
+    // --- WiFi und Webserver starten ---
     apRoutes = initRouteHandlers(&appConfig, &systemSettings, &wifiTracker, onStateUpdatedFromWifi);
     initWiFiController(systemSettings, apRoutes, wifiTracker);
     startWifi();
 
+    // --- Aufwachgrund nach Deep-Sleep auswerten ---
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
     switch(wakeup_reason) {
     case ESP_SLEEP_WAKEUP_GPIO:
+        // Nutzer hat den Encoder gedrückt → Lampe einschalten
         lampState = LAMP_STATE_DEFAULT;
         appConfig.brightnessMode = 1;
         serialPrint("Wakeup caused by GPIO (Rotary Encoder)");
         break;
     case ESP_SLEEP_WAKEUP_TIMER:
+        // Timer-Wakeup: Alarm oder WiFi-Sync fällig → Lampe bleibt aus
         lampState = LAMP_STATE_SLEEP;
         serialPrint("Wakeup caused by timer (Alarm/WiFi)");
         break;
@@ -109,14 +114,17 @@ void setup() {
         break;
     }
 
+    // --- Helligkeit und Encoder ---
     serialPrint("Brightness set to: " + String(appConfig.brightnessMode));
     setBrightnessLevel(appConfig.brightnessMode);
     initRotaryEncoder(appConfig.brightnessMode, myRotaryEncoderCallback);
 
+    // --- Systemzeit wiederherstellen ---
     struct tm timeinfo;
     if(getLocalTime(&timeinfo, 0)) {
         serialPrint("Current system time: " + String(asctime(&timeinfo)));
     } else {
+        // Noch keine NTP-Synchronisation → gespeicherte Zeit aus NVS laden
         time_t saved = loadLastKnownTime();
         if(saved > 0) {
             struct timeval tv = { .tv_sec = saved, .tv_usec = 0 };
@@ -130,31 +138,31 @@ void setup() {
     serialPrint("Initialized");
 }
 
-/**
- * @brief The main loop of the program.
- * Runs repeatedly after setup().
- */
+// Hauptschleife — läuft dauerhaft nach setup()
 void loop() {
+    // --- Hardware-Eingaben und Verbindungen ---
     ledUpdate();
     wifiLoop();
     rotary_loop();
 
-    // effected stated
+    // --- Zustandsmaschinen der Lampenmodi prüfen ---
     checkAlarmStates(appConfig.alarmDuration);
     checkAlertState();
     checkGoodNightMode(appConfig.goodNightDuration);
     checkCelebrationLogic();
-    checkLampState(); // lamp state check needs be at last
+    checkLampState(); // muss zuletzt laufen: wertet alle Zustände aus
 
-    // other
+    // --- Ausgaben und Verwaltung ---
     updateLed();
     checkToSave();
     checkToGoSleep();
 }
 
+// Callback: wird aufgerufen wenn der Webserver Einstellungen ändert
 void onStateUpdatedFromWifi(StateChangeType type, void* data) {
     switch(type) {
     case STATE_CHANGE_CONFIG: {
+        // Neue Lampen-Konfiguration übernehmen und sofort anwenden
         appConfig = *static_cast<const FullConfig*>(data);
         checkAndApplyColorMode(appConfig);
         setBrightnessLevel(appConfig.brightnessMode);
@@ -165,10 +173,11 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         break;
     }
     case STATE_CHANGE_SYSTEM_CONFIG: {
+        // Netzwerkeinstellungen geändert → WiFi neu starten damit SSID/PW wirksam wird
         const SystemSettings* newSettings = static_cast<const SystemSettings*>(data);
         systemSettings = *newSettings;
         saveSystemSettings(systemSettings);
-        startAlert(ALERT_OK, 2000); // Trigger green alert for 2s
+        startAlert(ALERT_OK, 2000);
         stopWifi();
         startWifi();
         logEvent("System settings updated via WiFi");

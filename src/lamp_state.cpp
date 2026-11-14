@@ -11,6 +11,7 @@
 #define FLASH_GREEN 0x0000FF00
 #define FLASH_RED   0x00FF0000
 
+// Zeiger auf den globalen Zustand — werden in initLampState() gesetzt
 static LampState* s_lampState = nullptr;
 static LampState* s_lastNormalState = nullptr;
 static bool* s_warningsEnabled = nullptr;
@@ -18,6 +19,7 @@ static FullConfig* s_appConfig = nullptr;
 static WiFiTestTracker* s_wifiTracker = nullptr;
 static uint32_t* s_pendingFlash = nullptr;
 
+// Initialisiert das Modul mit Zeigern auf die globalen Variablen aus main.cpp
 void initLampState(LampState* pLampState, LampState* pLastNormalState, bool* pWarningsEnabled,
                    FullConfig* pAppConfig, WiFiTestTracker* pWifiTracker, uint32_t* pPendingFlash) {
     s_lampState = pLampState;
@@ -28,34 +30,32 @@ void initLampState(LampState* pLampState, LampState* pLastNormalState, bool* pWa
     s_pendingFlash = pPendingFlash;
 }
 
+// Setzt die LED-Farbe passend zum konfigurierten Farbmodus (Weiß-Töne oder Custom-RGB)
 void checkAndApplyColorMode(const FullConfig& config) {
-    // Always apply color mode (color override is always active)
     RGB colorToApply;
     String modeName;
 
-    // Check colorMode to determine which color to use
     uint32_t colorHex = 0;
     switch(config.colorMode) {
-    case 0:                    // Cool White
-        colorHex = 0xFF000080; // White channel + some Blue
+    case 0:                    // Kaltweiß
+        colorHex = 0xFF000080;
         modeName = "Cool White";
         break;
-    case 1:                    // Neutral White
-        colorHex = 0xFF503000; // White channel + slight Red/Green for better Neutral
+    case 1:                    // Neutralweiß
+        colorHex = 0xFF503000;
         modeName = "Neutral White";
         break;
-    case 2:                    // Warm White
-        colorHex = 0xFF804000; // White channel + some Red/Green
+    case 2:                    // Warmweiß
+        colorHex = 0xFF804000;
         modeName = "Warm White";
         break;
-    case 3: // Custom
+    case 3: // Benutzerdefinierte Farbe
         colorToApply = config.color;
-        // Convert RGB struct to uint32_t (White channel 0)
         colorHex = (uint32_t(0) << 24) | (uint32_t(colorToApply.r) << 16) | (uint32_t(colorToApply.g) << 8)
             | uint32_t(colorToApply.b);
         modeName = "Custom";
         break;
-    default: // Default to Neutral White
+    default:
         colorHex = 0xFF000000;
         modeName = "Neutral White (default)";
         break;
@@ -67,7 +67,10 @@ void checkAndApplyColorMode(const FullConfig& config) {
     serialPrint("LED color set to " + modeName + " (Hex: " + String(colorHex, HEX) + ")");
 }
 
+// Bestimmt den aktuellen Lampenzustand anhand der aktiven Modi — Priorität von oben nach unten:
+// Alert > Alarm > Good Night > Celebration > Sleep > Systemwarnung > Default
 void checkLampState() {
+    // --- Kurzzeit-Alerts (höchste Priorität) ---
     switch(getActiveAlertType()) {
     case ALERT_ERROR:
         *s_lampState = LAMP_STATE_ERROR;
@@ -79,15 +82,20 @@ void checkLampState() {
         *s_lampState = LAMP_STATE_SUCCESS;
         return;
     }
+
+    // --- Alarm ---
     if(isAlarmActive()) {
         *s_lampState = LAMP_STATE_ALARM;
         return;
     }
     if(*s_lampState == LAMP_STATE_ALARM) {
+        // Alarm gerade beendet → in Sleep wechseln (Nutzer soll explizit aufwecken)
         serialPrint("change from alarm to sleep mode");
         *s_lampState = LAMP_STATE_SLEEP;
         return;
     }
+
+    // --- Gute-Nacht-Modus ---
     if(isGoodNightModeActive()) {
         *s_lampState = LAMP_STATE_GOOD_NIGHT;
         return;
@@ -97,29 +105,35 @@ void checkLampState() {
         *s_lampState = LAMP_STATE_SLEEP;
         return;
     }
+
+    // --- Feier-Modus ---
     if(isCelebrationActive()) {
         *s_lampState = LAMP_STATE_CELEBRATION;
         return;
     }
+
+    // --- Sleep bleibt bestehen bis Nutzer aufweckt ---
     if(*s_lampState == LAMP_STATE_SLEEP) {
         return;
     }
 
-    // Persistent system warnings: only active when lamp would otherwise be in DEFAULT
+    // --- Dauerhafte Systemwarnungen (nur wenn Warnungen aktiviert sind) ---
     if(*s_warningsEnabled) {
         time_t now = time(nullptr);
-        if(now < 1577836800L) { // no valid time (before 2020)
+        if(now < 1577836800L) {
+            // Systemzeit vor 2020 → nie synchronisiert (Epoch 0)
             *s_lampState = LAMP_STATE_SYS_ERROR;
             return;
         }
         unsigned long sinceSyncMs;
         if(s_wifiTracker->lastSucceededTestTime == 0) {
-            // Never NTP-synced — stale after 30 min grace period
+            // Noch nie synchronisiert → nach 30 Min. Schonfrist als veraltet markieren
             sinceSyncMs = (millis() > 30UL * 60 * 1000) ? (25UL * 60 * 60 * 1000) : 0;
         } else {
             sinceSyncMs = millis() - s_wifiTracker->lastSucceededTestTime;
         }
         if(sinceSyncMs > 24UL * 60 * 60 * 1000) {
+            // Letzter NTP-Sync mehr als 24h her
             *s_lampState = LAMP_STATE_SYS_WARNING;
             return;
         }
@@ -128,6 +142,7 @@ void checkLampState() {
     *s_lampState = LAMP_STATE_DEFAULT;
 }
 
+// Gibt den Namen eines Lampenzustands als Zeichenkette zurück (für Logging)
 static const char* lampStateName(LampState s) {
     switch(s) {
     case LAMP_STATE_DEFAULT:     return "Default";
@@ -144,12 +159,13 @@ static const char* lampStateName(LampState s) {
     }
 }
 
+// Wendet LED-Effekte an wenn sich der Lampenzustand geändert hat; aktualisiert Helligkeit im laufenden Betrieb
 void updateLed() {
     static LampState lastLampState;
     static unsigned long lastCheck = 0;
     unsigned long currentTime = millis();
 
-    // State changes
+    // --- Zustandswechsel erkennen und Übergangseffekte auslösen ---
     if(*s_lampState != lastLampState) {
         char buf[52];
         snprintf(buf, sizeof(buf), "State: %s -> %s", lampStateName(lastLampState), lampStateName(*s_lampState));
@@ -167,19 +183,19 @@ void updateLed() {
     }
     if(*s_lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
         setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        setLedColor(0x00FF0000); // blink red until time is synced
+        setLedColor(0x00FF0000); // rot
     }
     if(*s_lampState == LAMP_STATE_WARNING && lastLampState != LAMP_STATE_WARNING) {
         setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        setLedColor(0x00FFFF00); // blink yellow until wifi is not used
+        setLedColor(0x00FFFF00); // gelb
     }
     if(*s_lampState == LAMP_STATE_SYS_ERROR && lastLampState != LAMP_STATE_SYS_ERROR) {
         setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        startSinglePixelBlink(0x00FF0000); // red
+        startSinglePixelBlink(0x00FF0000); // einzelner Pixel blinkt rot
     }
     if(*s_lampState == LAMP_STATE_SYS_WARNING && lastLampState != LAMP_STATE_SYS_WARNING) {
         setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        startSinglePixelBlink(0x00FFFF00); // yellow
+        startSinglePixelBlink(0x00FFFF00); // einzelner Pixel blinkt gelb
     }
     if(*s_lampState == LAMP_STATE_ALARM && lastLampState != LAMP_STATE_ALARM) {
         if(lastLampState == LAMP_STATE_SYS_ERROR || lastLampState == LAMP_STATE_SYS_WARNING) {
@@ -188,16 +204,17 @@ void updateLed() {
         checkAndApplyColorMode(*s_appConfig);
     }
     if(*s_lampState == LAMP_STATE_SLEEP && lastLampState != LAMP_STATE_SLEEP) {
-        setBrightnessLevel(0);
+        setBrightnessLevel(0); // Lampe ausschalten
     }
     lastLampState = *s_lampState;
 
+    // --- Kurz-Aufblitzen (z.B. Button-Feedback) ---
     if(*s_pendingFlash) {
         flashLeds(*s_pendingFlash);
         *s_pendingFlash = 0;
     }
 
-    // Stay same
+    // --- Periodische Helligkeitsanpassung alle 5 Sekunden ---
     if(currentTime - lastCheck < 5000) {
         return;
     }
@@ -212,6 +229,7 @@ void updateLed() {
     }
 }
 
+// Reagiert auf kurzen Drucktaster-Druck: je nach Zustand stoppen oder Gute-Nacht starten
 void onShortPress() {
     if(getActiveAlertType() != ALERT_NONE) {
         serialPrint("Clearing alert via button");
@@ -246,6 +264,7 @@ void onShortPress() {
         *s_pendingFlash = FLASH_RED;
         return;
     }
+    // Normalbetrieb → Gute-Nacht-Modus starten
     serialPrint("activate good night");
     activateGoodNightMode();
     *s_pendingFlash = FLASH_GREEN;

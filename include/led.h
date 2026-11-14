@@ -1,25 +1,25 @@
 
 #include <Arduino.h>
 
-// The single pixel used for system warning/error blink (0 = first pixel)
+// Pixel 0 wird für Systemwarnungen (Blinken) verwendet — bleibt fix damit er nicht mit Effekten kollidiert
 #define WARNING_PIXEL 0
 
 void ledInit();
-void ledUpdate();
+void ledUpdate();           // Muss in loop() aufgerufen werden
 void setBrightness(uint8_t brightness);
 void setLedColor(uint32_t color);
 void setAnimationMode(uint8_t mode);
 void setAnimationSpeed(uint16_t speed);
-void setBrightnessLevel(uint8_t level);
+void setBrightnessLevel(uint8_t level); // Setzt Helligkeitsstufe (1–10) und speichert sie intern
 void startCelebrationEffect();
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();
 
-// Single-pixel blink: WARNING_PIXEL blinks in blinkColor, rest stays static
+// Lässt WARNING_PIXEL in blinkColor blinken; alle anderen Pixel bleiben statisch
 void startSinglePixelBlink(uint32_t blinkColor);
 void stopSinglePixelBlink();
 
-// Briefly flashes all LEDs to color, then restores previous state.
+// Blendet kurz alle LEDs in color ein und stellt danach den vorherigen Zustand wieder her
 // color format: 0x00RRGGBB (same as setLedColor)
 void flashLeds(uint32_t color, unsigned long durationMs = 350);

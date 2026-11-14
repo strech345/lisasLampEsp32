@@ -5,28 +5,24 @@
 #include <Arduino.h>
 #include "types.h"
 
-// Define an enum for rotary encoder event types
+// Ereignistypen des Drehencoders
 enum class RotaryEncoderEventType {
-    ShortClick,
-    LongClick,
-    Rotate,
-    ShortBootClick,
-    LongBootClick,
+    ShortClick,      // Kurzer Tastendruck
+    LongClick,       // Langer Tastendruck (>1s)
+    Rotate,          // Drehbewegung; value = +/- Schritte
+    ShortBootClick,  // Kurzer Druck beim Boot (Wakeup aus Deep Sleep)
+    LongBootClick,   // Langer Druck beim Boot
 };
 
-// Define the callback function type
+// Callback-Typ: wird bei jedem Encoder-Ereignis aufgerufen
 using RotaryEncoderCallback =
     std::function<void(RotaryEncoderEventType, int16_t value)>;
 
-/**
- * @brief Initializes the rotary encoder and sets up its interrupt service
- * routine.
- * @param callback A callback function to be called when a rotary encoder event
- * occurs.
- */
+// Initialisiert den Encoder mit Startwert und registriert den Callback
 void initRotaryEncoder(byte value, RotaryEncoderCallback callback);
-void rotary_loop();
+void rotary_loop(); // Muss in loop() aufgerufen werden
 
+// Initialisiert die Button-Callbacks mit Zeigern auf den globalen Lampenzustand
 void initButtonCallbacks(FullConfig* pAppConfig, LampState* pLampState, WiFiTestTracker* pWifiTracker);
 void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value);
 
