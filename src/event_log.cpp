@@ -1,7 +1,7 @@
 #include "event_log.h"
 #include <time.h>
 
-#define MAX_LOG_EVENTS 50
+#define MAX_LOG_EVENTS 200
 #define EVENT_MSG_LEN 52
 
 struct LogEvent {
