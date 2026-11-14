@@ -59,6 +59,20 @@
     systemStore.updateField(field, event.target.value);
   }
 
+  let restarting = false;
+
+  async function handleRestart() {
+    if (!confirm("ESP32 wirklich neu starten?")) return;
+    restarting = true;
+    try {
+      await fetch("/restart", { method: "POST" });
+    } catch {
+      // Device reboots before response arrives — expected.
+    }
+    messageStore.show("success", "ESP32 startet neu…");
+    show = false;
+  }
+
   let firmwareFiles = null;
   let otaUploading = false;
 
@@ -204,6 +218,18 @@
           LED warnings enabled
         </label>
         <small>When active, pixel 0 blinks red (no time) or yellow (stale NTP sync).</small>
+      </section>
+
+      <hr />
+      <section class="restart-section">
+        <button
+          class="btn-small btn-danger"
+          type="button"
+          disabled={restarting}
+          on:click={handleRestart}
+        >
+          {restarting ? "Startet neu…" : "ESP32 neu starten"}
+        </button>
       </section>
 
       <hr />
@@ -394,6 +420,27 @@
     margin-top: 0.25rem;
     font-size: 0.75rem;
     color: var(--secondary-text-color, #888);
+  }
+
+  .restart-section {
+    margin-bottom: 0.25rem;
+  }
+
+  :global(.btn-danger) {
+    background-color: #dc2626 !important;
+    border-color: #dc2626 !important;
+    color: white !important;
+  }
+
+  :global(.btn-danger:hover) {
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
+  }
+
+  :global(.btn-danger:disabled) {
+    background-color: #fca5a5 !important;
+    border-color: #fca5a5 !important;
+    cursor: not-allowed !important;
   }
 
   .log-section {

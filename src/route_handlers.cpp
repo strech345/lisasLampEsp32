@@ -267,6 +267,13 @@ void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getEventLogJson());
 }
 
+void handleRestart(AsyncWebServerRequest* request, const String&) {
+    logEvent("Restart via web");
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    delay(200);
+    ESP.restart();
+}
+
 void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
     if(g_stateCallback == nullptr) {
         request->send(500, "text/plain", "No callback registered");
@@ -307,5 +314,6 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/get_warnings", HTTP_GET, handleGetWarnings},
             {"/set_warnings", HTTP_POST, handleSetWarnings},
             {"/get_event_log", HTTP_GET, handleGetEventLog},
+            {"/restart", HTTP_POST, handleRestart},
             {"/ping", HTTP_GET, handlePing}};
 }
