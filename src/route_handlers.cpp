@@ -276,7 +276,7 @@ void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
         request->send(400, "text/plain", "Bad Request: Missing JSON body.");
         return;
     }
-    StaticJsonDocument<64> doc;
+    JsonDocument doc;
     if(deserializeJson(doc, body) || !doc.containsKey("enabled")) {
         request->send(400, "text/plain", "Invalid JSON.");
         return;
