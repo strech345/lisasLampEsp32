@@ -45,6 +45,25 @@ DNSServer dnsServer;
 AsyncWebServer server(80);
 static bool serverStarted = false;
 
+// RTC time saved just before sntp_restart() — used to compute drift in the callback.
+static struct timeval s_preSyncTime = {0, 0};
+
+static void ntpSyncCallback(struct timeval* tv) {
+    if(tv == nullptr)
+        return;
+    if(s_preSyncTime.tv_sec > 0) {
+        long driftMs = ((long)tv->tv_sec - (long)s_preSyncTime.tv_sec) * 1000L
+                       + ((long)tv->tv_usec - (long)s_preSyncTime.tv_usec) / 1000L;
+        char buf[52];
+        snprintf(buf, sizeof(buf), "NTP sync: Abweichung %+ldms", driftMs);
+        logEvent(buf);
+        Serial.println(buf);
+    } else {
+        logEvent("NTP sync: erste Synchronisation");
+    }
+    s_preSyncTime = {0, 0};
+}
+
 void initWiFiController(const SystemSettings& settings, const std::vector<Route>& routes, WiFiTestTracker& tracker) {
     Serial.println("Initializing WiFi controller");
     Serial.printf("Internal SSID: %s\n", settings.internalSSID);
@@ -55,6 +74,7 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
     g_wifiTracker = &tracker;
 
     configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
+    sntp_set_time_sync_notification_cb(ntpSyncCallback);
     WiFi.onEvent(WiFiEvent);
     // Moved to startWifi for correct ordering
     // WiFi.softAPConfig(localIP, localIP, subnetMask); 
@@ -234,7 +254,8 @@ bool hasWifiClients() {
 }
 
 void syncTimeWithNTP() {
-    sntp_restart(); // sntp_init();
+    gettimeofday(&s_preSyncTime, nullptr);
+    sntp_restart();
 }
 
 bool isTimeSyncedWithNTP() {

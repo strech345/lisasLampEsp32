@@ -244,8 +244,25 @@ void saveWarningsEnabled(bool enabled) {
 
 bool loadWarningsEnabled() {
     if(!preferences.begin(PREF_NAMESPACE, true))
-        return true; // default: enabled
+        return true;
     bool v = preferences.getBool(WARNINGS_ENABLED_KEY, true);
+    preferences.end();
+    return v;
+}
+
+static const char* DEEP_SLEEP_ENABLED_KEY = "deepSleepOn";
+
+void saveDeepSleepEnabled(bool enabled) {
+    if(!preferences.begin(PREF_NAMESPACE, false))
+        return;
+    preferences.putBool(DEEP_SLEEP_ENABLED_KEY, enabled);
+    preferences.end();
+}
+
+bool loadDeepSleepEnabled() {
+    if(!preferences.begin(PREF_NAMESPACE, true))
+        return true; // default: enabled
+    bool v = preferences.getBool(DEEP_SLEEP_ENABLED_KEY, true);
     preferences.end();
     return v;
 }

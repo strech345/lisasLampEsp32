@@ -71,6 +71,9 @@ time_t loadLastKnownTime();
 void saveWarningsEnabled(bool enabled);
 bool loadWarningsEnabled();
 
+void saveDeepSleepEnabled(bool enabled);
+bool loadDeepSleepEnabled();
+
 /**
  * @brief Initializes the FullConfig object in EEPROM if it doesn't exist.
  * @param force If true, forces re-initialization even if config exists.

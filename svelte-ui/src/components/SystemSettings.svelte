@@ -10,11 +10,13 @@
   $: hasChanges = $systemStore && systemStore.hasChanges();
 
   let warningsEnabled = true;
+  let deepSleepEnabled = true;
 
   onMount(() => {
     if (show) {
       systemStore.load();
       loadWarnings();
+      loadDeepSleep();
     }
   });
 
@@ -34,6 +36,26 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: warningsEnabled }),
+      });
+    } catch {}
+  }
+
+  async function loadDeepSleep() {
+    try {
+      const res = await fetch("/get_deep_sleep");
+      if (res.ok) {
+        const data = await res.json();
+        deepSleepEnabled = data.enabled;
+      }
+    } catch {}
+  }
+
+  async function handleDeepSleepToggle() {
+    try {
+      await fetch("/set_deep_sleep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: deepSleepEnabled }),
       });
     } catch {}
   }
@@ -162,6 +184,7 @@
     systemStore.load();
     loadStatusInfo();
     loadWarnings();
+    loadDeepSleep();
   }
 </script>
 
@@ -226,6 +249,18 @@
       </form>
 
       <hr />
+      <section class="warnings-section">
+        <label class="warnings-label">
+          <input
+            type="checkbox"
+            bind:checked={deepSleepEnabled}
+            on:change={handleDeepSleepToggle}
+          />
+          Deep sleep enabled
+        </label>
+        <small>ESP32 schläft zwischen Alarmen. Wacht 5 min + Drift-Puffer vor jedem Event auf.</small>
+      </section>
+
       <section class="warnings-section">
         <label class="warnings-label">
           <input

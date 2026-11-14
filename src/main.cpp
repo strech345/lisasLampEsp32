@@ -37,6 +37,12 @@ static LampState lampState = LAMP_STATE_DEFAULT;
 static WiFiTestTracker wifiTracker;
 static LampState lastNormalState = LAMP_STATE_DEFAULT;
 static bool warningsEnabled = true;
+static bool deepSleepEnabled = true;
+
+// RTC crystal accuracy (ppm) for worst-case drift calculation
+static const uint32_t RTC_ACCURACY_PPM = 20;
+// Desired lead time before any timed event (alarm / celebration)
+static const unsigned long EVENT_LEAD_TIME_MS = 5UL * 60 * 1000;
 
 void onStateUpdatedFromWifi(StateChangeType type, void* data);
 void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value);
@@ -101,6 +107,7 @@ void setup() {
     // WiFi.disconnect(true, true);
 
     warningsEnabled = loadWarningsEnabled();
+    deepSleepEnabled = loadDeepSleepEnabled();
 
     setAlarms(appConfig.alarms); // Restore alarms and calculate next trigger
 
@@ -245,6 +252,13 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         saveWarningsEnabled(warningsEnabled);
         logEvent(warningsEnabled ? "Warnings enabled" : "Warnings disabled");
         serialPrint(String("Warnings ") + (warningsEnabled ? "enabled" : "disabled"));
+        break;
+    }
+    case STATE_CHANGE_DEEP_SLEEP: {
+        deepSleepEnabled = *static_cast<bool*>(data);
+        saveDeepSleepEnabled(deepSleepEnabled);
+        logEvent(deepSleepEnabled ? "Deep sleep enabled" : "Deep sleep disabled");
+        serialPrint(String("Deep sleep ") + (deepSleepEnabled ? "enabled" : "disabled"));
         break;
     }
     }
@@ -497,18 +511,18 @@ void onShortPress() {
     s_pendingFlash = FLASH_GREEN;
 }
 
+// Worst-case RTC drift for a given sleep duration.
+static unsigned long calcDriftMs(unsigned long sleepMs) {
+    return (unsigned long)((uint64_t)sleepMs * RTC_ACCURACY_PPM / 1000000ULL);
+}
+
 void checkToGoSleep() {
     static unsigned long lastCheckMs = 0;
     if(!isTimeForAction(&lastCheckMs, 10 * 1000))
         return;
 
-    long msToNextAlarm = getMillisToNextAlarm();
-    long msToNextCelebration = getMillisToNextCelebration();
-
-    serialPrint("Millis to next alarm: " + String(msToNextAlarm));
-    if(msToNextCelebration > 0) {
-        serialPrint("Millis to next celebration: " + String(msToNextCelebration));
-    }
+    if(!deepSleepEnabled)
+        return;
 
     if(lampState != LAMP_STATE_DEFAULT && lampState != LAMP_STATE_SLEEP)
         return;
@@ -516,34 +530,45 @@ void checkToGoSleep() {
     if(lampState == LAMP_STATE_DEFAULT && appConfig.brightnessMode != 0)
         return;
 
-    if(msToNextAlarm == 0) // if alarm is active
+    long msToNextAlarm = getMillisToNextAlarm();
+    long msToNextCelebration = getMillisToNextCelebration();
+
+    if(msToNextAlarm == 0) // alarm currently active
         return;
 
     if(isWiFiActive())
         return;
 
-    // Determine how long we can sleep. Start with the WiFi schedule.
+    // Base: sleep until next periodic WiFi sync (no lead time needed for that)
     unsigned long sleepTimeMs = START_WIFI_AFTER_MS;
 
-    // If an alarm is sooner, sleep until then.
-    if(msToNextAlarm > 0 && (unsigned long)msToNextAlarm < sleepTimeMs) {
-        sleepTimeMs = (unsigned long)msToNextAlarm;
-    }
+    // For timed events: wake up early enough to account for RTC drift + 5 min buffer.
+    // Lead time = EVENT_LEAD_TIME_MS + worst-case drift over the full time to event.
+    // We use the full time-to-event for the drift (conservative upper bound).
+    auto applyEventLead = [&](long msToEvent) {
+        if(msToEvent <= 0)
+            return;
+        unsigned long raw = (unsigned long)msToEvent;
+        unsigned long lead = EVENT_LEAD_TIME_MS + calcDriftMs(raw);
+        if(raw > lead) {
+            unsigned long candidate = raw - lead;
+            if(candidate < sleepTimeMs)
+                sleepTimeMs = candidate;
+        }
+    };
 
-    // If a celebration is sooner, sleep until then.
-    if(msToNextCelebration > 0 && (unsigned long)msToNextCelebration < sleepTimeMs) {
-        sleepTimeMs = (unsigned long)msToNextCelebration;
-    }
+    applyEventLead(msToNextAlarm);
+    applyEventLead(msToNextCelebration);
 
-    // Don't sleep if it's too short (less than 2 minutes)
-    if(sleepTimeMs < 2LL * 60LL * 1000LL) {
+    serialPrint("Deep sleep candidate: " + String(sleepTimeMs / 1000) + "s"
+                + " (alarm in " + String(msToNextAlarm / 1000) + "s"
+                + ", celebration in " + String(msToNextCelebration / 1000) + "s)");
+
+    // Don't sleep if the window is too short (< 2 min)
+    if(sleepTimeMs < 2UL * 60 * 1000)
         return;
-    }
 
-    // Deduct 1 minute for a safe wakeup before an alarm or activity
-    sleepTimeMs -= 60LL * 1000LL;
-
-    // enterPowerSaveMode(sleepTimeMs);
+    enterDeepSleep(sleepTimeMs);
 }
 
 void enterDeepSleep(uint64_t sleepTimeMs) {

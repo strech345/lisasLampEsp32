@@ -263,6 +263,12 @@ void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", json);
 }
 
+void handleGetDeepSleep(AsyncWebServerRequest* request, const String&) {
+    bool enabled = loadDeepSleepEnabled();
+    String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
+    request->send(200, "application/json", json);
+}
+
 void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getEventLogJson());
 }
@@ -293,6 +299,25 @@ void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
     request->send(200, "application/json", "{\"status\":\"success\"}");
 }
 
+void handleSetDeepSleep(AsyncWebServerRequest* request, const String& body) {
+    if(g_stateCallback == nullptr) {
+        request->send(500, "text/plain", "No callback registered");
+        return;
+    }
+    if(body.isEmpty()) {
+        request->send(400, "text/plain", "Bad Request: Missing JSON body.");
+        return;
+    }
+    JsonDocument doc;
+    if(deserializeJson(doc, body) || !doc.containsKey("enabled")) {
+        request->send(400, "text/plain", "Invalid JSON.");
+        return;
+    }
+    bool enabled = doc["enabled"].as<bool>();
+    g_stateCallback(STATE_CHANGE_DEEP_SLEEP, static_cast<void*>(&enabled));
+    request->send(200, "application/json", "{\"status\":\"success\"}");
+}
+
 // Initialization functions to set global state and return routes
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback) {
@@ -313,6 +338,8 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
             {"/get_warnings", HTTP_GET, handleGetWarnings},
             {"/set_warnings", HTTP_POST, handleSetWarnings},
+            {"/get_deep_sleep", HTTP_GET, handleGetDeepSleep},
+            {"/set_deep_sleep", HTTP_POST, handleSetDeepSleep},
             {"/get_event_log", HTTP_GET, handleGetEventLog},
             {"/restart", HTTP_POST, handleRestart},
             {"/ping", HTTP_GET, handlePing}};
