@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <Arduino.h>
+#include "types.h"
 
 // Define an enum for rotary encoder event types
 enum class RotaryEncoderEventType {
@@ -25,5 +26,8 @@ using RotaryEncoderCallback =
  */
 void initRotaryEncoder(byte value, RotaryEncoderCallback callback);
 void rotary_loop();
+
+void initButtonCallbacks(FullConfig* pAppConfig, LampState* pLampState, WiFiTestTracker* pWifiTracker);
+void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value);
 
 #endif // BUTTON_H

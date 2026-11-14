@@ -18,6 +18,21 @@ static const SystemSettings* g_systemSettings = nullptr;
 static const WiFiTestTracker* g_wifiTracker = nullptr;
 static GenericStateUpdateCallback g_stateCallback = nullptr;
 
+static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const char* mimeType) {
+    if(!LittleFS.exists(path)) {
+        request->send(404, "text/plain", "Not Found");
+        return;
+    }
+    AsyncWebServerResponse* response = request->beginResponse(LittleFS, path, mimeType);
+    if(response) {
+        response->addHeader("Content-Encoding", "gzip");
+        response->addHeader("Cache-Control", "public,max-age=31536000");
+        request->send(response);
+    } else {
+        request->send(404, "text/plain", "File Not Found");
+    }
+}
+
 // Root handler moved here from main.cpp to group route implementations.
 void handlePing(AsyncWebServerRequest* request, const String&) {
     request->send(200, "text/plain", "pong");
@@ -45,64 +60,16 @@ void handleRoot(AsyncWebServerRequest* request, const String&) {
     }
 }
 
-// Serve compressed CSS files
 void handlePicoCSS(AsyncWebServerRequest* request, const String&) {
-    const char* cssPath = "/pico.min.css.gzip";
-
-    if(!LittleFS.exists(cssPath)) {
-        Serial.println("pico.min.css.gz not found");
-        request->send(404, "text/plain", "pico.min.css.gz not found");
-        return;
-    }
-
-    AsyncWebServerResponse* response = request->beginResponse(LittleFS, cssPath, "text/css");
-    if(response) {
-        response->addHeader("Content-Encoding", "gzip");
-        response->addHeader("Cache-Control", "public,max-age=31536000");
-        request->send(response);
-    } else {
-        request->send(404, "text/plain", "File Not Found");
-    }
+    sendGzipFile(request, "/pico.min.css.gzip", "text/css");
 }
 
-// Serve compressed JavaScript files
 void handleAppJS(AsyncWebServerRequest* request, const String&) {
-    const char* jsPath = "/app.js.gzip";
-
-    if(!LittleFS.exists(jsPath)) {
-        Serial.println("app.js.gz not found");
-        request->send(404, "text/plain", "app.js.gz not found");
-        return;
-    }
-
-    AsyncWebServerResponse* response = request->beginResponse(LittleFS, jsPath, "application/javascript");
-    if(response) {
-        response->addHeader("Content-Encoding", "gzip");
-        response->addHeader("Cache-Control", "public,max-age=31536000");
-        request->send(response);
-    } else {
-        request->send(404, "text/plain", "File Not Found");
-    }
+    sendGzipFile(request, "/app.js.gzip", "application/javascript");
 }
 
-// Serve compressed CSS files for Svelte app
 void handleAppCSS(AsyncWebServerRequest* request, const String&) {
-    const char* cssPath = "/app.css.gzip";
-
-    if(!LittleFS.exists(cssPath)) {
-        Serial.println("app.css.gz not found");
-        request->send(404, "text/plain", "app.css.gz not found");
-        return;
-    }
-
-    AsyncWebServerResponse* response = request->beginResponse(LittleFS, cssPath, "text/css");
-    if(response) {
-        response->addHeader("Content-Encoding", "gzip");
-        response->addHeader("Cache-Control", "public,max-age=31536000");
-        request->send(response);
-    } else {
-        request->send(404, "text/plain", "File Not Found");
-    }
+    sendGzipFile(request, "/app.css.gzip", "text/css");
 }
 
 void handleGetConfig(AsyncWebServerRequest* request, const String&) {

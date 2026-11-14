@@ -4,6 +4,69 @@
 
 #include "AiEsp32RotaryEncoder.h"
 #include "Arduino.h"
+#include "alerts.h"
+#include "lamp_state.h"
+#include "led.h"
+#include "store.h"
+#include "event_log.h"
+#include "debug_utils.h"
+#include "wifi_controller.h"
+
+static FullConfig* s_appConfig = nullptr;
+static LampState* s_lampState = nullptr;
+static WiFiTestTracker* s_wifiTracker = nullptr;
+
+void initButtonCallbacks(FullConfig* pAppConfig, LampState* pLampState, WiFiTestTracker* pWifiTracker) {
+    s_appConfig = pAppConfig;
+    s_lampState = pLampState;
+    s_wifiTracker = pWifiTracker;
+}
+
+void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
+    switch(eventType) {
+    case RotaryEncoderEventType::ShortClick:
+        serialPrint("ShortClick Event!");
+        onShortPress();
+        break;
+    case RotaryEncoderEventType::LongClick:
+        serialPrint("LongClick Event!");
+        logEvent("WiFi started (long press)");
+        startAlert(ALERT_WARNING, 5000);
+        startWifi();
+        break;
+    case RotaryEncoderEventType::Rotate: {
+        // Clamp value to 0-7, cast to byte, and save to config
+        int v = value;
+        if(v < 0)
+            v = 0;
+        if(v > 7)
+            v = 7;
+        s_appConfig->brightnessMode = (byte)v;
+        serialPrint("Brightness mode set to: " + String(s_appConfig->brightnessMode) + String(" (from ")
+                    + String(value) + String(")"));
+        saveFullConfig(*s_appConfig, true);
+        setBrightnessLevel(s_appConfig->brightnessMode);
+        if(*s_lampState == LAMP_STATE_GOOD_NIGHT) {
+            *s_lampState = LAMP_STATE_DEFAULT;
+        }
+        break;
+    }
+    case RotaryEncoderEventType::ShortBootClick:
+        serialPrint("ShortBootClick Event!");
+        // startWifi();
+        break;
+    case RotaryEncoderEventType::LongBootClick:
+        serialPrint("LongBootClick Event!");
+        logEvent("Factory reset triggered");
+        serialPrint("Resetting configuration to defaults...");
+        resetFullConfig();
+        resetSystemSettings();
+        serialPrint("Configuration reset. Restarting ESP...");
+        delay(1000); // Give time for serial to flush
+        ESP.restart();
+        break;
+    }
+}
 
 // Static variable to store the rotary encoder event callback
 static RotaryEncoderCallback _rotaryEncoderCallback;
