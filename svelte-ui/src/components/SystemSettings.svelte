@@ -205,6 +205,24 @@
           value={$systemStore.externalPW}
           on:input={(e) => handleFieldChange("externalPW", e)}
         />
+
+        <label for="externalSSID2">External SSID 2 <span class="optional">(Fallback)</span></label>
+        <input
+          type="text"
+          id="externalSSID2"
+          value={$systemStore.externalSSID2}
+          placeholder="optional"
+          on:input={(e) => handleFieldChange("externalSSID2", e)}
+        />
+
+        <label for="externalPW2">External Password 2</label>
+        <input
+          type="password"
+          id="externalPW2"
+          value={$systemStore.externalPW2}
+          placeholder="optional"
+          on:input={(e) => handleFieldChange("externalPW2", e)}
+        />
       </form>
 
       <hr />
@@ -344,6 +362,12 @@
 
   form {
     margin-bottom: 1rem;
+  }
+
+  .optional {
+    font-size: 0.75rem;
+    font-weight: normal;
+    color: var(--pico-muted-color, #888);
   }
 
   form > label {

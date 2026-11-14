@@ -156,6 +156,8 @@ SystemSettings getDefaultSystemSettings() {
     strcpy(defaultSettings.internalPW, "");
     strcpy(defaultSettings.externalSSID, "");
     strcpy(defaultSettings.externalPW, "");
+    strcpy(defaultSettings.externalSSID2, "");
+    strcpy(defaultSettings.externalPW2, "");
 
     return defaultSettings;
 }

@@ -23,6 +23,23 @@ static const IPAddress subnetMask(255, 255, 255, 0);
 static const SystemSettings* g_systemSettings = nullptr;
 static std::vector<Route> g_routes;
 static WiFiTestTracker* g_wifiTracker = nullptr;
+static uint8_t s_staIdx = 0; // 0 = primary, 1 = fallback
+
+// Connect STA to the network at index idx (0=primary, 1=fallback).
+// Falls back to primary if chosen network has no SSID.
+static void beginSta(uint8_t idx) {
+    const char* ssid = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0)
+                           ? g_systemSettings->externalSSID2
+                           : g_systemSettings->externalSSID;
+    const char* pw   = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0)
+                           ? g_systemSettings->externalPW2
+                           : g_systemSettings->externalPW;
+    s_staIdx = (ssid == g_systemSettings->externalSSID2) ? 1 : 0;
+    char buf[52];
+    snprintf(buf, sizeof(buf), "STA connect%s: %.30s", s_staIdx ? " (fallback)" : "", ssid);
+    logEvent(buf);
+    WiFi.begin(ssid, pw);
+}
 
 DNSServer dnsServer;
 AsyncWebServer server(80);
@@ -126,14 +143,17 @@ void tryReconnectSta() {
     if(!isTimeForAction(&lastRunMs, 5 * 60 * 1000)) // every 5 minutes
         return;
 
+    // Alternate between primary and fallback on each retry
+    uint8_t nextIdx = (strlen(g_systemSettings->externalSSID2) > 0) ? (1 - s_staIdx) : 0;
+
     wifi_mode_t mode = WiFi.getMode();
     if(mode == WIFI_MODE_APSTA) {
         Serial.println("tryReconnectSta: reconnecting STA...");
-        WiFi.reconnect();
+        beginSta(nextIdx);
     } else if(mode == WIFI_MODE_AP) {
         Serial.println("tryReconnectSta: restoring APSTA mode...");
         WiFi.mode(WIFI_MODE_APSTA);
-        WiFi.begin(g_systemSettings->externalSSID, g_systemSettings->externalPW);
+        beginSta(nextIdx);
     }
 }
 
@@ -148,9 +168,9 @@ void startWifi() {
     if(strlen(s->externalSSID) > 0) {
         Serial.println("Start APSta: " + String(s->externalSSID));
         WiFi.mode(WIFI_MODE_APSTA);
-        WiFi.softAPConfig(localIP, localIP, subnetMask); 
+        WiFi.softAPConfig(localIP, localIP, subnetMask);
         WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
-        WiFi.begin(s->externalSSID, s->externalPW);
+        beginSta(0); // always start with primary
     } else {
         Serial.println("Start AP: " + String(s->internalSSID));
         WiFi.mode(WIFI_MODE_AP);
@@ -225,14 +245,20 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
         if(WiFi.getMode() == WIFI_MODE_APSTA) {
             g_wifiTracker->staConfigValid = false;
             if(retryCount < 3) {
-                // delay(200);
                 Serial.println("Retrying STA connection, attempt " + String(retryCount + 1));
                 retryCount++;
                 return;
+            }
+            retryCount = 0;
+            // If a fallback network is configured and we were on primary, try fallback immediately.
+            if(s_staIdx == 0 && strlen(g_systemSettings->externalSSID2) > 0) {
+                Serial.println("Primary failed, trying fallback WiFi.");
+                beginSta(1);
             } else {
-                retryCount = 0;
+                // Both networks tried — wait for tryReconnectSta to retry.
                 WiFi.mode(WIFI_MODE_AP);
-                Serial.println("Max retry attempts reached. Falling back to AP mode (tryReconnectSta will retry).");
+                s_staIdx = 0; // reset so next retry starts with primary
+                Serial.println("Max retry attempts reached. Falling back to AP mode.");
             }
         }
         break;

@@ -7,6 +7,8 @@ const defaultSystemSettings = {
   internalPW: "",
   externalSSID: "",
   externalPW: "",
+  externalSSID2: "",
+  externalPW2: "",
 };
 
 function createSystemStore() {
