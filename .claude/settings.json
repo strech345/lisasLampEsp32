@@ -15,7 +15,17 @@
       "Bash(git branch)",
       "Bash(find *)",
       "Bash(ls *)",
-      "Bash(ls)"
+      "Bash(ls)",
+      "Bash(~/.platformio/penv/bin/pio run*)",
+      "Bash(~/.platformio/penv/bin/pio pkg*)",
+      "Bash(~/.platformio/penv/bin/pio platform*)",
+      "Bash(~/.platformio/penv/bin/pio pkg search*)",
+      "Bash(grep *)",
+      "Bash(npm install*)",
+      "Bash(npm run *)",
+      "Bash(npm outdated*)",
+      "Bash(cd * && npm run*)",
+      "Bash(cd * && ~/.platformio/penv/bin/pio run*)"
     ]
   }
 }
