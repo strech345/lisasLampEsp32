@@ -87,16 +87,16 @@ void handleClientRequests() {
     }
 }
 
+static unsigned long s_wifiStopTimerMs = 0;
+
 void checkWifiStop() {
-    static unsigned long lastRunMs = 0;
     if(!isWiFiActive() || hasWifiClients()) {
-        lastRunMs = millis();
+        s_wifiStopTimerMs = millis();
         return;
     }
-
-    if(isTimeForAction(&lastRunMs, STOP_WIFI_AFTER_MS)) {
+    if(isTimeForAction(&s_wifiStopTimerMs, STOP_WIFI_AFTER_MS)) {
         stopWifi();
-        lastRunMs = 0;
+        s_wifiStopTimerMs = 0;
     }
 }
 
@@ -174,6 +174,7 @@ void startWifi(bool withAP) {
             WiFi.softAPConfig(localIP, localIP, subnetMask);
             WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
             dnsServer.start(53, "*", localIP);
+            s_wifiStopTimerMs = millis(); // full 60s from now
             logEvent("AP activated (upgrade)");
         }
         return;
@@ -204,6 +205,7 @@ void startWifi(bool withAP) {
     }
     if(withAP) {
         dnsServer.start(53, "*", localIP);
+        s_wifiStopTimerMs = millis(); // full 60s from AP activation
         Serial.println("AP IP address: " + WiFi.softAPIP().toString());
     }
 }
