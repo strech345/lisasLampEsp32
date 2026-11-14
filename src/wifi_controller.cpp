@@ -11,6 +11,7 @@
 #include "types.h"
 #include "system_utils.h"
 #include "store.h"
+#include "event_log.h"
 #include "esp_sntp.h"
 
 #define MAX_CLIENTS 4 // ESP32 supports up to 10 but I have not tested it yet
@@ -100,11 +101,15 @@ void updateTelemetryWiFiStatus() {
     if(!isTimeForAction(&lastRunMs, 1 * 60 * 1000)) // every 1 minute
         return;
 
+    bool wasSynced = g_wifiTracker->clockSynced;
     g_wifiTracker->clockSynced = isTimeSyncedWithNTP();
     g_wifiTracker->lastTestTime = millis();
     if(g_wifiTracker->clockSynced) {
         g_wifiTracker->lastSucceededTestTime = millis();
         saveLastKnownTime(time(NULL));
+        if(!wasSynced) logEvent("NTP sync successful");
+    } else {
+        if(wasSynced) logEvent("NTP sync lost");
     }
     Serial.println("Updated telemetry " + String(g_wifiTracker->clockSynced ? "synced" : "not synced"));
 }
@@ -138,6 +143,7 @@ void startWifi() {
         return;
     }
     const SystemSettings* s = g_systemSettings;
+    logEvent("WiFi started");
 
     if(strlen(s->externalSSID) > 0) {
         Serial.println("Start APSta: " + String(s->externalSSID));
@@ -165,6 +171,7 @@ void stopWifi() {
         Serial.println("WiFi is not active. Nothing to stop.");
         return;
     }
+    logEvent("WiFi stopped");
 
     dnsServer.stop();
     WiFi.mode(WIFI_MODE_NULL);
@@ -204,6 +211,7 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
         break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
         Serial.println("STA Got IP");
+        logEvent("STA connected, NTP sync");
         g_wifiTracker->staConfigValid = true;
         g_wifiTracker->lastStaConnectionTime = millis();
         syncTimeWithNTP();
@@ -212,6 +220,7 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
         updateTelemetryWiFiStatus();
         Serial.println("STA Disconnected");
+        logEvent("STA disconnected");
 
         if(WiFi.getMode() == WIFI_MODE_APSTA) {
             g_wifiTracker->staConfigValid = false;

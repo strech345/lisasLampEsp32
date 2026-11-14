@@ -19,6 +19,7 @@
 #include <esp_task_wdt.h>
 #include "alerts.h"
 #include "celebration.h"
+#include "event_log.h"
 #include <soc/rtc.h>
 #include <nvs_flash.h>
 
@@ -143,6 +144,7 @@ void setup() {
             serialPrint("Current system time: Not synchronized yet, no saved time");
         }
     }
+    logEvent("Boot");
     serialPrint("Initialized");
 }
 
@@ -218,6 +220,7 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         setBrightnessLevel(appConfig.brightnessMode);
         setAlarms(appConfig.alarms);
         saveFullConfig(appConfig, true);
+        logEvent("Config updated via WiFi");
         serialPrint("Full configuration updated via WiFi controller generic callback.");
         break;
     }
@@ -229,12 +232,14 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         stopWifi();
         startWifi();
         //  performWiFiTest(true);
+        logEvent("System settings updated via WiFi");
         serialPrint("System settings updated via WiFi controller generic callback.");
         break;
     }
     case STATE_CHANGE_WARNINGS: {
         warningsEnabled = *static_cast<bool*>(data);
         saveWarningsEnabled(warningsEnabled);
+        logEvent(warningsEnabled ? "Warnings enabled" : "Warnings disabled");
         serialPrint(String("Warnings ") + (warningsEnabled ? "enabled" : "disabled"));
         break;
     }
@@ -250,6 +255,7 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         break;
     case RotaryEncoderEventType::LongClick:
         serialPrint("LongClick Event!");
+        logEvent("WiFi started (long press)");
         startAlert(ALERT_WARNING, 5000);
         startWifi();
         break;
@@ -276,6 +282,7 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         break;
     case RotaryEncoderEventType::LongBootClick:
         serialPrint("LongBootClick Event!");
+        logEvent("Factory reset triggered");
         serialPrint("Resetting configuration to defaults...");
         resetFullConfig();
         resetSystemSettings();
@@ -356,12 +363,33 @@ void checkLampState() {
     lampState = LAMP_STATE_DEFAULT;
 }
 
+static const char* lampStateName(LampState s) {
+    switch(s) {
+    case LAMP_STATE_DEFAULT:     return "Default";
+    case LAMP_STATE_ALARM:       return "Alarm";
+    case LAMP_STATE_GOOD_NIGHT:  return "Good Night";
+    case LAMP_STATE_ERROR:       return "Error";
+    case LAMP_STATE_SUCCESS:     return "Success";
+    case LAMP_STATE_WARNING:     return "Warning";
+    case LAMP_STATE_SLEEP:       return "Sleep";
+    case LAMP_STATE_CELEBRATION: return "Celebration";
+    case LAMP_STATE_SYS_ERROR:   return "SysError: no time";
+    case LAMP_STATE_SYS_WARNING: return "SysWarning: stale NTP";
+    default:                     return "Unknown";
+    }
+}
+
 void updateLed() {
     static LampState lastLampState;
     static unsigned long lastCheck = 0;
     unsigned long currentTime = millis();
 
     // State changes
+    if(lampState != lastLampState) {
+        char buf[52];
+        snprintf(buf, sizeof(buf), "State: %s -> %s", lampStateName(lastLampState), lampStateName(lampState));
+        logEvent(buf);
+    }
     if(lampState == LAMP_STATE_DEFAULT && lastLampState != LAMP_STATE_DEFAULT) {
         if(lastLampState == LAMP_STATE_SYS_ERROR || lastLampState == LAMP_STATE_SYS_WARNING) {
             stopSinglePixelBlink();

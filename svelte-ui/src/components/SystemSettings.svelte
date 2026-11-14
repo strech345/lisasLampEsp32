@@ -2,6 +2,9 @@
   import { onMount } from "svelte";
   import { messageStore } from "../stores/messageStore.js";
   import { systemStore } from "../stores/systemStore.js";
+  import EventLog from "./EventLog.svelte";
+
+  let showLogs = false;
 
   export let show = false;
   $: hasChanges = $systemStore && systemStore.hasChanges();
@@ -204,6 +207,20 @@
       </section>
 
       <hr />
+      <section class="log-section">
+        <button
+          class="log-toggle"
+          type="button"
+          on:click={() => (showLogs = !showLogs)}
+        >
+          {showLogs ? "▾" : "▸"} Event Log
+        </button>
+        {#if showLogs}
+          <EventLog />
+        {/if}
+      </section>
+
+      <hr />
       <section class="ota-section">
         <h3>Firmware Update</h3>
         <div class="ota-row">
@@ -377,6 +394,20 @@
     margin-top: 0.25rem;
     font-size: 0.75rem;
     color: var(--secondary-text-color, #888);
+  }
+
+  .log-section {
+    margin-bottom: 0.5rem;
+  }
+
+  .log-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0;
+    color: inherit;
   }
 
   .ota-section h3 {

@@ -6,6 +6,7 @@
 #include "json_utils.h"
 #include "types.h"
 #include "store.h"
+#include "event_log.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -262,6 +263,10 @@ void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", json);
 }
 
+void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getEventLogJson());
+}
+
 void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
     if(g_stateCallback == nullptr) {
         request->send(500, "text/plain", "No callback registered");
@@ -301,5 +306,6 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
             {"/get_warnings", HTTP_GET, handleGetWarnings},
             {"/set_warnings", HTTP_POST, handleSetWarnings},
+            {"/get_event_log", HTTP_GET, handleGetEventLog},
             {"/ping", HTTP_GET, handlePing}};
 }
