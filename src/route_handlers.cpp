@@ -39,12 +39,11 @@ void handlePing(AsyncWebServerRequest* request, const String&) {
 }
 
 void handleRoot(AsyncWebServerRequest* request, const String&) {
-    Serial.print("handleRoot: ");
-    Serial.println(request->url());
+    serialPrint("handleRoot: " + request->url());
 
     const char* indexPath = "/index.html.gzip";
     if(!LittleFS.exists(indexPath)) {
-        Serial.println("index.html.gz not found");
+        serialPrint("index.html.gz not found");
         request->send(404, "text/plain", "index.html.gz not found");
         return;
     }

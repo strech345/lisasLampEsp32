@@ -15,6 +15,4 @@ enum ProcessStatus {
 };
 ProcessStatus getTimeoutState(unsigned long* pTimerMs, const bool startSignal,
                               const unsigned long durationMs);
-
-bool startOnce(bool* pHasStarted, const bool startSignal);
 #endif // SYSTEM_UTILS_H

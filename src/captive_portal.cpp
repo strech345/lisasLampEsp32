@@ -1,6 +1,7 @@
 #include "captive_portal.h"
 #include <Arduino.h>
 #include "route_handlers.h"
+#include "debug_utils.h"
 
 void setUpDNSServer(DNSServer& dnsServer, const IPAddress& localIP) {
     // Set the TTL for DNS response and start the DNS server
@@ -124,7 +125,6 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
     // the catch all
     server.onNotFound([localIPURL](AsyncWebServerRequest* request) {
         request->redirect(localIPURL);
-        Serial.printf("onnotfound [Host: %s][URL: %s] -> redirect to %s\n",
-                     request->host().c_str(), request->url().c_str(), localIPURL.c_str());
+        serialPrint(String("onnotfound [Host: ") + request->host() + "][URL: " + request->url() + "] -> redirect to " + localIPURL);
     });
 }

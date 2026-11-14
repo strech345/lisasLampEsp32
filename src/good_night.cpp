@@ -7,9 +7,6 @@
 
 static bool goodNightModeActive = false;
 static unsigned long goodNightStartTimeMs = 0;
-// const unsigned long GOOD_NIGHT_DURATION_MS =
-//     60 * 1000; // 1 minute in milliseconds
-// 30 * 60 * 1000ULL; // 30 minutes in milliseconds
 
 void activateGoodNightMode() {
     goodNightModeActive = true;

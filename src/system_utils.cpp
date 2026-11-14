@@ -53,10 +53,3 @@ ProcessStatus getTimeoutState(unsigned long* pTimerMs, const bool startSignal,
     return PROCESS_RUNNING;
 }
 
-bool startOnce(bool* pHasStarted, const bool startSignal) {
-    if(startSignal) {
-        *pHasStarted = true;
-        return true; // Indicate that the process should start now
-    }
-    return false;
-}

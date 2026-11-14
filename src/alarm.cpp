@@ -1,12 +1,9 @@
 
-
 #include "alarm.h"
-#include <Preferences.h>
-#include <string.h>            // For memcpy
-#include <time.h>              // For time functions
-#include "preferences_utils.h" // For generic get/put functions
-#include "rgb_effects.h"       // For sunrise_fade
-#include "debug_utils.h"       // For serialPrint
+#include <string.h>      // For memcpy
+#include <time.h>        // For time functions
+#include "rgb_effects.h" // For sunrise_fade
+#include "debug_utils.h" // For serialPrint
 
 // === TimeInfo struct and getCurrentTimeInfo implementation ===
 struct TimeInfo {
@@ -20,21 +17,6 @@ TimeInfo getCurrentTimeInfo();
 
 Alarm alarms[MAX_ALARMS];
 
-/* void setup_alarms() {
-    Preferences preferences;
-    preferences.begin("alarms", true);  // read-only
-    preferences.getBytes("alarms_data", alarms,
-sizeof(alarms)); preferences.end();
-}
-
-void save_alarms() {
-    Preferences preferences;
-    preferences.begin("alarms", false);
-    // Use the generic putValue. It handles the check to see
-if the data has changed. putValue(preferences,
-"alarms_data", alarms); preferences.end();
-} */
-
 // === ALARM LOGIC ===
 
 // A volatile array to track the day of the year an alarm
@@ -47,8 +29,6 @@ static int activeAlarmId = -1;               // -1 means no alarm is active. Oth
 static unsigned long alarm_start_millis = 0; // Stores the millis() time when the alarm started.
 
 long msToNextAlarm = -1;
-
-// #define WAKEUP_DURATION_MINUTES 2
 
 /**
  * @brief Returns a pointer to the global alarms array.
@@ -96,10 +76,6 @@ void setActiveAlarm(int index) {
         return;
     }
 
-    /* if(activeAlarmId != -1) {
-        serialPrint("Deactivating alarm: " + String(activeAlarmId));
-        last_triggered_day_for_alarm[activeAlarmId] = -1;
-    } */
     activeAlarmId = index;
 
     if(activeAlarmId != -1) {
@@ -147,17 +123,6 @@ void checkAlarmStates(uint16_t durationMinutes) {
 
     // Activate alarm
     for(int i = 0; i < MAX_ALARMS; i++) {
-        /*  if (alarms[i].active) {
-              serialPrint("Alarm[" + String(i) + "] Debug: " +
-                         "CurrDay=" + String(currentTimeInfo.day) +
-                         " vs LastTrig=" + String(last_triggered_day_for_alarm[i]) +
-                         ", AlmDay=" + String(alarms[i].day) +
-                         " vs CurrDoW=" + String(currentTimeInfo.dayOfWeek) +
-                         ", AlmHr=" + String(alarms[i].hour) +
-                         " vs CurrHr=" + String(currentTimeInfo.hour) +
-                         ", AlmMin=" + String(alarms[i].minute) +
-                         " vs CurrMin=" + String(currentTimeInfo.minute));
-         } */
         if(i != activeAlarmId && alarms[i].active && currentTimeInfo.day != last_triggered_day_for_alarm[i]
            && alarms[i].day == currentTimeInfo.dayOfWeek && alarms[i].hour == currentTimeInfo.hour
            && alarms[i].minute == currentTimeInfo.minute) {

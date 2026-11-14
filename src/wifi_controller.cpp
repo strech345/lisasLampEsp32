@@ -8,6 +8,7 @@
 #include <esp_task_wdt.h>
 #include "wifi_controller.h"
 #include "captive_portal.h"
+#include "debug_utils.h"
 #include "route_handlers.h"
 #include "types.h"
 #include "system_utils.h"
@@ -59,7 +60,7 @@ static void ntpSyncCallback(struct timeval* tv) {
         char buf[52];
         snprintf(buf, sizeof(buf), "NTP sync: Abweichung %+ldms", driftMs);
         logEvent(buf);
-        Serial.println(buf);
+        serialPrint(buf);
     } else {
         logEvent("NTP sync: erste Synchronisation");
     }
@@ -67,9 +68,9 @@ static void ntpSyncCallback(struct timeval* tv) {
 }
 
 void initWiFiController(const SystemSettings& settings, const std::vector<Route>& routes, WiFiTestTracker& tracker) {
-    Serial.println("Initializing WiFi controller");
-    Serial.printf("Internal SSID: %s\n", settings.internalSSID);
-    Serial.printf("External SSID: %s\n", settings.externalSSID);
+    serialPrint("Initializing WiFi controller");
+    serialPrint(String("Internal SSID: ") + settings.internalSSID);
+    serialPrint(String("External SSID: ") + settings.externalSSID);
 
     g_systemSettings = &settings;
     g_routes = routes;
@@ -86,7 +87,7 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
     setUpWebserver(server, localIP, g_routes);
     registerOtaRoute(server);
 
-    Serial.println("WiFi controller initialized");
+    serialPrint("WiFi controller initialized");
 }
 
 void wifiLoop() {
@@ -150,7 +151,7 @@ void updateTelemetryWiFiStatus() {
     } else {
         if(wasSynced) logEvent("NTP sync lost");
     }
-    Serial.println("Updated telemetry " + String(g_wifiTracker->clockSynced ? "synced" : "not synced"));
+    serialPrint("Updated telemetry " + String(g_wifiTracker->clockSynced ? "synced" : "not synced"));
 }
 
 void tryReconnectSta() {
@@ -170,16 +171,16 @@ void tryReconnectSta() {
 
     wifi_mode_t mode = WiFi.getMode();
     if(mode == WIFI_MODE_APSTA) {
-        Serial.println("tryReconnectSta: reconnecting STA...");
+        serialPrint("tryReconnectSta: reconnecting STA...");
         beginSta(nextIdx);
     } else if(mode == WIFI_MODE_AP) {
         // AP is running (user-visible) → restore STA alongside it
-        Serial.println("tryReconnectSta: restoring STA in APSTA mode...");
+        serialPrint("tryReconnectSta: restoring STA in APSTA mode...");
         WiFi.mode(WIFI_MODE_APSTA);
         beginSta(nextIdx);
     } else if(mode == WIFI_MODE_NULL) {
         // STA-only was stopped after failure → restart STA-only
-        Serial.println("tryReconnectSta: restarting STA-only...");
+        serialPrint("tryReconnectSta: restarting STA-only...");
         WiFi.mode(WIFI_MODE_STA);
         beginSta(nextIdx);
     }
@@ -191,7 +192,7 @@ void startWifi(bool withAP) {
     if(isWiFiActive()) {
         // Already running — upgrade STA-only to APSTA if user now wants the AP.
         if(withAP && WiFi.getMode() == WIFI_MODE_STA) {
-            Serial.println("Upgrading STA → APSTA");
+            serialPrint("Upgrading STA → APSTA");
             WiFi.mode(WIFI_MODE_APSTA);
             WiFi.softAPConfig(localIP, localIP, subnetMask);
             WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
@@ -228,14 +229,14 @@ void startWifi(bool withAP) {
     if(withAP) {
         dnsServer.start(53, "*", localIP);
         s_wifiStopTimerMs = millis(); // full 60s from AP activation
-        Serial.println("AP IP address: " + WiFi.softAPIP().toString());
+        serialPrint("AP IP address: " + WiFi.softAPIP().toString());
     }
 }
 
 void stopWifi() {
-    Serial.println("stopWifi: Stopping all WiFi services");
+    serialPrint("stopWifi: Stopping all WiFi services");
     if(!isWiFiActive()) {
-        Serial.println("WiFi is not active. Nothing to stop.");
+        serialPrint("WiFi is not active. Nothing to stop.");
         return;
     }
     logEvent("WiFi stopped");
@@ -243,7 +244,7 @@ void stopWifi() {
     dnsServer.stop();
     WiFi.mode(WIFI_MODE_NULL);
 
-    Serial.println("stopWifi: All WiFi services stopped");
+    serialPrint("stopWifi: All WiFi services stopped");
 }
 
 bool isWiFiActive() {
@@ -268,17 +269,17 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     static int retryCount = 0;
     switch(event) {
     case ARDUINO_EVENT_WIFI_STA_STOP:
-        Serial.println("STA Stop");
+        serialPrint("STA Stop");
         break;
     case ARDUINO_EVENT_WIFI_STA_START:
-        Serial.println("STA Start");
+        serialPrint("STA Start");
         retryCount = 0;
         break;
     case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-        Serial.println("STA Connected");
+        serialPrint("STA Connected");
         break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-        Serial.println("STA Got IP");
+        serialPrint("STA Got IP");
         logEvent("STA connected, NTP sync");
         g_wifiTracker->staConfigValid = true;
         g_wifiTracker->lastStaConnectionTime = millis();
@@ -287,7 +288,7 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
         break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
         updateTelemetryWiFiStatus();
-        Serial.println("STA Disconnected");
+        serialPrint("STA Disconnected");
         logEvent("STA disconnected");
 
         {
@@ -295,23 +296,23 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
             if(curMode == WIFI_MODE_APSTA || curMode == WIFI_MODE_STA) {
                 g_wifiTracker->staConfigValid = false;
                 if(retryCount < 3) {
-                    Serial.println("Retrying STA connection, attempt " + String(retryCount + 1));
+                    serialPrint("Retrying STA connection, attempt " + String(retryCount + 1));
                     retryCount++;
                     return;
                 }
                 retryCount = 0;
                 // Try fallback network immediately if available and on primary.
                 if(s_staIdx == 0 && strlen(g_systemSettings->externalSSID2) > 0) {
-                    Serial.println("Primary failed, trying fallback WiFi.");
+                    serialPrint("Primary failed, trying fallback WiFi.");
                     beginSta(1);
                 } else {
                     s_staIdx = 0;
                     if(curMode == WIFI_MODE_APSTA) {
                         WiFi.mode(WIFI_MODE_AP); // keep AP running
-                        Serial.println("Max retries. Keeping AP, dropping STA.");
+                        serialPrint("Max retries. Keeping AP, dropping STA.");
                     } else {
                         WiFi.mode(WIFI_MODE_NULL); // STA-only: stop entirely
-                        Serial.println("Max retries. Stopping STA-only WiFi.");
+                        serialPrint("Max retries. Stopping STA-only WiFi.");
                     }
                 }
             }

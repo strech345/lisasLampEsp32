@@ -202,16 +202,13 @@ void updateLed() {
         return;
     }
     lastCheck = currentTime;
-    Serial.println("Lamp state check: " + String(*s_lampState));
+    serialPrint("Lamp state check: " + String(*s_lampState));
 
     if(*s_lampState == LAMP_STATE_ALARM) {
         setBrightnessLevel(getAlarmBrightness(s_appConfig->alarmDuration));
     }
     if(*s_lampState == LAMP_STATE_GOOD_NIGHT) {
         setBrightnessLevel(getGoodNightBrightness(s_appConfig->brightnessMode, s_appConfig->goodNightDuration));
-    }
-    if(*s_lampState == LAMP_STATE_DEFAULT) {
-        // setBrightnessLevel(s_appConfig->brightnessMode);
     }
 }
 

@@ -2,7 +2,6 @@
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-#include <WS2812FX.h>
 
 #include "alarm.h"
 #include "button.h"
@@ -16,12 +15,10 @@
 #include "wifi_controller.h"
 #include <system_utils.h>
 #include <esp_sleep.h>
-#include <esp_task_wdt.h>
 #include "alerts.h"
 #include "celebration.h"
 #include "event_log.h"
 #include <soc/rtc.h>
-#include <nvs_flash.h>
 #include "lamp_state.h"
 #include "sleep_manager.h"
 
@@ -158,9 +155,7 @@ void loop() {
 void onStateUpdatedFromWifi(StateChangeType type, void* data) {
     switch(type) {
     case STATE_CHANGE_CONFIG: {
-        const FullConfig* newConfig = static_cast<const FullConfig*>(data);
-        FullConfig tempConfig = *newConfig;
-        appConfig = tempConfig;
+        appConfig = *static_cast<const FullConfig*>(data);
         checkAndApplyColorMode(appConfig);
         setBrightnessLevel(appConfig.brightnessMode);
         setAlarms(appConfig.alarms);

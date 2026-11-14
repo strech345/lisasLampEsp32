@@ -13,6 +13,22 @@ static Preferences preferences;
 const char* PREF_NAMESPACE = "lisas_lamp_cfg";
 const char* CONFIG_KEY = "fullConfig";
 
+template<typename T>
+static bool saveStruct(const char* key, const T& data) {
+    if(!preferences.begin(PREF_NAMESPACE, false)) {
+        serialPrint("Failed to open preferences for writing");
+        return false;
+    }
+    size_t written = preferences.putBytes(key, &data, sizeof(T));
+    preferences.end();
+    if(written == sizeof(T)) {
+        serialPrint(String(key) + " saved successfully");
+        return true;
+    }
+    serialPrint(String(key) + " save failed, bytes written: " + String(written));
+    return false;
+}
+
 static FullConfig pendingConfig;
 static unsigned long lastSaveRequestTime = 0;
 
@@ -24,24 +40,7 @@ bool saveFullConfig(const FullConfig& config, bool debounce) {
         return true;
     }
     lastSaveRequestTime = 0; // Reset debounce timer
-
-    if(!preferences.begin(PREF_NAMESPACE,
-                          false)) { // Open preferences in R/W mode
-        serialPrint("Failed to open preferences for writing");
-        return false;
-    }
-
-    // Use putBytes to save the entire struct
-    size_t bytesWritten = preferences.putBytes(CONFIG_KEY, &config, sizeof(FullConfig));
-    preferences.end(); // Close preferences
-
-    if(bytesWritten == sizeof(FullConfig)) {
-        serialPrint("FullConfig saved successfully!");
-        return true;
-    } else {
-        serialPrint("Failed to save FullConfig. Bytes written: " + String(bytesWritten));
-        return false;
-    }
+    return saveStruct(CONFIG_KEY, config);
 }
 
 // Call this regularly (e.g. from loop)
@@ -117,33 +116,24 @@ bool resetFullConfig() {
     return true;
 }
 
+static bool ensureStructExists(const char* key, size_t expectedSize, bool (*resetFn)()) {
+    if(!preferences.begin(PREF_NAMESPACE, true)) {
+        preferences.end();
+        return resetFn();
+    }
+    size_t storedSize = preferences.getBytesLength(key);
+    preferences.end();
+    if(storedSize == 0) {
+        return resetFn();
+    } else if(storedSize != expectedSize) {
+        return resetFn();
+    }
+    return true;
+}
+
 bool ensureConfigExistsAndResetIfNot() {
     serialPrint("Checking if FullConfig exists...");
-
-    if(!preferences.begin(PREF_NAMESPACE,
-                          true)) { // Open preferences in Read-only mode
-        serialPrint("Failed to open preferences to check config existence.");
-        // If we can't even open preferences, we can't check, so attempt to
-        // reset
-        serialPrint("Attempting to reset FullConfig due to preferences "
-                    "open failure.");
-        return resetFullConfig();
-    }
-
-    size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
-    preferences.end(); // Close preferences
-
-    if(storedSize == 0) {
-        serialPrint("No FullConfig found. Resetting to defaults.");
-        return resetFullConfig();
-
-    } else if(storedSize != sizeof(FullConfig)) {
-        serialPrint("Stored FullConfig size mismatch. Resetting to defaults.");
-        return resetFullConfig();
-    } else {
-        serialPrint("FullConfig exists and is valid.");
-        return true;
-    }
+    return ensureStructExists(CONFIG_KEY, sizeof(FullConfig), resetFullConfig);
 }
 
 const char* SYSTEM_SETTINGS_KEY = "systemSettings";
@@ -165,21 +155,7 @@ SystemSettings getDefaultSystemSettings() {
 }
 
 bool saveSystemSettings(const SystemSettings& settings) {
-    if(!preferences.begin(PREF_NAMESPACE, false)) {
-        serialPrint("Failed to open preferences for writing");
-        return false;
-    }
-
-    size_t bytesWritten = preferences.putBytes(SYSTEM_SETTINGS_KEY, &settings, sizeof(SystemSettings));
-    preferences.end();
-
-    if(bytesWritten == sizeof(SystemSettings)) {
-        serialPrint("SystemSettings saved successfully!");
-        return true;
-    } else {
-        serialPrint("Failed to save SystemSettings. Bytes written: " + String(bytesWritten));
-        return false;
-    }
+    return saveStruct(SYSTEM_SETTINGS_KEY, settings);
 }
 
 bool loadSystemSettings(SystemSettings& settings) {
@@ -238,26 +214,5 @@ time_t loadLastKnownTime() {
 
 bool ensureSystemSettingsExistsAndResetIfNot() {
     serialPrint("Checking if SystemSettings exists...");
-
-    if(!preferences.begin(PREF_NAMESPACE, true)) {
-        serialPrint("Failed to open preferences to check system settings "
-                    "existence.");
-        serialPrint("Attempting to reset SystemSettings due to preferences "
-                    "open failure.");
-        return resetSystemSettings();
-    }
-
-    size_t storedSize = preferences.getBytesLength(SYSTEM_SETTINGS_KEY);
-    preferences.end();
-
-    if(storedSize == 0) {
-        serialPrint("No SystemSettings found. Resetting to defaults.");
-        return resetSystemSettings();
-    } else if(storedSize != sizeof(SystemSettings)) {
-        serialPrint("Stored SystemSettings size mismatch. Resetting to defaults.");
-        return resetSystemSettings();
-    } else {
-        serialPrint("SystemSettings exists and is valid.");
-        return true;
-    }
+    return ensureStructExists(SYSTEM_SETTINGS_KEY, sizeof(SystemSettings), resetSystemSettings);
 }
