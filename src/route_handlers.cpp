@@ -5,6 +5,7 @@
 #include "debug_utils.h"
 #include "json_utils.h"
 #include "types.h"
+#include "store.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -255,6 +256,31 @@ void registerOtaRoute(AsyncWebServer& server) {
         });
 }
 
+void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
+    bool enabled = loadWarningsEnabled();
+    String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
+    request->send(200, "application/json", json);
+}
+
+void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
+    if(g_stateCallback == nullptr) {
+        request->send(500, "text/plain", "No callback registered");
+        return;
+    }
+    if(body.isEmpty()) {
+        request->send(400, "text/plain", "Bad Request: Missing JSON body.");
+        return;
+    }
+    StaticJsonDocument<64> doc;
+    if(deserializeJson(doc, body) || !doc.containsKey("enabled")) {
+        request->send(400, "text/plain", "Invalid JSON.");
+        return;
+    }
+    bool enabled = doc["enabled"].as<bool>();
+    g_stateCallback(STATE_CHANGE_WARNINGS, static_cast<void*>(&enabled));
+    request->send(200, "application/json", "{\"status\":\"success\"}");
+}
+
 // Initialization functions to set global state and return routes
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback) {
@@ -273,5 +299,7 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/set_system_config", HTTP_POST, handleSetSystemConfig},
             {"/get_status", HTTP_GET, handleGetStatus},
             {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
+            {"/get_warnings", HTTP_GET, handleGetWarnings},
+            {"/set_warnings", HTTP_POST, handleSetWarnings},
             {"/ping", HTTP_GET, handlePing}};
 }

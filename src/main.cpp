@@ -31,6 +31,7 @@ static SystemSettings systemSettings;
 static LampState lampState = LAMP_STATE_DEFAULT;
 static WiFiTestTracker wifiTracker;
 static LampState lastNormalState = LAMP_STATE_DEFAULT;
+static bool warningsEnabled = true;
 
 void onStateUpdatedFromWifi(StateChangeType type, void* data);
 void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value);
@@ -93,6 +94,8 @@ void setup() {
 
     // 3. WiFi-Zugangsdaten explizit löschen (viele Libraries puffern diese noch)
     // WiFi.disconnect(true, true);
+
+    warningsEnabled = loadWarningsEnabled();
 
     setAlarms(appConfig.alarms); // Restore alarms and calculate next trigger
 
@@ -229,6 +232,12 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         serialPrint("System settings updated via WiFi controller generic callback.");
         break;
     }
+    case STATE_CHANGE_WARNINGS: {
+        warningsEnabled = *static_cast<bool*>(data);
+        saveWarningsEnabled(warningsEnabled);
+        serialPrint(String("Warnings ") + (warningsEnabled ? "enabled" : "disabled"));
+        break;
+    }
     }
 }
 
@@ -324,6 +333,26 @@ void checkLampState() {
         return;
     }
 
+    // Persistent system warnings: only active when lamp would otherwise be in DEFAULT
+    if(warningsEnabled) {
+        time_t now = time(nullptr);
+        if(now < 1577836800L) { // no valid time (before 2020)
+            lampState = LAMP_STATE_SYS_ERROR;
+            return;
+        }
+        unsigned long sinceSyncMs;
+        if(wifiTracker.lastSucceededTestTime == 0) {
+            // Never NTP-synced — stale after 30 min grace period
+            sinceSyncMs = (millis() > 30UL * 60 * 1000) ? (25UL * 60 * 60 * 1000) : 0;
+        } else {
+            sinceSyncMs = millis() - wifiTracker.lastSucceededTestTime;
+        }
+        if(sinceSyncMs > 24UL * 60 * 60 * 1000) {
+            lampState = LAMP_STATE_SYS_WARNING;
+            return;
+        }
+    }
+
     lampState = LAMP_STATE_DEFAULT;
 }
 
@@ -334,6 +363,9 @@ void updateLed() {
 
     // State changes
     if(lampState == LAMP_STATE_DEFAULT && lastLampState != LAMP_STATE_DEFAULT) {
+        if(lastLampState == LAMP_STATE_SYS_ERROR || lastLampState == LAMP_STATE_SYS_WARNING) {
+            stopSinglePixelBlink();
+        }
         setBrightnessLevel(appConfig.brightnessMode);
         checkAndApplyColorMode(appConfig);
     }
@@ -352,7 +384,18 @@ void updateLed() {
     LAMP_STATE_SUCCESS) { setBrightnessLevel(appConfig.brightnessMode || 7);
         setLedColor(0, 255, 0); // blink green until wifi is not used
     } */
+    if(lampState == LAMP_STATE_SYS_ERROR && lastLampState != LAMP_STATE_SYS_ERROR) {
+        setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
+        startSinglePixelBlink(0x00FF0000); // red
+    }
+    if(lampState == LAMP_STATE_SYS_WARNING && lastLampState != LAMP_STATE_SYS_WARNING) {
+        setBrightnessLevel(appConfig.brightnessMode ? appConfig.brightnessMode : 7);
+        startSinglePixelBlink(0x00FFFF00); // yellow
+    }
     if(lampState == LAMP_STATE_ALARM && lastLampState != LAMP_STATE_ALARM) {
+        if(lastLampState == LAMP_STATE_SYS_ERROR || lastLampState == LAMP_STATE_SYS_WARNING) {
+            stopSinglePixelBlink();
+        }
         checkAndApplyColorMode(appConfig);
     }
     if(lampState == LAMP_STATE_SLEEP && lastLampState != LAMP_STATE_SLEEP) {

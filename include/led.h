@@ -1,6 +1,9 @@
 
 #include <Arduino.h>
 
+// The single pixel used for system warning/error blink (0 = first pixel)
+#define WARNING_PIXEL 0
+
 void ledInit();
 void ledUpdate();
 void setBrightness(uint8_t brightness);
@@ -18,3 +21,7 @@ void startCelebrationEffect();
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();
+
+// Single-pixel blink: WARNING_PIXEL blinks in blinkColor, rest stays static
+void startSinglePixelBlink(uint32_t blinkColor);
+void stopSinglePixelBlink();

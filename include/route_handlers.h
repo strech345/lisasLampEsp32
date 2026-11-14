@@ -19,6 +19,8 @@ void handleGetSystemConfig(AsyncWebServerRequest* request, const String& body);
 void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body);
 void handleGetStatus(AsyncWebServerRequest* request, const String& body);
 void handleMeerkatImage(AsyncWebServerRequest* request, const String& body);
+void handleGetWarnings(AsyncWebServerRequest* request, const String& body);
+void handleSetWarnings(AsyncWebServerRequest* request, const String& body);
 
 // Initialization function to set up global state for handlers and return routes
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,

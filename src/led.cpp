@@ -111,6 +111,20 @@ void startCelebrationEffect() {
     setBrightnessLevel(7);
 }
 
+void startSinglePixelBlink(uint32_t blinkColor) {
+    uint32_t normalColor = ws2812fx.getColor();
+    // WARNING_PIXEL blinks with the alert color
+    ws2812fx.setSegment(0, WARNING_PIXEL, WARNING_PIXEL, FX_MODE_BLINK, blinkColor, 500);
+    // Remaining pixels stay static at the current lamp color
+    if (WARNING_PIXEL + 1 <= LED_COUNT - 1) {
+        ws2812fx.setSegment(1, WARNING_PIXEL + 1, LED_COUNT - 1, FX_MODE_STATIC, normalColor, 1000);
+    }
+}
+
+void stopSinglePixelBlink() {
+    ws2812fx.resetSegments();
+}
+
 void statusLedInit() {
     pinMode(STATUS_LED_PIN, OUTPUT);
 }

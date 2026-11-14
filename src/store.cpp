@@ -231,6 +231,23 @@ time_t loadLastKnownTime() {
     return (time_t)t;
 }
 
+static const char* WARNINGS_ENABLED_KEY = "warningsOn";
+
+void saveWarningsEnabled(bool enabled) {
+    if(!preferences.begin(PREF_NAMESPACE, false))
+        return;
+    preferences.putBool(WARNINGS_ENABLED_KEY, enabled);
+    preferences.end();
+}
+
+bool loadWarningsEnabled() {
+    if(!preferences.begin(PREF_NAMESPACE, true))
+        return true; // default: enabled
+    bool v = preferences.getBool(WARNINGS_ENABLED_KEY, true);
+    preferences.end();
+    return v;
+}
+
 bool ensureSystemSettingsExistsAndResetIfNot() {
     serialPrint("Checking if SystemSettings exists...");
 

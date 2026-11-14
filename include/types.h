@@ -60,8 +60,8 @@ enum StateChangeType {
     STATE_CHANGE_ALARMS,
     STATE_CHANGE_CUSTOM_COLOR,
     STATE_CHANGE_CONFIG,
-    STATE_CHANGE_SYSTEM_CONFIG
-    // Add other state types here as needed
+    STATE_CHANGE_SYSTEM_CONFIG,
+    STATE_CHANGE_WARNINGS
 };
 
 enum LampState {
@@ -72,7 +72,15 @@ enum LampState {
     LAMP_STATE_SUCCESS = 4,
     LAMP_STATE_WARNING = 5,
     LAMP_STATE_SLEEP = 6,
-    LAMP_STATE_CELEBRATION = 7
+    LAMP_STATE_CELEBRATION = 7,
+    LAMP_STATE_SYS_ERROR = 8,   // no time available — red single-pixel blink
+    LAMP_STATE_SYS_WARNING = 9  // stale NTP sync — yellow single-pixel blink
+};
+
+enum SystemWarningType {
+    SYS_WARN_NONE = 0,
+    SYS_WARN_NO_TIME = 1,
+    SYS_WARN_STALE_SYNC = 2
 };
 
 enum WiFiTestResult {

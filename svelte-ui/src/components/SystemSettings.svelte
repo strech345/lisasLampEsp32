@@ -6,11 +6,34 @@
   export let show = false;
   $: hasChanges = $systemStore && systemStore.hasChanges();
 
+  let warningsEnabled = true;
+
   onMount(() => {
     if (show) {
       systemStore.load();
+      loadWarnings();
     }
   });
+
+  async function loadWarnings() {
+    try {
+      const res = await fetch("/get_warnings");
+      if (res.ok) {
+        const data = await res.json();
+        warningsEnabled = data.enabled;
+      }
+    } catch {}
+  }
+
+  async function handleWarningsToggle() {
+    try {
+      await fetch("/set_warnings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: warningsEnabled }),
+      });
+    } catch {}
+  }
 
   let statusInfo = null;
 
@@ -117,10 +140,11 @@
     }
   }
 
-  // Load system settings and status when modal opens
+  // Load system settings, status and warnings when modal opens
   $: if (show) {
     systemStore.load();
     loadStatusInfo();
+    loadWarnings();
   }
 </script>
 
@@ -165,6 +189,19 @@
           on:input={(e) => handleFieldChange("externalPW", e)}
         />
       </form>
+
+      <hr />
+      <section class="warnings-section">
+        <label class="warnings-label">
+          <input
+            type="checkbox"
+            bind:checked={warningsEnabled}
+            on:change={handleWarningsToggle}
+          />
+          LED warnings enabled
+        </label>
+        <small>When active, pixel 0 blinks red (no time) or yellow (stale NTP sync).</small>
+      </section>
 
       <hr />
       <section class="ota-section">
@@ -321,6 +358,25 @@
 
   .status-value.connection_failed {
     color: #ef4444;
+  }
+
+  .warnings-section {
+    margin-bottom: 0.5rem;
+  }
+
+  .warnings-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .warnings-section small {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color, #888);
   }
 
   .ota-section h3 {
