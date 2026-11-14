@@ -25,3 +25,7 @@ void statusLedOff();
 // Single-pixel blink: WARNING_PIXEL blinks in blinkColor, rest stays static
 void startSinglePixelBlink(uint32_t blinkColor);
 void stopSinglePixelBlink();
+
+// Briefly flashes all LEDs to color, then restores previous state.
+// color format: 0x00RRGGBB (same as setLedColor)
+void flashLeds(uint32_t color, unsigned long durationMs = 350);

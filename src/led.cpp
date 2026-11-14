@@ -7,11 +7,14 @@
 // Structure to hold LED state
 struct LedState {
     uint32_t color;
-    uint8_t brightness;
-    uint8_t mode;
+    uint8_t  brightness;
+    uint8_t  mode;
+    uint16_t speed;
 };
 
-static LedState savedLedState;
+// Flash state
+static unsigned long s_flashEndMs = 0;
+static LedState      s_preFlashState;
 
 #define LED_PIN 7
 #define LED_COUNT 5
@@ -30,7 +33,34 @@ void ledInit() {
 }
 
 void ledUpdate() {
+    if(s_flashEndMs > 0 && millis() >= s_flashEndMs) {
+        s_flashEndMs = 0;
+        ws2812fx.resetSegments();
+        ws2812fx.setMode(s_preFlashState.mode);
+        ws2812fx.setColor(s_preFlashState.color);
+        ws2812fx.setSpeed(s_preFlashState.speed);
+        ws2812fx.setBrightness(s_preFlashState.brightness);
+        if(s_preFlashState.brightness == 0) ws2812fx.stop();
+        else if(!ws2812fx.isRunning()) ws2812fx.start();
+    }
     ws2812fx.service();
+}
+
+void flashLeds(uint32_t color, unsigned long durationMs) {
+    s_preFlashState.color      = ws2812fx.getColor();
+    s_preFlashState.brightness = ws2812fx.getBrightness();
+    s_preFlashState.mode       = ws2812fx.getMode();
+    s_preFlashState.speed      = ws2812fx.getSpeed();
+
+    ws2812fx.resetSegments();
+    ws2812fx.setMode(FX_MODE_STATIC);
+    ws2812fx.setColor(color);
+    // Ensure flash is visible even if lamp is currently dark
+    uint8_t b = s_preFlashState.brightness >= 64 ? s_preFlashState.brightness : 160;
+    ws2812fx.setBrightness(b);
+    if(!ws2812fx.isRunning()) ws2812fx.start();
+
+    s_flashEndMs = millis() + durationMs;
 }
 
 void setBrightness(uint8_t brightness) {

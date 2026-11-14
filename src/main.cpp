@@ -23,9 +23,13 @@
 #include <soc/rtc.h>
 #include <nvs_flash.h>
 
+#define FLASH_GREEN 0x0000FF00
+#define FLASH_RED   0x00FF0000
+
 #define DEBUG
 
 static std::vector<Route> apRoutes;
+static uint32_t s_pendingFlash = 0; // set by button handlers, applied in updateLed()
 
 static FullConfig appConfig;
 static SystemSettings systemSettings;
@@ -431,6 +435,11 @@ void updateLed() {
     }
     lastLampState = lampState;
 
+    if(s_pendingFlash) {
+        flashLeds(s_pendingFlash);
+        s_pendingFlash = 0;
+    }
+
     // Stay same
     if(currentTime - lastCheck < 5000) {
         return;
@@ -459,30 +468,33 @@ void onShortPress() {
     if(lampState == LAMP_STATE_SLEEP) {
         serialPrint("stopping sleep mode");
         lampState = LAMP_STATE_DEFAULT;
+        s_pendingFlash = FLASH_GREEN;
         return;
     }
-
     if(lampState == LAMP_STATE_ALARM) {
         serialPrint("stop alarm");
         lampState = LAMP_STATE_DEFAULT;
         stopActiveAlarm();
+        s_pendingFlash = FLASH_RED;
         return;
     }
     if(lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("stop good night");
         lampState = LAMP_STATE_DEFAULT;
         stopGoodNightMode();
+        s_pendingFlash = FLASH_RED;
         return;
     }
     if(lampState == LAMP_STATE_CELEBRATION) {
         serialPrint("stop celebration");
         lampState = LAMP_STATE_DEFAULT;
         stopCelebration();
+        s_pendingFlash = FLASH_RED;
         return;
     }
     serialPrint("activate good night");
-    // TODO show green preview
     activateGoodNightMode();
+    s_pendingFlash = FLASH_GREEN;
 }
 
 void checkToGoSleep() {
