@@ -35,8 +35,6 @@ static SystemSettings systemSettings;
 static LampState lampState = LAMP_STATE_DEFAULT;
 static WiFiTestTracker wifiTracker;
 static LampState lastNormalState = LAMP_STATE_DEFAULT;
-static bool warningsEnabled = true;
-static bool deepSleepEnabled = true;
 
 void onStateUpdatedFromWifi(StateChangeType type, void* data);
 
@@ -78,21 +76,18 @@ void setup() {
     ledInit();
     statusLedOn();
 
-    initLampState(&lampState, &lastNormalState, &warningsEnabled, &appConfig, &wifiTracker, &s_pendingFlash);
-    initSleepManager(&deepSleepEnabled, &lampState, &appConfig);
-    initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
-
-    // Apply color mode on startup
-    checkAndApplyColorMode(appConfig);
-
     ensureSystemSettingsExistsAndResetIfNot();
     if(!loadSystemSettings(systemSettings)) {
         serialPrint("Using default system settings");
         systemSettings = getDefaultSystemSettings();
     }
 
-    warningsEnabled = loadWarningsEnabled();
-    deepSleepEnabled = loadDeepSleepEnabled();
+    initLampState(&lampState, &lastNormalState, &systemSettings.warningsEnabled, &appConfig, &wifiTracker, &s_pendingFlash);
+    initSleepManager(&systemSettings.deepSleepEnabled, &lampState, &appConfig);
+    initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
+
+    // Apply color mode on startup
+    checkAndApplyColorMode(appConfig);
 
     setAlarms(appConfig.alarms); // Restore alarms and calculate next trigger
 
@@ -186,17 +181,17 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data) {
         break;
     }
     case STATE_CHANGE_WARNINGS: {
-        warningsEnabled = *static_cast<bool*>(data);
-        saveWarningsEnabled(warningsEnabled);
-        logEvent(warningsEnabled ? "Warnings enabled" : "Warnings disabled");
-        serialPrint(String("Warnings ") + (warningsEnabled ? "enabled" : "disabled"));
+        systemSettings.warningsEnabled = *static_cast<bool*>(data);
+        saveSystemSettings(systemSettings);
+        logEvent(systemSettings.warningsEnabled ? "Warnings enabled" : "Warnings disabled");
+        serialPrint(String("Warnings ") + (systemSettings.warningsEnabled ? "enabled" : "disabled"));
         break;
     }
     case STATE_CHANGE_DEEP_SLEEP: {
-        deepSleepEnabled = *static_cast<bool*>(data);
-        saveDeepSleepEnabled(deepSleepEnabled);
-        logEvent(deepSleepEnabled ? "Deep sleep enabled" : "Deep sleep disabled");
-        serialPrint(String("Deep sleep ") + (deepSleepEnabled ? "enabled" : "disabled"));
+        systemSettings.deepSleepEnabled = *static_cast<bool*>(data);
+        saveSystemSettings(systemSettings);
+        logEvent(systemSettings.deepSleepEnabled ? "Deep sleep enabled" : "Deep sleep disabled");
+        serialPrint(String("Deep sleep ") + (systemSettings.deepSleepEnabled ? "enabled" : "disabled"));
         break;
     }
     }

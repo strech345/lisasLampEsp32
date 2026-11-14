@@ -55,6 +55,8 @@ struct SystemSettings {
     char externalPW[PWD_MAX_LEN + 1];
     char externalSSID2[SSID_MAX_LEN + 1]; // fallback external network
     char externalPW2[PWD_MAX_LEN + 1];
+    bool warningsEnabled;
+    bool deepSleepEnabled;
 };
 
 // Enum to identify the type of state that has changed

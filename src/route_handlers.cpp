@@ -225,13 +225,13 @@ void registerOtaRoute(AsyncWebServer& server) {
 }
 
 void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
-    bool enabled = loadWarningsEnabled();
+    bool enabled = g_systemSettings ? g_systemSettings->warningsEnabled : true;
     String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
     request->send(200, "application/json", json);
 }
 
 void handleGetDeepSleep(AsyncWebServerRequest* request, const String&) {
-    bool enabled = loadDeepSleepEnabled();
+    bool enabled = g_systemSettings ? g_systemSettings->deepSleepEnabled : true;
     String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
     request->send(200, "application/json", json);
 }
