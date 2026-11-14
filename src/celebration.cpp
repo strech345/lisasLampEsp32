@@ -67,12 +67,12 @@ bool isCelebrationActive() {
     return celebrationActive;
 }
 
-long getMillisToNextCelebration() {
+int64_t getMillisToNextCelebration() {
     time_t nowSecs;
     time(&nowSecs);
     struct tm* ptm = localtime(&nowSecs);
 
-    long minMillis = -1;
+    int64_t minMillis = -1;
 
     for(const auto& date : celebrationDates) {
         struct tm target = *ptm;
@@ -98,7 +98,7 @@ long getMillisToNextCelebration() {
             celebrationEpoch = mktime(&target);
         }
 
-        long diffMs = (long)(celebrationEpoch - nowSecs) * 1000L;
+        int64_t diffMs = (int64_t)(celebrationEpoch - nowSecs) * 1000LL;
         if(minMillis == -1 || diffMs < minMillis) {
             minMillis = diffMs;
         }

@@ -54,7 +54,7 @@ void checkGoodNightMode(uint16_t durationMinutes) {
     static unsigned long lastCheck = 0;
     unsigned long currentTime = millis();
 
-    // Only check every 1 seconds
+    // Only check every 10 seconds
     if(currentTime - lastCheck < 10000) {
         return;
     }

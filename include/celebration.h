@@ -21,6 +21,6 @@ bool isCelebrationActive();
 /**
  * @brief Returns the milliseconds until the next celebration starts.
  */
-long getMillisToNextCelebration();
+int64_t getMillisToNextCelebration();
 
 #endif // CELEBRATION_H

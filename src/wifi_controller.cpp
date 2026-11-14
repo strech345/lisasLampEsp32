@@ -35,6 +35,7 @@ static void beginSta(uint8_t idx) {
     const char* pw   = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0)
                            ? g_systemSettings->externalPW2
                            : g_systemSettings->externalPW;
+    // pointer comparison is intentional: ssid points directly into g_systemSettings
     s_staIdx = (ssid == g_systemSettings->externalSSID2) ? 1 : 0;
     char buf[52];
     snprintf(buf, sizeof(buf), "STA connect%s: %.30s", s_staIdx ? " (fallback)" : "", ssid);

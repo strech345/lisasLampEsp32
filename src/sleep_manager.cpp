@@ -44,7 +44,7 @@ void checkToGoSleep() {
         return;
 
     long msToNextAlarm = getMillisToNextAlarm();
-    long msToNextCelebration = getMillisToNextCelebration();
+    int64_t msToNextCelebration = getMillisToNextCelebration();
 
     if(msToNextAlarm == 0) // alarm currently active
         return;
@@ -58,7 +58,7 @@ void checkToGoSleep() {
     // For timed events: wake up early enough to account for RTC drift + 5 min buffer.
     // Lead time = EVENT_LEAD_TIME_MS + worst-case drift over the full time to event.
     // We use the full time-to-event for the drift (conservative upper bound).
-    auto applyEventLead = [&](long msToEvent) {
+    auto applyEventLead = [&](int64_t msToEvent) {
         if(msToEvent <= 0)
             return;
         unsigned long raw = (unsigned long)msToEvent;

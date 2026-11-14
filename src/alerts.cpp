@@ -3,7 +3,8 @@
 #include "event_log.h"
 
 static AlertType currentAlert = ALERT_NONE;
-static unsigned long alertEndTime = 0; // 0 means persistent
+static unsigned long alertStartTime = 0;
+static unsigned long alertDuration = 0; // 0 means persistent
 
 static const char* alertTypeName(AlertType t) {
     switch(t) {
@@ -20,7 +21,8 @@ void startAlert(AlertType type, unsigned long duration) {
     snprintf(buf, sizeof(buf), "Alert start: %s", alertTypeName(type));
     logEvent(buf);
     currentAlert = type;
-    alertEndTime = (duration > 0) ? (millis() + duration) : 0;
+    alertStartTime = millis();
+    alertDuration = duration;
 }
 
 void stopAlert() {
@@ -30,7 +32,8 @@ void stopAlert() {
         snprintf(buf, sizeof(buf), "Alert stop: %s", alertTypeName(currentAlert));
         logEvent(buf);
         currentAlert = ALERT_NONE;
-        alertEndTime = 0;
+        alertStartTime = 0;
+        alertDuration = 0;
     }
 }
 
@@ -39,8 +42,8 @@ AlertType getActiveAlertType() {
 }
 
 void checkAlertState() {
-    if (currentAlert != ALERT_NONE && alertEndTime > 0) {
-        if (millis() >= alertEndTime) {
+    if (currentAlert != ALERT_NONE && alertDuration > 0) {
+        if (millis() - alertStartTime >= alertDuration) {
             serialPrint("Alert duration expired");
             stopAlert();
         }

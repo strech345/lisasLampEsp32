@@ -78,9 +78,9 @@ static RotaryEncoderCallback _rotaryEncoderCallback;
 #define BOOT_BUTTON_PIN 9
 
 // paramaters for button
-unsigned long shortPressAfterMiliseconds = 50;  // how long short press shoud be. Do not set too low to avoid bouncing
-                                                // (false press events).
-unsigned long longPressAfterMiliseconds = 1000; // how long čong press shoud be.
+const unsigned long shortPressAfterMiliseconds = 50;  // how long short press shoud be. Do not set too low to avoid bouncing
+                                                      // (false press events).
+const unsigned long longPressAfterMiliseconds = 1000; // how long čong press shoud be.
 
 // Generally, you should use "unsigned long" for variables that hold time
 // The value will quickly become too large for an int to store

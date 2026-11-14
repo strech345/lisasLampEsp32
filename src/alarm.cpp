@@ -136,7 +136,7 @@ void checkAlarmStates(uint16_t durationMinutes) {
     }
     lastCheck = currentTime;
 
-    int runningMs = millis() - alarm_start_millis;
+    unsigned long runningMs = millis() - alarm_start_millis;
 
     TimeInfo currentTimeInfo = getCurrentTimeInfo();
     // First, check if a currently active alarm needs to be disabled
