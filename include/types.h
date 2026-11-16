@@ -54,12 +54,13 @@ struct SystemSettings {
     bool rtcCrystalAvailable; // Letzter Boot-Befund: Quarz war messbar (wird intern gesetzt)
 };
 
-#define MAX_TSF_ENTRIES 10
+#define MAX_TSF_ENTRIES 16
 
 struct TsfEntry {
-    uint8_t bssid[6];
-    uint64_t tsf_us;
-    uint64_t unix_us;
+    uint8_t  bssid[6];
+    uint64_t tsf_us;   // TSF-Wert zum Messzeitpunkt (Mikrosekunden)
+    uint64_t unix_us;  // Unix-Zeit zum Messzeitpunkt (Mikrosekunden)
+    int8_t   rssi;     // Empfangsstärke bei der Messung (dBm)
 };
 
 // Art der Zustandsänderung — wird im Callback onStateUpdatedFromWifi verwendet

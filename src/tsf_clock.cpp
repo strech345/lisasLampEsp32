@@ -1,6 +1,7 @@
 // TSF-Uhrzeit-Fallback — Implementierung
 // Erfasst Beacon-Frames per Promiscuous-Scan, berechnet mittels Medianfilter
 // und Ausreißerelimination einen Unix-Zeitstempel und setzt damit die Systemzeit.
+// Neue APs werden per Quality-Score (RSSI + Laufzeit) gegen schwächere Einträge ausgetauscht.
 #include "tsf_clock.h"
 #include "store.h"
 #include "debug_utils.h"
@@ -97,8 +98,21 @@ static void stopCapture() {
     g_captureRunning = false;
 }
 
-// Verarbeitet einen NTP-Snapshot: sortiert erfasste APs nach RSSI (beste zuerst),
-// speichert bis zu MAX_TSF_ENTRIES als TSF-Referenz im Flash
+// Berechnet den Quality-Score eines Eintrags:
+// score = (rssi + 100) + min(tsf_tage, 365)
+// Lange Laufzeit (stabiler AP) wird stark gewichtet, RSSI ist sekundär.
+static int calcScore(int8_t rssi, uint64_t tsf_us) {
+    int rssi_score = (int)rssi + 100;
+    if (rssi_score < 0) rssi_score = 0;
+    uint64_t days = tsf_us / (86400ULL * 1000000ULL);
+    if (days > 365) days = 365;
+    return rssi_score + (int)days;
+}
+
+// Verarbeitet einen NTP-Snapshot: mergt neue APs per Quality-Score in die gespeicherte Liste.
+// Bekannte APs werden aktualisiert (frischerer Messzeitpunkt = besserer Score).
+// Unbekannte APs verdrängen nur den schwächsten Eintrag wenn ihr Score höher ist.
+// Nicht gescannte APs bleiben unberührt in der Liste.
 static void processSnapshot() {
     uint8_t count = g_capturedBeaconCount;
 
@@ -108,24 +122,46 @@ static void processSnapshot() {
         return;
     }
 
-    for (uint8_t i = 0; i < count - 1; i++) {
-        uint8_t best = i;
-        for (uint8_t j = i + 1; j < count; j++) {
-            if (g_capturedBeacons[j].rssi > g_capturedBeacons[best].rssi) best = j;
-        }
-        if (best != i) {
-            CapturedBeacon tmp = g_capturedBeacons[i];
-            g_capturedBeacons[i] = g_capturedBeacons[best];
-            g_capturedBeacons[best] = tmp;
-        }
-    }
+    uint8_t newAdded = 0;
+    uint8_t updated = 0;
 
-    uint8_t saveCount = count < MAX_TSF_ENTRIES ? count : MAX_TSF_ENTRIES;
-    g_storedCount = saveCount;
-    for (uint8_t i = 0; i < saveCount; i++) {
-        memcpy(g_storedEntries[i].bssid, g_capturedBeacons[i].bssid, 6);
-        g_storedEntries[i].tsf_us = g_capturedBeacons[i].tsf_us;
-        g_storedEntries[i].unix_us = g_captureUnixUs;
+    for (uint8_t n = 0; n < count; n++) {
+        TsfEntry newEntry;
+        memcpy(newEntry.bssid, g_capturedBeacons[n].bssid, 6);
+        newEntry.tsf_us  = g_capturedBeacons[n].tsf_us;
+        newEntry.unix_us = g_captureUnixUs;
+        newEntry.rssi    = g_capturedBeacons[n].rssi;
+        int newScore = calcScore(newEntry.rssi, newEntry.tsf_us);
+
+        // Bereits bekannter AP: Eintrag mit frischen Messwerten überschreiben
+        bool found = false;
+        for (uint8_t s = 0; s < g_storedCount; s++) {
+            if (memcmp(g_storedEntries[s].bssid, newEntry.bssid, 6) == 0) {
+                g_storedEntries[s] = newEntry;
+                updated++;
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        if (g_storedCount < MAX_TSF_ENTRIES) {
+            g_storedEntries[g_storedCount++] = newEntry;
+            newAdded++;
+            continue;
+        }
+
+        // Liste voll: schwächsten Eintrag suchen und ggf. ersetzen
+        uint8_t worstIdx = 0;
+        int worstScore = calcScore(g_storedEntries[0].rssi, g_storedEntries[0].tsf_us);
+        for (uint8_t s = 1; s < g_storedCount; s++) {
+            int sc = calcScore(g_storedEntries[s].rssi, g_storedEntries[s].tsf_us);
+            if (sc < worstScore) { worstScore = sc; worstIdx = s; }
+        }
+        if (newScore > worstScore) {
+            g_storedEntries[worstIdx] = newEntry;
+            newAdded++;
+        }
     }
 
     saveTsfEntries(g_storedEntries, g_storedCount);
@@ -133,7 +169,8 @@ static void processSnapshot() {
     g_snapshotScheduled = false;
 
     char msg[52];
-    snprintf(msg, sizeof(msg), "TSF: Snapshot %d APs", saveCount);
+    snprintf(msg, sizeof(msg), "TSF: Snapshot %d neu, %d ersetzt, %d total",
+             newAdded, updated, g_storedCount);
     logEvent(msg);
     serialPrint(msg);
 }
@@ -252,6 +289,13 @@ static void processFallback() {
             uint8_t s = rebaseStoredIdx[i];
             g_storedEntries[s].tsf_us  = rebaseNewTsf[i];
             g_storedEntries[s].unix_us = medianUs;
+            // RSSI des neu gescannten Beacons übernehmen (aktuellerer Messwert)
+            for (uint8_t n = 0; n < newCount; n++) {
+                if (memcmp(g_storedEntries[s].bssid, g_capturedBeacons[n].bssid, 6) == 0) {
+                    g_storedEntries[s].rssi = g_capturedBeacons[n].rssi;
+                    break;
+                }
+            }
         }
         saveTsfEntries(g_storedEntries, g_storedCount);
         char msg[52];
@@ -329,7 +373,8 @@ void tsfClockLoop() {
     }
 }
 
-// Gibt TSF-Modul-Status als JSON zurück: aktiviert, gespeicherte APs, letzter Snapshot, Berechnungsergebnis
+// Gibt TSF-Modul-Status als JSON zurück: aktiviert, gespeicherte APs, letzter Snapshot,
+// Berechnungsergebnis sowie Score-Bereich (min/max) der gespeicherten Einträge
 String getTsfStatusJson() {
     JsonDocument doc;
     doc["enabled"] = g_settings != nullptr && g_settings->tsfFallbackEnabled;
@@ -338,6 +383,18 @@ String getTsfStatusJson() {
     doc["lastCalcResult"] = g_lastCalcResult;
     doc["lastCalcAps"] = g_lastCalcAps;
     doc["lastCalcDeviationMs"] = g_lastCalcDeviationMs;
+
+    if (g_storedCount > 0) {
+        int minSc = calcScore(g_storedEntries[0].rssi, g_storedEntries[0].tsf_us);
+        int maxSc = minSc;
+        for (uint8_t i = 1; i < g_storedCount; i++) {
+            int sc = calcScore(g_storedEntries[i].rssi, g_storedEntries[i].tsf_us);
+            if (sc < minSc) minSc = sc;
+            if (sc > maxSc) maxSc = sc;
+        }
+        doc["minScore"] = minSc;
+        doc["maxScore"] = maxSc;
+    }
 
     String out;
     serializeJson(doc, out);

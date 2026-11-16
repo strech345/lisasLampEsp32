@@ -395,6 +395,9 @@
                 ? `✓ ${tsfStatus.lastCalcAps} APs, ±${tsfStatus.lastCalcDeviationMs}ms`
                 : `✗ ${tsfStatus.lastCalcResult}`}</span>
             {/if}
+            {#if tsfStatus.minScore !== undefined}
+              <span>· Score-Bereich: {tsfStatus.minScore}–{tsfStatus.maxScore}</span>
+            {/if}
             <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>Snapshot</button>
           </div>
         {/if}
