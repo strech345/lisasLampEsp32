@@ -16,6 +16,7 @@ void startCelebrationEffect();
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();
+void statusLedTick(bool apActive); // Blinkt wenn AP aktiv, sonst aus
 
 // Lässt WARNING_PIXEL in blinkColor blinken; alle anderen Pixel bleiben statisch
 void startSinglePixelBlink(uint32_t blinkColor);

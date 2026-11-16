@@ -148,3 +148,20 @@ void statusLedOn() {
 void statusLedOff() {
     digitalWrite(STATUS_LED_PIN, HIGH);
 }
+
+// Blinkt die Status-LED wenn apActive=true (500 ms an/aus), sonst LED aus.
+// Muss regelmäßig aus loop() aufgerufen werden.
+void statusLedTick(bool apActive) {
+    static unsigned long lastToggleMs = 0;
+    static bool ledState = false;
+    if(!apActive) {
+        if(ledState) { statusLedOff(); ledState = false; }
+        return;
+    }
+    unsigned long now = millis();
+    if(now - lastToggleMs >= 500) {
+        lastToggleMs = now;
+        ledState = !ledState;
+        ledState ? statusLedOn() : statusLedOff();
+    }
+}

@@ -243,7 +243,7 @@ void startWifi(bool withAP) {
     if(withAP) {
         dnsServer.start(53, "*", localIP);
         s_wifiStopTimerMs = millis();
-        serialPrint("AP IP address: " + WiFi.softAPIP().toString());
+        serialPrint("AP aktiv — SSID: '" + String(s->internalSSID) + "'  IP: " + WiFi.softAPIP().toString());
     }
 }
 

@@ -159,6 +159,7 @@ void loop() {
     wifiLoop();
     tsfClockLoop();
     rdsClockLoop();
+    statusLedTick(isWiFiActive());
     rotary_loop();
 
     // --- Zustandsmaschinen der Lampenmodi prüfen ---
