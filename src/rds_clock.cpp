@@ -1,3 +1,6 @@
+// RDS-Uhrzeit-Fallback — Implementierung
+// Steuert RDA5807M-FM-Chip per I2C, scannt das Band nach einem empfangbaren Sender
+// und wertet RDS-Group-4A (Clocktime & Date) aus um die Systemzeit zu setzen.
 #include "rds_clock.h"
 #include "store.h"
 #include "debug_utils.h"
@@ -52,6 +55,7 @@ static uint16_t      g_scanStartCh = 0;
 static unsigned long g_stateMs     = 0;
 static unsigned long g_lastSyncMs  = 0;
 
+// Schreibt ein 16-Bit-Register des RDA5807M per I2C (Big-Endian)
 static void writeReg(uint8_t reg, uint16_t val) {
     Wire.beginTransmission(RDA5807M_ADDR);
     Wire.write(reg);
@@ -60,6 +64,7 @@ static void writeReg(uint8_t reg, uint16_t val) {
     Wire.endTransmission();
 }
 
+// Liest ein 16-Bit-Register des RDA5807M per I2C (Big-Endian, Repeated-Start)
 static uint16_t readReg(uint8_t reg) {
     Wire.beginTransmission(RDA5807M_ADDR);
     Wire.write(reg);
@@ -71,24 +76,30 @@ static uint16_t readReg(uint8_t reg) {
     return val;
 }
 
+// Initialisiert den RDA5807M: Soft-Reset, RDS aktivieren, 50-kHz-Suchlaufschritt
 static void chipInit() {
     writeReg(REG_CONFIG, 0xD001 | (1 << 3) | (1 << 2));
     delay(50);
 }
 
+// Stimmt den Chip auf die angegebene Frequenz (in 10kHz-Einheiten) ab
 static void chipTune(uint16_t freq_10kHz) {
     uint16_t chan = (freq_10kHz - FM_START_10KHZ) / FM_STEP_10KHZ;
     writeReg(REG_TUNE, (chan << 6) | (1 << 4));
 }
 
+// Gibt den RSSI-Wert des aktuellen Kanals zurück (Bits 15:9 von REG_SIGNAL)
 static uint8_t getRssi() {
     return (uint8_t)(readReg(REG_SIGNAL) >> 9);
 }
 
+// Gibt true zurück wenn RDS-Bit RDSR (Bit 15 in REG_STATUS) gesetzt ist
 static bool isRdsReady() {
     return (readReg(REG_STATUS) & 0x8000) != 0;
 }
 
+// Analysiert RDS-Blöcke B/C/D auf Group 4A (Clocktime): dekodiert MJD-Datum,
+// Stunden, Minuten und UTC-Offset und setzt die Systemzeit wenn plausibel
 static bool tryParseCt(uint16_t blockB, uint16_t blockC, uint16_t blockD) {
     if (((blockB >> 12) & 0x0F) != 4 || ((blockB >> 11) & 0x01) != 0) return false;
 
@@ -114,23 +125,27 @@ static bool tryParseCt(uint16_t blockB, uint16_t blockC, uint16_t blockD) {
     return true;
 }
 
+// Liest RDS-Blöcke aus und versucht einen CT-Parse; gibt true zurück wenn Zeit gesetzt wurde
 static bool checkRds() {
     if (!isRdsReady()) return false;
     return tryParseCt(readReg(REG_RDSB), readReg(REG_RDSC), readReg(REG_RDSD));
 }
 
+// Gibt den nächsten Kanal im Scan zurück; rollt vom Ende des Bandes zurück zum Anfang
 static uint16_t nextChannel(uint16_t ch) {
     ch += FM_STEP_10KHZ;
     if (ch > FM_END_10KHZ) ch = FM_START_10KHZ;
     return ch;
 }
 
+// Speichert den aktuellen Kanal in SystemSettings damit beim nächsten Start direkt dort begonnen wird
 static void saveChannel(uint16_t ch) {
     if (g_settings == nullptr) return;
     const_cast<SystemSettings*>(g_settings)->rdsLastChannel = ch;
     saveSystemSettings(*g_settings);
 }
 
+// Initialisiert I2C-Bus, Power-Pin (LOW = aus) und gibt den letzten bekannten Kanal aus
 void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
     g_settings = settings;
     g_tracker  = tracker;
@@ -146,6 +161,8 @@ void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
         : String("RDS: Init, kein gespeicherter Kanal"));
 }
 
+// Zustandsmaschine: schaltet Modul ein, scannt Kanäle, wartet auf RDS-CT-Paket;
+// stoppt sobald Uhrzeit gesetzt oder WiFi-Verbindung vorhanden ist
 void rdsClockLoop() {
     if (g_settings == nullptr || !g_settings->rdsClockEnabled) {
         if (g_state != RDS_STATE_OFF && g_state != RDS_STATE_DONE) {
@@ -248,6 +265,7 @@ void rdsClockLoop() {
     }
 }
 
+// Gibt RDS-Status als JSON zurück: Kanal, RSSI, Zustand (scanning/locked/done/…) und Zeit seit letzter Sync
 String getRdsStatusJson() {
     JsonDocument doc;
     doc["enabled"] = g_settings != nullptr && g_settings->rdsClockEnabled;

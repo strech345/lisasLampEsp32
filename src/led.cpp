@@ -1,3 +1,5 @@
+// LED-Steuerung — Implementierung
+// WS2812FX auf GPIO 7 (5 RGBW-Pixel); Status-LED auf GPIO 8 (invertierte Logik).
 #include <Arduino.h>
 #include <WS2812FX.h>
 #include "debug_utils.h"

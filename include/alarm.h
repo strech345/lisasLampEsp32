@@ -1,5 +1,7 @@
 #ifndef ALARM_H
 #define ALARM_H
+// Wecker-Modul: prüft Wochentag/Uhrzeit gegen konfigurierte Alarme,
+// verwaltet den aktiven Alarm und berechnet den Sonnenaufgangs-Farbverlauf.
 
 #include "types.h"
 #include <time.h> // For time_t

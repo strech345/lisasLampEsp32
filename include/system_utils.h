@@ -1,5 +1,6 @@
 #ifndef SYSTEM_UTILS_H
 #define SYSTEM_UTILS_H
+// Zeitsteuerungs-Hilfsfunktionen: nicht-blockierende Intervall- und Timeout-Verwaltung.
 
 // Gibt true zurück wenn intervalMs seit dem letzten Aufruf vergangen sind und aktualisiert *lastRunTime
 bool isTimeForAction(unsigned long* lastRunTime, unsigned long intervalMs);

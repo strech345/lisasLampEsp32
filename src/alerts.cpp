@@ -1,3 +1,4 @@
+// Kurzzeit-Alerts — Implementierung
 #include "alerts.h"
 #include "debug_utils.h"
 #include "event_log.h"

@@ -1,4 +1,5 @@
-
+// Gute-Nacht-Modus: dimmt die Lampe linear von der aktuellen Helligkeit auf 0
+// über eine konfigurierbare Dauer und schaltet sie dann in den Sleep-Modus.
 #ifndef GOOD_NIGHT_H
 #define GOOD_NIGHT_H
 

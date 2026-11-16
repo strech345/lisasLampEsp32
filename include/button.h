@@ -1,5 +1,7 @@
 #ifndef BUTTON_H
 #define BUTTON_H
+// Drehencoder- und Tastersteuerung: entprellt KY-040-Encoder und Boot-Button,
+// unterscheidet kurzen und langen Druck und leitet Ereignisse an Callbacks weiter.
 
 #include <functional>
 #include <Arduino.h>

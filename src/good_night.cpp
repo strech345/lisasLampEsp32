@@ -1,3 +1,4 @@
+// Gute-Nacht-Modus — Implementierung
 #include <stdint.h>
 
 #include "good_night.h"

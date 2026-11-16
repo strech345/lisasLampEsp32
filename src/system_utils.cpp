@@ -1,3 +1,4 @@
+// Zeitsteuerungs-Hilfsfunktionen — Implementierung
 #include <Arduino.h>
 #include <system_utils.h>
 

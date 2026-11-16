@@ -1,3 +1,5 @@
+// Captive-Portal-Setup — Implementierung
+// POST-Bodies werden über _tempObject gepuffert weil ESPAsyncWebServer sie stückweise liefert.
 #include "captive_portal.h"
 #include <Arduino.h>
 #include "route_handlers.h"

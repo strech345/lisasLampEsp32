@@ -1,3 +1,5 @@
+// Ereignisprotokoll — Implementierung
+// Ringpuffer im RAM, kein Flash-Verschleiß; Mutex weil WiFi-Events aus einem anderen Task kommen.
 #include "event_log.h"
 #include <time.h>
 #include <freertos/FreeRTOS.h>

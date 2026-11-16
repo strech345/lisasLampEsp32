@@ -1,5 +1,7 @@
 #ifndef SLEEP_MANAGER_H
 #define SLEEP_MANAGER_H
+// Deep-Sleep-Verwaltung: prüft ob die Lampe schlafen kann und leitet bei Bedarf
+// Deep Sleep mit Timer- und GPIO-Wakeup ein; berücksichtigt RTC-Drift.
 
 #include "types.h"
 #include <stdint.h>

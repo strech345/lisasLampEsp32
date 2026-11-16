@@ -1,5 +1,7 @@
 #ifndef LAMP_STATE_H
 #define LAMP_STATE_H
+// Lampenzustands-Maschine: bestimmt den aktiven Betriebsmodus (Alarm, Gute Nacht,
+// Alert, Sleep …) und steuert darüber die LED-Effekte.
 
 #include "types.h"
 

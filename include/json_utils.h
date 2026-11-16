@@ -1,5 +1,7 @@
 #ifndef JSON_UTILS_H
 #define JSON_UTILS_H
+// JSON-Serialisierung/-Deserialisierung für FullConfig, SystemSettings und WiFiStatus.
+// Passwörter werden bei der Ausgabe immer maskiert; beim Einlesen wird die Maske ignoriert.
 
 #include <Arduino.h>
 #include <ArduinoJson.h>

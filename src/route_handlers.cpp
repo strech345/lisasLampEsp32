@@ -1,4 +1,6 @@
-
+// HTTP-Routen-Handler — Implementierung
+// Jeder Handler liest den Request (und ggf. Body), wandelt JSON um und
+// ruft den Zustandsänderungs-Callback auf, damit main.cpp den neuen Zustand übernimmt.
 #include "route_handlers.h"
 #include <LittleFS.h>
 #include <ESPAsyncWebServer.h>

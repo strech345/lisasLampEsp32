@@ -1,3 +1,6 @@
+// Lampenzustands-Maschine — Implementierung
+// checkLampState() prüft alle aktiven Modi und setzt den globalen LampState;
+// updateLed() erkennt Zustandswechsel und löst die passenden LED-Übergänge aus.
 #include "lamp_state.h"
 #include <Arduino.h>
 #include "led.h"

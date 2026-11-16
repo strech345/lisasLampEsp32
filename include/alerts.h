@@ -1,5 +1,7 @@
 #ifndef ALERTS_H
 #define ALERTS_H
+// Kurzzeit-Alerts: zeigt visuell Fehler (rot), Warnungen (gelb) oder Erfolg (grün)
+// an; zeitbegrenzte Alerts erlöschen automatisch, dauerhafte nur per stopAlert().
 
 #include <Arduino.h>
 

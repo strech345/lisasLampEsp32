@@ -1,3 +1,6 @@
+// TSF-Uhrzeit-Fallback — Implementierung
+// Erfasst Beacon-Frames per Promiscuous-Scan, berechnet mittels Medianfilter
+// und Ausreißerelimination einen Unix-Zeitstempel und setzt damit die Systemzeit.
 #include "tsf_clock.h"
 #include "store.h"
 #include "debug_utils.h"
@@ -40,6 +43,8 @@ static String g_lastCalcResult = "none";
 static uint8_t g_lastCalcAps = 0;
 static uint32_t g_lastCalcDeviationMs = 0;
 
+// ISR: wird für jedes empfangene Management-Frame aufgerufen; filtert auf Beacon-Frames
+// und speichert pro AP (BSSID) genau einen TSF-Wert und RSSI
 static void IRAM_ATTR beaconRxCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (type != WIFI_PKT_MGMT) return;
     if (g_capturedBeaconCount >= MAX_CAPTURE) return;
@@ -68,6 +73,8 @@ static void IRAM_ATTR beaconRxCallback(void* buf, wifi_promiscuous_pkt_type_t ty
     g_capturedBeaconCount++;
 }
 
+// Aktiviert den Promiscuous-Modus und startet die Beacon-Erfassung;
+// speichert den aktuellen Unix-Zeitstempel als Referenz für spätere Berechnungen
 static void startCapture() {
     g_capturedBeaconCount = 0;
     struct timeval tv;
@@ -83,12 +90,15 @@ static void startCapture() {
     esp_wifi_set_promiscuous(true);
 }
 
+// Beendet den Promiscuous-Modus und deregistriert den Beacon-Callback
 static void stopCapture() {
     esp_wifi_set_promiscuous(false);
     esp_wifi_set_promiscuous_rx_cb(nullptr);
     g_captureRunning = false;
 }
 
+// Verarbeitet einen NTP-Snapshot: sortiert erfasste APs nach RSSI (beste zuerst),
+// speichert bis zu MAX_TSF_ENTRIES als TSF-Referenz im Flash
 static void processSnapshot() {
     uint8_t count = g_capturedBeaconCount;
 
@@ -128,6 +138,9 @@ static void processSnapshot() {
     serialPrint(msg);
 }
 
+// Berechnet die aktuelle Unix-Zeit aus TSF-Differenzen zwischen gespeichertem Snapshot
+// und neuen Beacon-Messungen. Ausreißer werden per Sigma-Filterung entfernt, dann
+// Median genommen. Einträge mit überlaufenem TSF-Zähler werden neu basiert.
 static void processFallback() {
     uint8_t newCount = g_capturedBeaconCount;
     g_fallbackAttempted = true;
@@ -257,6 +270,7 @@ static void processFallback() {
     serialPrint(msg);
 }
 
+// Initialisiert das Modul: speichert Einstellungszeiger und lädt TSF-Referenzdaten aus dem Flash
 void initTsfClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
     g_settings = settings;
     g_tracker = tracker;
@@ -267,16 +281,19 @@ void initTsfClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
     serialPrint(msg);
 }
 
+// Wird nach erfolgreicher NTP-Synchronisation aufgerufen; löst neuen Snapshot aus
 void onNtpSynced() {
     if (g_settings == nullptr || !g_settings->tsfFallbackEnabled) return;
     g_ntpSyncedTrigger = true;
 }
 
+// Manueller Snapshot-Auslöser (z.B. per Web-API); ignoriert laufende Scans
 void triggerTsfSnapshot() {
     if (g_captureRunning) return;
     g_ntpSyncedTrigger = true;
 }
 
+// Hauptschleife: startet Snapshot-Scans nach NTP-Sync und Fallback-Scans wenn keine Uhrzeit verfügbar
 void tsfClockLoop() {
     if (g_settings == nullptr || !g_settings->tsfFallbackEnabled) return;
 
@@ -312,6 +329,7 @@ void tsfClockLoop() {
     }
 }
 
+// Gibt TSF-Modul-Status als JSON zurück: aktiviert, gespeicherte APs, letzter Snapshot, Berechnungsergebnis
 String getTsfStatusJson() {
     JsonDocument doc;
     doc["enabled"] = g_settings != nullptr && g_settings->tsfFallbackEnabled;

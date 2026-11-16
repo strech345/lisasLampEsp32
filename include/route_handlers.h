@@ -1,13 +1,14 @@
 #ifndef ROUTE_HANDLERS_H
 #define ROUTE_HANDLERS_H
+// HTTP-Routen-Handler: registriert alle API-Endpunkte und den OTA-Endpunkt,
+// nimmt Anfragen entgegen und leitet Zustandsänderungen über Callback an main.cpp weiter.
 
 #include <ESPAsyncWebServer.h>
-#include <functional>        // For std::function
-#include "wifi_controller.h" // for GenericStateUpdateCallback and StateChangeType
-#include "types.h"           // For RGB and Alarm types
+#include <functional>
+#include "wifi_controller.h"
+#include "types.h"
 
-// Route handlers implemented by the application (main)
-// Handler functions for requests (all now match Route signature)
+// Handler für alle HTTP-Endpunkte (Signatur passend zu Route)
 void handlePing(AsyncWebServerRequest* request, const String& body);
 void handleRoot(AsyncWebServerRequest* request, const String& body);
 void handlePicoCSS(AsyncWebServerRequest* request, const String& body);
@@ -29,16 +30,15 @@ void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String& body
 void handleGetRdsClock(AsyncWebServerRequest* request, const String& body);
 void handleSetRdsClock(AsyncWebServerRequest* request, const String& body);
 
-// Initialization function to set up global state for handlers and return routes
+// Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback);
 
-// Let main register a callback which gets invoked when a new config is set via /set_config
+// Registriert den Callback der bei Zustandsänderungen über die Web-API aufgerufen wird
 void setOnStateChangedCallback(GenericStateUpdateCallback cb);
 
-// Register the OTA firmware-upload endpoint on the given server.
-// Must be called before server.begin() and before the catch-all handler,
-// so that /ota is matched first and not redirected by the captive portal.
+// Registriert den OTA-Endpunkt — muss vor server.begin() aufgerufen werden
+// damit /ota nicht vom Captive-Portal-Catch-all abgefangen wird
 void registerOtaRoute(AsyncWebServer& server);
 
 #endif // ROUTE_HANDLERS_H

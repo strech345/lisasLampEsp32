@@ -1,3 +1,5 @@
+// Einstiegspunkt der Firmware: initialisiert alle Module in setup() und ruft
+// in loop() alle periodischen Prozesse auf (LED, WiFi, Alarm, Deep Sleep u.a.).
 #include <AiEsp32RotaryEncoder.h>
 #include <Arduino.h>
 #include <ESPAsyncWebServer.h>

@@ -1,5 +1,6 @@
 #ifndef TYPES_H
 #define TYPES_H
+// Zentrale Typdefinitionen: Datenstrukturen für Konfiguration, Zustand, WiFi und Routen.
 
 #include <Arduino.h>
 

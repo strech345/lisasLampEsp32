@@ -1,13 +1,20 @@
 #ifndef TSF_CLOCK_H
 #define TSF_CLOCK_H
+// TSF-Uhrzeit-Fallback: liest Beacon-TSF-Timestamps per Promiscuous-Scan
+// und schätzt daraus die aktuelle Unix-Zeit ohne NTP-Verbindung.
 
 #include "types.h"
 #include <Arduino.h>
 
+// Initialisiert das Modul mit Systemeinstellungen und WiFi-Tracker; lädt gespeicherte TSF-Referenzwerte
 void initTsfClock(const SystemSettings* settings, WiFiTestTracker* tracker);
+// Muss in loop() aufgerufen werden: steuert Scan-Start, Beacon-Erfassung und Zeitberechnung
 void tsfClockLoop();
+// Löst nach einer erfolgreichen NTP-Synchronisation einen neuen TSF-Snapshot aus
 void onNtpSynced();
+// Erzwingt manuell einen neuen TSF-Snapshot (z.B. über Web-API)
 void triggerTsfSnapshot();
+// Gibt den aktuellen TSF-Modul-Status als JSON-String zurück
 String getTsfStatusJson();
 
 #endif // TSF_CLOCK_H

@@ -1,3 +1,5 @@
+// WiFi-Controller: verwaltet AP-, STA- und APSTA-Modus, NTP-Synchronisation,
+// automatischen Start/Stop und die Reconnect-Logik mit Fallback-WLAN.
 #include <Arduino.h>
 #include <AsyncTCP.h>
 #include <DNSServer.h>

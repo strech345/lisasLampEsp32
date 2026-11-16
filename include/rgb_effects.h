@@ -1,5 +1,6 @@
 #ifndef RGB_EFFECTS_H
 #define RGB_EFFECTS_H
+// RGB-Farbeffekte: berechnet Farbverläufe für Animationen (z.B. Sonnenaufgang beim Wecker).
 
 #include "types.h"
 

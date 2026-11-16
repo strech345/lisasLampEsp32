@@ -1,3 +1,5 @@
+// Deep-Sleep-Verwaltung — Implementierung
+// Schlafdauer wird so gewählt dass Alarm und Feiertagsereignisse trotz RTC-Drift nicht verpasst werden.
 #include "sleep_manager.h"
 #include <Arduino.h>
 #include <esp_sleep.h>

@@ -1,4 +1,5 @@
-
+// LED-Steuerung: WS2812FX-Wrapper für 5 RGBW-LEDs mit Helligkeitsstufen,
+// Flash-Effekten, Einzelpixel-Blinken und Status-LED.
 #include <Arduino.h>
 
 // Pixel 0 wird für Systemwarnungen (Blinken) verwendet — bleibt fix damit er nicht mit Effekten kollidiert

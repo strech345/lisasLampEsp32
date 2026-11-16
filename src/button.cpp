@@ -1,3 +1,4 @@
+// Drehencoder- und Tastersteuerung — Implementierung
 #include "button.h"
 
 #include <functional>

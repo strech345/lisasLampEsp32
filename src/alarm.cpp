@@ -1,3 +1,5 @@
+// Wecker-Modul — Implementierung
+// Auslösetag wird als tm_yday gespeichert damit ein Alarm pro Tag und Wochentag nur einmal feuert.
 #include "alarm.h"
 #include <string.h>
 #include <time.h>

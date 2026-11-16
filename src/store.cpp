@@ -1,3 +1,5 @@
+// Persistenzschicht — Implementierung
+// Alle Struct-Daten werden als binäre Byte-Blöcke im NVS-Namespace "lisas_lamp_cfg" abgelegt.
 #include "store.h"
 
 #include <Preferences.h>

@@ -1,5 +1,7 @@
 #ifndef STORE_H
 #define STORE_H
+// Persistenzschicht: liest und schreibt FullConfig, SystemSettings und TSF-Daten
+// in den Flash-Speicher des ESP32 über die Preferences-Bibliothek (NVS).
 
 #include "types.h" // For FullConfig definition
 

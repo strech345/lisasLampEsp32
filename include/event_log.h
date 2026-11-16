@@ -1,12 +1,14 @@
 #ifndef EVENT_LOG_H
 #define EVENT_LOG_H
+// Ereignisprotokoll: speichert bis zu 200 Einträge im RAM-Ringpuffer,
+// thread-sicher per FreeRTOS-Mutex, abrufbar als JSON über die Web-API.
 
 #include <Arduino.h>
 
-// Logs an event with the current uptime and unix timestamp (0 if unknown).
+// Schreibt eine Meldung mit Uptime-ms und Unix-Zeitstempel in den Ringpuffer
 void logEvent(const char* message);
 
-// Returns a JSON string with all log entries, newest first.
+// Gibt alle Einträge als JSON zurück (neueste zuerst)
 String getEventLogJson();
 
 #endif // EVENT_LOG_H

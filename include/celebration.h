@@ -1,5 +1,7 @@
 #ifndef CELEBRATION_H
 #define CELEBRATION_H
+// Feier-Modus: startet täglich um 7 Uhr einen Regenbogen-Effekt an konfigurierten
+// Feiertagen (Geburtstag, Jahrestag, Neujahr, Heiligabend).
 
 #include <Arduino.h>
 

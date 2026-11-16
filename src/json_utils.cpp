@@ -1,3 +1,4 @@
+// JSON-Serialisierung/-Deserialisierung — Implementierung
 #include "json_utils.h"
 
 // Passwort nur übernehmen wenn es gesetzt und nicht die Maske "******" ist

@@ -25,6 +25,8 @@ _Stand: November 2026_
 | `src/json_utils.cpp` | JSON-Serialisierung/-Deserialisierung für alle Datenstrukturen |
 | `src/rgb_effects.cpp` | Hilfsfunktionen für LED-Farbberechnungen (z.B. Sonnenaufgangs-Fade) |
 | `src/system_utils.cpp` | Zeithelfer: `isTimeForAction()`, `getTimeoutState()` |
+| `src/tsf_clock.cpp` | TSF-Uhrzeit-Fallback: Beacon-Scan per Promiscuous-Modus, Medianfilter |
+| `src/rds_clock.cpp` | RDS-Uhrzeit-Fallback: RDA5807M FM-Chip, RDS-CT-Gruppe auswerten |
 
 ---
 
@@ -35,7 +37,7 @@ _Stand: November 2026_
 3. **Konfiguration laden** — `loadFullConfig()` aus NVS; Standardwerte falls leer
 4. **LED init** — WS2812FX starten, Status-LED einschalten
 5. **Systemeinstellungen laden** — SSID, Passwörter, Flags aus NVS
-6. **Module initialisieren** — `initLampState()`, `initSleepManager()`, `initButtonCallbacks()` mit Zeigern auf globale Variablen
+6. **Module initialisieren** — `initLampState()`, `initSleepManager()`, `initButtonCallbacks()`, `initTsfClock()`, `initRdsClock()` mit Zeigern auf globale Variablen
 7. **Farbmodus anwenden** — konfigurierte LED-Farbe setzen
 8. **Alarme wiederherstellen** — `setAlarms()` berechnet nächste Auslösezeit
 9. **WiFi und Webserver** — Routen initialisieren, Controller konfigurieren, `startWifi()`
@@ -51,6 +53,8 @@ _Stand: November 2026_
 ```
 ledUpdate()           — WS2812FX-Animationen und Blink-Effekte
 wifiLoop()            — DNS, Auto-Start/Stop, Telemetrie, Reconnect
+tsfClockLoop()        — TSF-Beacon-Scan und Zeitberechnung
+rdsClockLoop()        — RDS-FM-Scan und Zeitberechnung
 rotary_loop()         — Encoder-Ereignisse auswerten und Callbacks auslösen
 checkAlarmStates()    — Alarm auslösen wenn Zeit erreicht
 checkAlertState()     — Zeitbegrenzten Alert beenden wenn abgelaufen

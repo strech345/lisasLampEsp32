@@ -1,3 +1,4 @@
+// RGB-Farbeffekte — Implementierung
 #include "rgb_effects.h"
 #include <Arduino.h>
 

@@ -1,3 +1,5 @@
+// Feier-Modus — Implementierung
+// Manuell gestoppter Modus wird für den Rest des Tages unterdrückt (lastTriggeredDay).
 #include "celebration.h"
 #include <time.h>
 #include "debug_utils.h"
