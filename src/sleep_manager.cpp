@@ -104,10 +104,10 @@ void enterDeepSleep(uint64_t sleepTimeMs) {
     gpio_pulldown_en(GPIO_NUM_3);
     gpio_pullup_dis(GPIO_NUM_3);
 
-    // GPIO 1 (Encoder CLK): Pullup, weckt bei LOW→Drehbewegung
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << 1, ESP_GPIO_WAKEUP_GPIO_LOW);
-    gpio_pullup_en(GPIO_NUM_1);
-    gpio_pulldown_dis(GPIO_NUM_1);
+    // GPIO 10 (Encoder CLK): Pullup, weckt bei LOW→Drehbewegung
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << 10, ESP_GPIO_WAKEUP_GPIO_LOW);
+    gpio_pullup_en(GPIO_NUM_10);
+    gpio_pulldown_dis(GPIO_NUM_10);
 
     Serial.flush();
     statusLedOff();
