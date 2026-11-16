@@ -140,6 +140,9 @@ SystemSettings getDefaultSystemSettings() {
     strcpy(defaultSettings.externalPW2, "");
     defaultSettings.warningsEnabled = true;
     defaultSettings.deepSleepEnabled = true;
+    defaultSettings.tsfFallbackEnabled = true;
+    defaultSettings.rdsClockEnabled = false;
+    defaultSettings.rdsLastChannel = 0;
     return defaultSettings;
 }
 
@@ -176,6 +179,28 @@ bool resetSystemSettings() {
     }
     serialPrint("SystemSettings successfully reset to defaults.");
     return true;
+}
+
+static const char* TSF_DATA_KEY = "tsfData";
+
+bool saveTsfEntries(const TsfEntry* entries, uint8_t count) {
+    if (!preferences.begin(PREF_NAMESPACE, false)) return false;
+    size_t written = preferences.putBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
+    preferences.end();
+    return written == count * sizeof(TsfEntry);
+}
+
+uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount) {
+    if (!preferences.begin(PREF_NAMESPACE, true)) return 0;
+    size_t storedSize = preferences.getBytesLength(TSF_DATA_KEY);
+    preferences.end();
+    if (storedSize == 0 || storedSize % sizeof(TsfEntry) != 0) return 0;
+    uint8_t count = storedSize / sizeof(TsfEntry);
+    if (count > maxCount) count = maxCount;
+    if (!preferences.begin(PREF_NAMESPACE, true)) return 0;
+    preferences.getBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
+    preferences.end();
+    return count;
 }
 
 bool ensureSystemSettingsExistsAndResetIfNot() {

@@ -7,6 +7,8 @@
 #include "types.h"
 #include "store.h"
 #include "event_log.h"
+#include "tsf_clock.h"
+#include "rds_clock.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -310,5 +312,55 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/set_deep_sleep", HTTP_POST, handleSetDeepSleep},
             {"/get_event_log", HTTP_GET, handleGetEventLog},
             {"/restart", HTTP_POST, handleRestart},
-            {"/ping", HTTP_GET, handlePing}};
+            {"/ping", HTTP_GET, handlePing},
+            {"/get_tsf_fallback", HTTP_GET, handleGetTsfFallback},
+            {"/set_tsf_fallback", HTTP_POST, handleSetTsfFallback},
+            {"/trigger_tsf_snapshot", HTTP_POST, handleTriggerTsfSnapshot},
+            {"/get_rds_clock", HTTP_GET, handleGetRdsClock},
+            {"/set_rds_clock", HTTP_POST, handleSetRdsClock}};
+}
+
+void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getTsfStatusJson());
+}
+
+void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body) {
+    if(g_stateCallback == nullptr || body.isEmpty()) {
+        request->send(400, "text/plain", "Bad Request");
+        return;
+    }
+    JsonDocument doc;
+    if(deserializeJson(doc, body)) {
+        request->send(400, "text/plain", "Invalid JSON");
+        return;
+    }
+    SystemSettings newSettings = *g_systemSettings;
+    newSettings.tsfFallbackEnabled = doc["enabled"] | true;
+    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String&) {
+    triggerTsfSnapshot();
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void handleGetRdsClock(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getRdsStatusJson());
+}
+
+void handleSetRdsClock(AsyncWebServerRequest* request, const String& body) {
+    if(g_stateCallback == nullptr || body.isEmpty()) {
+        request->send(400, "text/plain", "Bad Request");
+        return;
+    }
+    JsonDocument doc;
+    if(deserializeJson(doc, body)) {
+        request->send(400, "text/plain", "Invalid JSON");
+        return;
+    }
+    SystemSettings newSettings = *g_systemSettings;
+    newSettings.rdsClockEnabled = doc["enabled"] | false;
+    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
 }

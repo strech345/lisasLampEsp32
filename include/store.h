@@ -36,4 +36,7 @@ bool ensureSystemSettingsExistsAndResetIfNot();
 void saveLastKnownTime(time_t t);
 time_t loadLastKnownTime();
 
+bool saveTsfEntries(const TsfEntry* entries, uint8_t count);
+uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount);
+
 #endif // STORE_H

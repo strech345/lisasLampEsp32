@@ -23,6 +23,11 @@ void handleGetWarnings(AsyncWebServerRequest* request, const String& body);
 void handleSetWarnings(AsyncWebServerRequest* request, const String& body);
 void handleGetEventLog(AsyncWebServerRequest* request, const String& body);
 void handleRestart(AsyncWebServerRequest* request, const String& body);
+void handleGetTsfFallback(AsyncWebServerRequest* request, const String& body);
+void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body);
+void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String& body);
+void handleGetRdsClock(AsyncWebServerRequest* request, const String& body);
+void handleSetRdsClock(AsyncWebServerRequest* request, const String& body);
 
 // Initialization function to set up global state for handlers and return routes
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,

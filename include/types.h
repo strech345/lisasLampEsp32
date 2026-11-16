@@ -46,6 +46,17 @@ struct SystemSettings {
     char externalPW2[PWD_MAX_LEN + 1];
     bool warningsEnabled;
     bool deepSleepEnabled;
+    bool tsfFallbackEnabled;
+    bool rdsClockEnabled;
+    uint16_t rdsLastChannel; // Frequenz in 10kHz-Einheiten, z.B. 1011 = 101.1 MHz; 0 = nicht gesetzt
+};
+
+#define MAX_TSF_ENTRIES 10
+
+struct TsfEntry {
+    uint8_t bssid[6];
+    uint64_t tsf_us;
+    uint64_t unix_us;
 };
 
 // Art der Zustandsänderung — wird im Callback onStateUpdatedFromWifi verwendet

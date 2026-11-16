@@ -18,6 +18,8 @@
 #include "alerts.h"
 #include "celebration.h"
 #include "event_log.h"
+#include "tsf_clock.h"
+#include "rds_clock.h"
 #include <soc/rtc.h>
 #include "lamp_state.h"
 #include "sleep_manager.h"
@@ -86,6 +88,8 @@ void setup() {
     initLampState(&lampState, &lastNormalState, &systemSettings.warningsEnabled, &appConfig, &wifiTracker, &s_pendingFlash);
     initSleepManager(&systemSettings.deepSleepEnabled, &lampState, &appConfig);
     initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
+    initTsfClock(&systemSettings, &wifiTracker);
+    initRdsClock(&systemSettings, &wifiTracker);
 
     checkAndApplyColorMode(appConfig);
     setAlarms(appConfig.alarms); // Alarme wiederherstellen und nächste Auslösezeit berechnen
@@ -143,6 +147,8 @@ void loop() {
     // --- Hardware-Eingaben und Verbindungen ---
     ledUpdate();
     wifiLoop();
+    tsfClockLoop();
+    rdsClockLoop();
     rotary_loop();
 
     // --- Zustandsmaschinen der Lampenmodi prüfen ---

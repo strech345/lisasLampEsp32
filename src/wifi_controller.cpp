@@ -15,6 +15,7 @@
 #include "store.h"
 #include "event_log.h"
 #include "esp_sntp.h"
+#include "tsf_clock.h"
 
 #define MAX_CLIENTS 4
 #define WIFI_CHANNEL 6
@@ -66,6 +67,7 @@ static void ntpSyncCallback(struct timeval* tv) {
         logEvent("NTP sync: erste Synchronisation");
     }
     s_preSyncTime = {0, 0};
+    onNtpSynced();
 }
 
 // Initialisiert den WiFi-Controller einmalig: Zeitzone, DNS, Webserver, Event-Handler
