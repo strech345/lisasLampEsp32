@@ -74,9 +74,21 @@
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Auth-Status prüfen; bei gesetztem Passwort und fehlendem Cookie zur Login-Seite
+    try {
+      const res = await fetch("/get_auth_status");
+      if (res.ok) {
+        const auth = await res.json();
+        if (auth.passwordSet && !auth.authorized) {
+          window.location.href = "/login";
+          return;
+        }
+      }
+    } catch {}
+
     configStore.load();
-    
+
     // Start periodic connectivity check every second
     pingInterval = setInterval(checkConnectivity, 10000);
   });

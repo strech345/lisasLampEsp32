@@ -112,6 +112,8 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     doc["externalPW2"]      = strlen(systemSettings.externalPW2) > 0 ? PASSWORD_MASK : "";
     doc["warningsEnabled"]  = systemSettings.warningsEnabled;
     doc["deepSleepEnabled"] = systemSettings.deepSleepEnabled;
+    // Passwort nie zurückgeben — nur Hinweis ob gesetzt
+    doc["webPasswordSet"] = strlen(systemSettings.webPassword) > 0;
 
     String jsonResponse;
     serializeJson(doc, jsonResponse);
@@ -136,6 +138,12 @@ bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSetti
 
     strlcpy(systemSettings.externalSSID2, doc["externalSSID2"] | "", sizeof(systemSettings.externalSSID2));
     applyPasswordField(doc["externalPW2"] | "", systemSettings.externalPW2, sizeof(systemSettings.externalPW2));
+
+    // webPassword nur übernehmen wenn explizit angegeben und nicht leer
+    if(doc.containsKey("webPassword")) {
+        const char* pw = doc["webPassword"] | "";
+        strlcpy(systemSettings.webPassword, pw, sizeof(systemSettings.webPassword));
+    }
 
     return true;
 }

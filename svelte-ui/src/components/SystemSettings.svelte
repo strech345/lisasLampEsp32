@@ -19,6 +19,7 @@
   let rtcCrystalEnabled = false;
   let rtcCrystalStatus = null;
   let rtcCrystalChanged = false;
+  let authTokenCount = 0;
 
   onMount(() => {
     if (show) {
@@ -277,6 +278,16 @@
     }
   }
 
+  async function loadAuthStatus() {
+    try {
+      const res = await fetch("/get_auth_status");
+      if (res.ok) {
+        const data = await res.json();
+        authTokenCount = data.tokenCount ?? 0;
+      }
+    } catch {}
+  }
+
   // Load system settings, status and warnings when modal opens
   $: if (show) {
     systemStore.load();
@@ -286,6 +297,7 @@
     loadTsfStatus();
     loadRdsStatus();
     loadRtcCrystalStatus();
+    loadAuthStatus();
   }
 </script>
 
@@ -347,6 +359,27 @@
           placeholder="optional"
           on:input={(e) => handleFieldChange("externalPW2", e)}
         />
+
+        <label for="webPassword">Web-Passwort <span class="optional">(optional)</span></label>
+        <input
+          type="password"
+          id="webPassword"
+          value={$systemStore.webPassword}
+          placeholder={$systemStore.webPasswordSet
+            ? "••••••••  (gesetzt — leer lassen um beizubehalten)"
+            : "Leer = kein Schutz"}
+          on:input={(e) => handleFieldChange("webPassword", e)}
+        />
+        <small class="web-pw-hint">
+          {#if $systemStore.webPasswordSet}
+            Schutz aktiv · {authTokenCount} Gerät{authTokenCount === 1 ? "" : "e"} angemeldet ·
+            <button class="btn-link" type="button" on:click={() => handleFieldChange("webPassword", { target: { value: "" } })}>
+              Leer lassen um Passwort beizubehalten
+            </button>
+          {:else}
+            Leer lassen um den Schutz zu deaktivieren
+          {/if}
+        </small>
       </form>
 
       <hr />
@@ -742,5 +775,23 @@
   .ota-row input[type="file"] {
     flex: 1;
     font-size: 0.85rem;
+  }
+
+  .web-pw-hint {
+    display: block;
+    margin-top: -0.75rem;
+    margin-bottom: 1rem;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color, #888);
+  }
+
+  .btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: inherit;
+    color: inherit;
+    text-decoration: underline;
   }
 </style>

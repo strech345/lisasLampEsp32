@@ -23,6 +23,7 @@
 #include "tsf_clock.h"
 #include "rds_clock.h"
 #include "rtc_crystal.h"
+#include "web_auth.h"
 #include <soc/rtc.h>
 #include "lamp_state.h"
 #include "sleep_manager.h"
@@ -86,6 +87,9 @@ void setup() {
         serialPrint("Using default system settings");
         systemSettings = getDefaultSystemSettings();
     }
+
+    // --- Web-Authentifizierung initialisieren (Tokens aus NVS laden) ---
+    initWebAuth(&systemSettings);
 
     // --- RTC-Quarz vor allem anderen initialisieren (Taktquelle nur beim Boot umschaltbar) ---
     initRtcCrystal(&systemSettings);

@@ -9,6 +9,8 @@ const defaultSystemSettings = {
   externalPW: "",
   externalSSID2: "",
   externalPW2: "",
+  webPassword: "",      // Leer = kein Schutz; wird nie vom Server zurückgegeben
+  webPasswordSet: false, // nur-lesen aus der API
 };
 
 function createSystemStore() {
@@ -40,11 +42,18 @@ function createSystemStore() {
       try {
         const currentSettings = get(systemStoreData);
 
+        // webPasswordSet ist nur-lesen (kommt von der API); webPassword nur senden wenn gesetzt
+        const { webPasswordSet, webPassword, ...rest } = currentSettings;
+        const payload = { ...rest };
+        if (webPassword && webPassword.length > 0) {
+          payload.webPassword = webPassword;
+        }
+
         const fetchFn = isMockEnabled() ? mockFetch : fetch;
         const response = await fetchFn("/set_system_config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(currentSettings),
+          body: JSON.stringify(payload),
         });
 
         if (response.ok) {

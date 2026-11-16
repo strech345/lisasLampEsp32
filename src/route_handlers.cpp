@@ -12,6 +12,7 @@
 #include "tsf_clock.h"
 #include "rds_clock.h"
 #include "rtc_crystal.h"
+#include "web_auth.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -22,6 +23,44 @@ static const FullConfig* g_config = nullptr;
 static const SystemSettings* g_systemSettings = nullptr;
 static const WiFiTestTracker* g_wifiTracker = nullptr;
 static GenericStateUpdateCallback g_stateCallback = nullptr;
+
+// Sendet 302-Redirect zu /login wenn kein gültiger Auth-Cookie vorhanden; gibt true zurück wenn geblockt
+static bool requireAuth(AsyncWebServerRequest* request) {
+    if(!isAuthorized(request)) {
+        request->redirect("/login");
+        return true;
+    }
+    return false;
+}
+
+// Dekodiert einen URL-codierten String ('+' → ' ', '%XX' → Byte)
+static String urlDecode(const String& str) {
+    String out;
+    out.reserve(str.length());
+    for(int i = 0; i < (int)str.length(); i++) {
+        if(str[i] == '+') {
+            out += ' ';
+        } else if(str[i] == '%' && i + 2 < (int)str.length()) {
+            char hex[3] = {str[i + 1], str[i + 2], '\0'};
+            out += (char)strtol(hex, nullptr, 16);
+            i += 2;
+        } else {
+            out += str[i];
+        }
+    }
+    return out;
+}
+
+// Extrahiert den Wert eines Felds aus einem URL-encoded Form-Body (z.B. "password=abc&x=y")
+static String getFormField(const String& body, const char* field) {
+    String search = String(field) + "=";
+    int start = body.indexOf(search);
+    if(start == -1) return "";
+    start += search.length();
+    int end = body.indexOf('&', start);
+    if(end == -1) end = body.length();
+    return urlDecode(body.substring(start, end));
+}
 
 // Sendet eine gzip-komprimierte Datei aus LittleFS mit korrekten Cache-Headern
 static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const char* mimeType) {
@@ -77,6 +116,7 @@ void handleAppCSS(AsyncWebServerRequest* request, const String&) {
 }
 
 void handleGetConfig(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     serialPrint(String("handleGetConfig: ") + request->url());
     if(g_config == nullptr) {
         request->send(500, "text/plain", "Configuration not initialized");
@@ -88,6 +128,7 @@ void handleGetConfig(AsyncWebServerRequest* request, const String&) {
 }
 
 void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     serialPrint(String("handleSetConfig: ") + request->url());
     if(g_stateCallback == nullptr) {
         request->send(500, "text/plain", "No callback registered for state changes");
@@ -114,6 +155,7 @@ void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
 }
 
 void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     serialPrint(String("handleGetSystemConfig: ") + request->url());
     if(g_systemSettings == nullptr) {
         request->send(500, "text/plain", "System settings not initialized");
@@ -125,6 +167,7 @@ void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
 }
 
 void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     serialPrint(String("handleSetSystemConfig: ") + request->url());
     if(g_stateCallback == nullptr) {
         request->send(500, "text/plain", "No callback registered for state changes");
@@ -152,6 +195,7 @@ void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
 }
 
 void handleGetStatus(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     if(g_wifiTracker == nullptr) {
         request->send(500, "text/plain", "WiFi tracker not initialized");
         return;
@@ -230,22 +274,26 @@ void registerOtaRoute(AsyncWebServer& server) {
 }
 
 void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     bool enabled = g_systemSettings ? g_systemSettings->warningsEnabled : true;
     String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
     request->send(200, "application/json", json);
 }
 
 void handleGetDeepSleep(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     bool enabled = g_systemSettings ? g_systemSettings->deepSleepEnabled : true;
     String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
     request->send(200, "application/json", json);
 }
 
 void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     request->send(200, "application/json", getEventLogJson());
 }
 
 void handleRestart(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     logEvent("Restart via web");
     request->send(200, "application/json", "{\"status\":\"ok\"}");
     delay(200);
@@ -253,6 +301,7 @@ void handleRestart(AsyncWebServerRequest* request, const String&) {
 }
 
 void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     if(g_stateCallback == nullptr) {
         request->send(500, "text/plain", "No callback registered");
         return;
@@ -272,6 +321,7 @@ void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
 }
 
 void handleSetDeepSleep(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     if(g_stateCallback == nullptr) {
         request->send(500, "text/plain", "No callback registered");
         return;
@@ -288,6 +338,63 @@ void handleSetDeepSleep(AsyncWebServerRequest* request, const String& body) {
     bool enabled = doc["enabled"].as<bool>();
     g_stateCallback(STATE_CHANGE_DEEP_SLEEP, static_cast<void*>(&enabled));
     request->send(200, "application/json", "{\"status\":\"success\"}");
+}
+
+// Minimale Login-Seite (inline HTML, kein LittleFS) — wird bei ungültigem oder fehlendem Cookie angezeigt
+static const char LOGIN_HTML[] PROGMEM =
+    "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+    "<title>Login</title>"
+    "<style>"
+    "body{font-family:sans-serif;display:flex;justify-content:center;"
+    "align-items:center;height:100vh;margin:0;background:#111}"
+    "form{background:#1e1e1e;padding:2rem;border-radius:8px;display:flex;"
+    "flex-direction:column;gap:1rem;min-width:280px}"
+    "h2{margin:0;color:#fff;text-align:center}"
+    "input{padding:.6rem;border-radius:4px;border:1px solid #444;"
+    "background:#2a2a2a;color:#fff;font-size:1rem}"
+    "button{padding:.7rem;border:none;border-radius:4px;background:#3b82f6;"
+    "color:#fff;font-size:1rem;cursor:pointer}"
+    ".err{color:#f87171;font-size:.85rem;text-align:center}"
+    "</style></head>"
+    "<body><form method=\"POST\" action=\"/login\">"
+    "<h2>LisasLamp</h2>"
+    "<input type=\"password\" name=\"password\" placeholder=\"Passwort\" autofocus required>"
+    "<button type=\"submit\">Anmelden</button>"
+    "%ERR%"
+    "</form></body></html>";
+
+void handleLoginPage(AsyncWebServerRequest* request, const String&) {
+    bool showErr = request->hasParam("err");
+    String html = FPSTR(LOGIN_HTML);
+    html.replace("%ERR%", showErr ? "<p class=\"err\">Falsches Passwort</p>" : "");
+    request->send(200, "text/html", html);
+}
+
+void handleLoginPost(AsyncWebServerRequest* request, const String& body) {
+    String password = getFormField(body, "password");
+    if(g_systemSettings && password.equals(g_systemSettings->webPassword)) {
+        String token = createAndStoreToken();
+        AsyncWebServerResponse* resp = request->beginResponse(302, "text/plain", "");
+        resp->addHeader("Location", "/");
+        String cookie = "auth=" + token + "; Path=/; HttpOnly; Max-Age=31536000";
+        resp->addHeader("Set-Cookie", cookie);
+        request->send(resp);
+        logEvent("Auth: Gerät angemeldet");
+    } else {
+        request->redirect("/login?err=1");
+        logEvent("Auth: falsches Passwort");
+    }
+}
+
+void handleGetAuthStatus(AsyncWebServerRequest* request, const String&) {
+    bool pwSet = g_systemSettings && g_systemSettings->webPassword[0] != '\0';
+    bool authorized = isAuthorized(request);
+    uint8_t tokenCount = authorized ? getTokenCount() : 0;
+    String json = String("{\"passwordSet\":") + (pwSet ? "true" : "false")
+                + ",\"tokenCount\":" + tokenCount
+                + ",\"authorized\":" + (authorized ? "true" : "false") + "}";
+    request->send(200, "application/json", json);
 }
 
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
@@ -322,14 +429,19 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/get_rds_clock", HTTP_GET, handleGetRdsClock},
             {"/set_rds_clock", HTTP_POST, handleSetRdsClock},
             {"/get_rtc_crystal", HTTP_GET, handleGetRtcCrystal},
-            {"/set_rtc_crystal", HTTP_POST, handleSetRtcCrystal}};
+            {"/set_rtc_crystal", HTTP_POST, handleSetRtcCrystal},
+            {"/login", HTTP_GET, handleLoginPage},
+            {"/login", HTTP_POST, handleLoginPost},
+            {"/get_auth_status", HTTP_GET, handleGetAuthStatus}};
 }
 
 void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     request->send(200, "application/json", getTsfStatusJson());
 }
 
 void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     if(g_stateCallback == nullptr || body.isEmpty()) {
         request->send(400, "text/plain", "Bad Request");
         return;
@@ -346,15 +458,18 @@ void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body) {
 }
 
 void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     triggerTsfSnapshot();
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 void handleGetRdsClock(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     request->send(200, "application/json", getRdsStatusJson());
 }
 
 void handleSetRdsClock(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     if(g_stateCallback == nullptr || body.isEmpty()) {
         request->send(400, "text/plain", "Bad Request");
         return;
@@ -371,11 +486,13 @@ void handleSetRdsClock(AsyncWebServerRequest* request, const String& body) {
 }
 
 void handleGetRtcCrystal(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
     request->send(200, "application/json", getRtcCrystalStatusJson());
 }
 
 // Einstellung speichern und Neustart auslösen (RTC-Taktquelle nur beim Boot umschaltbar)
 void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body) {
+    if(requireAuth(request)) return;
     if(g_stateCallback == nullptr || body.isEmpty()) {
         request->send(400, "text/plain", "Bad Request");
         return;
