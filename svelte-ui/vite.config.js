@@ -10,12 +10,11 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: '',
     rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html')
-      },
+      input: resolve(__dirname, 'src/main.js'),
       output: {
+        format: 'iife',
+        name: 'App',
         entryFileNames: 'app.js',
-        chunkFileNames: 'app.js',
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
             return 'app.css';

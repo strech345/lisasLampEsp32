@@ -13,6 +13,7 @@
 #include "rds_clock.h"
 #include "rtc_crystal.h"
 #include "web_auth.h"
+#include "wifi_controller.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -95,7 +96,7 @@ void handleRoot(AsyncWebServerRequest* request, const String&) {
     AsyncWebServerResponse* response = request->beginResponse(LittleFS, indexPath, "text/html");
     if(response) {
         response->addHeader("Content-Encoding", "gzip");
-        response->addHeader("Cache-Control", "public,max-age=31536000");
+        response->addHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         response->addHeader("Set-Cookie", "portal_opened=1; Path=/; Max-Age=3600");
         request->send(response);
     } else {
@@ -104,14 +105,17 @@ void handleRoot(AsyncWebServerRequest* request, const String&) {
 }
 
 void handlePicoCSS(AsyncWebServerRequest* request, const String&) {
+    serialPrint("handlePicoCSS: " + request->url());
     sendGzipFile(request, "/pico.min.css.gzip", "text/css");
 }
 
 void handleAppJS(AsyncWebServerRequest* request, const String&) {
+    serialPrint("handleAppJS: " + request->url());
     sendGzipFile(request, "/app.js.gzip", "application/javascript");
 }
 
 void handleAppCSS(AsyncWebServerRequest* request, const String&) {
+    serialPrint("handleAppCSS: " + request->url());
     sendGzipFile(request, "/app.css.gzip", "text/css");
 }
 
@@ -300,6 +304,23 @@ void handleRestart(AsyncWebServerRequest* request, const String&) {
     ESP.restart();
 }
 
+void handleFactoryReset(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
+    logEvent("Factory reset via web");
+    resetFullConfig();
+    resetSystemSettings();
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    delay(200);
+    ESP.restart();
+}
+
+void handleTriggerNtpSync(AsyncWebServerRequest* request, const String&) {
+    if(requireAuth(request)) return;
+    logEvent("NTP sync triggered via web");
+    syncTimeWithNTP();
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
     if(requireAuth(request)) return;
     if(g_stateCallback == nullptr) {
@@ -432,7 +453,9 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/set_rtc_crystal", HTTP_POST, handleSetRtcCrystal},
             {"/login", HTTP_GET, handleLoginPage},
             {"/login", HTTP_POST, handleLoginPost},
-            {"/get_auth_status", HTTP_GET, handleGetAuthStatus}};
+            {"/get_auth_status", HTTP_GET, handleGetAuthStatus},
+            {"/trigger_ntp_sync", HTTP_POST, handleTriggerNtpSync},
+            {"/factory_reset", HTTP_POST, handleFactoryReset}};
 }
 
 void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {

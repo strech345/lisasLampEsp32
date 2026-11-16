@@ -51,13 +51,23 @@ async function processFiles() {
     process.exit(1);
   }
 
+  let processedCount = 0;
+
+  // index.prod.html ist die Captive-Portal-kompatible Vorlage (kein type="module", kein CDN)
+  const indexProdSrc = path.join(__dirname, "index.prod.html");
+  const indexDestPath = path.join(DATA_DIR, "index.html.gzip");
+  if (fs.existsSync(indexProdSrc)) {
+    await compressFile(indexProdSrc, indexDestPath);
+    processedCount++;
+  } else {
+    console.error("❌ index.prod.html nicht gefunden");
+    process.exit(1);
+  }
+
   const filesToProcess = [
-    { src: "index.html", dest: "index.html.gzip" },
     { src: "app.js", dest: "app.js.gzip" },
     { src: "app.css", dest: "app.css.gzip" },
   ];
-
-  let processedCount = 0;
 
   for (const file of filesToProcess) {
     const srcPath = path.join(DIST_DIR, file.src);

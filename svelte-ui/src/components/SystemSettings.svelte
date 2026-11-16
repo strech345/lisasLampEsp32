@@ -5,6 +5,11 @@
   import EventLog from "./EventLog.svelte";
 
   let showLogs = false;
+  let openSection = null; // Accordion: nur eine Sektion offen
+
+  function toggleSection(name) {
+    openSection = openSection === name ? null : name;
+  }
 
   export let show = false;
   $: hasChanges = $systemStore && systemStore.hasChanges();
@@ -20,6 +25,19 @@
   let rtcCrystalStatus = null;
   let rtcCrystalChanged = false;
   let authTokenCount = 0;
+  let articleEl;
+
+  // Pull-to-Refresh im Dialog verhindern (overscroll-behavior wird in manchen WebViews ignoriert)
+  function preventDialogPullRefresh(e) {
+    const el = articleEl;
+    if (!el) return;
+    const dy = e.touches[0].clientY - (el._ptr_startY || e.touches[0].clientY);
+    if (el.scrollTop === 0 && dy > 0) e.preventDefault();
+    else if (el.scrollTop + el.clientHeight >= el.scrollHeight && dy < 0) e.preventDefault();
+  }
+  function trackDialogTouch(e) {
+    if (articleEl) articleEl._ptr_startY = e.touches[0].clientY;
+  }
 
   onMount(() => {
     if (show) {
@@ -182,15 +200,15 @@
 
   let restarting = false;
 
-  async function handleRestart() {
-    if (!confirm("ESP32 wirklich neu starten?")) return;
+  async function handleFactoryReset() {
+    if (!confirm("Werkseinstellungen wirklich zurücksetzen? Alle Einstellungen gehen verloren!")) return;
     restarting = true;
     try {
-      await fetch("/restart", { method: "POST" });
+      await fetch("/factory_reset", { method: "POST" });
     } catch {
       // Device reboots before response arrives — expected.
     }
-    messageStore.show("success", "ESP32 startet neu…");
+    messageStore.show("success", "Werkseinstellungen wiederhergestellt. ESP32 startet neu…");
     show = false;
   }
 
@@ -278,6 +296,13 @@
     }
   }
 
+  async function handleNtpResync() {
+    try {
+      await fetch("/trigger_ntp_sync", { method: "POST" });
+      messageStore.show("success", "NTP-Synchronisation gestartet…");
+    } catch {}
+  }
+
   async function loadAuthStatus() {
     try {
       const res = await fetch("/get_auth_status");
@@ -298,300 +323,288 @@
     loadRdsStatus();
     loadRtcCrystalStatus();
     loadAuthStatus();
+    // Non-passive Listener nach DOM-Update registrieren
+    setTimeout(() => {
+      if (articleEl) {
+        articleEl.addEventListener('touchstart', trackDialogTouch, {passive: true});
+        articleEl.addEventListener('touchmove', preventDialogPullRefresh, {passive: false});
+      }
+    }, 0);
+  } else if (articleEl) {
+    articleEl.removeEventListener('touchstart', trackDialogTouch);
+    articleEl.removeEventListener('touchmove', preventDialogPullRefresh);
   }
 </script>
 
 {#if show}
   <dialog open>
-    <article>
+    <article bind:this={articleEl}>
       <header>
-        <button aria-label="Close" class="close" on:click={handleCancel}
-        ></button>
+        <button aria-label="Close" class="close" on:click={handleCancel}></button>
         <h2>System Settings</h2>
       </header>
-      <form on:submit|preventDefault={handleSave}>
-        <label for="internalSSID">Internal SSID</label>
-        <input
-          type="text"
-          id="internalSSID"
-          value={$systemStore.internalSSID}
-          on:input={(e) => handleFieldChange("internalSSID", e)}
-        />
 
-        <label for="internalPW">Internal Password</label>
-        <input
-          type="password"
-          id="internalPW"
-          value={$systemStore.internalPW}
-          on:input={(e) => handleFieldChange("internalPW", e)}
-        />
-
-        <label for="externalSSID">External SSID</label>
-        <input
-          type="text"
-          id="externalSSID"
-          value={$systemStore.externalSSID}
-          on:input={(e) => handleFieldChange("externalSSID", e)}
-        />
-
-        <label for="externalPW">External Password</label>
-        <input
-          type="password"
-          id="externalPW"
-          value={$systemStore.externalPW}
-          on:input={(e) => handleFieldChange("externalPW", e)}
-        />
-
-        <label for="externalSSID2">External SSID 2 <span class="optional">(Fallback)</span></label>
-        <input
-          type="text"
-          id="externalSSID2"
-          value={$systemStore.externalSSID2}
-          placeholder="optional"
-          on:input={(e) => handleFieldChange("externalSSID2", e)}
-        />
-
-        <label for="externalPW2">External Password 2</label>
-        <input
-          type="password"
-          id="externalPW2"
-          value={$systemStore.externalPW2}
-          placeholder="optional"
-          on:input={(e) => handleFieldChange("externalPW2", e)}
-        />
-
-        <label for="webPassword">Web-Passwort <span class="optional">(optional)</span></label>
-        <input
-          type="password"
-          id="webPassword"
-          value={$systemStore.webPassword}
-          placeholder={$systemStore.webPasswordSet
-            ? "••••••••  (gesetzt — leer lassen um beizubehalten)"
-            : "Leer = kein Schutz"}
-          on:input={(e) => handleFieldChange("webPassword", e)}
-        />
-        <small class="web-pw-hint">
-          {#if $systemStore.webPasswordSet}
-            Schutz aktiv · {authTokenCount} Gerät{authTokenCount === 1 ? "" : "e"} angemeldet ·
-            <button class="btn-link" type="button" on:click={() => handleFieldChange("webPassword", { target: { value: "" } })}>
-              Leer lassen um Passwort beizubehalten
-            </button>
-          {:else}
-            Leer lassen um den Schutz zu deaktivieren
-          {/if}
-        </small>
-      </form>
-
-      <hr />
-      <section class="warnings-section">
-        <label class="warnings-label">
-          <input
-            type="checkbox"
-            bind:checked={deepSleepEnabled}
-            on:change={handleDeepSleepToggle}
-          />
-          Deep sleep enabled
-        </label>
-        <small>ESP32 schläft zwischen Alarmen. Wacht 5 min + Drift-Puffer vor jedem Event auf.</small>
-      </section>
-
-      <section class="warnings-section">
-        <label class="warnings-label">
-          <input
-            type="checkbox"
-            bind:checked={warningsEnabled}
-            on:change={handleWarningsToggle}
-          />
-          LED warnings enabled
-        </label>
-        <small>When active, pixel 0 blinks red (no time) or yellow (stale NTP sync).</small>
-      </section>
-
-      <section class="warnings-section">
-        <label class="warnings-label">
-          <input
-            type="checkbox"
-            bind:checked={tsfFallbackEnabled}
-            on:change={handleTsfToggle}
-          />
-          TSF time fallback
-        </label>
-        <small>Nutzt WiFi-Beacon-Timestamps zur Zeitschätzung wenn kein NTP erreichbar ist.</small>
-        {#if tsfFallbackEnabled && tsfStatus}
-          <div class="fallback-status">
-            <span>{tsfStatus.storedAps} APs gespeichert</span>
-            {#if tsfStatus.lastSnapshotMs > 0}
-              <span>· Snapshot vor {formatAgo(tsfStatus.lastSnapshotMs)}</span>
-            {/if}
-            {#if tsfStatus.lastCalcResult !== "none"}
-              <span>· {tsfStatus.lastCalcResult === "success"
-                ? `✓ ${tsfStatus.lastCalcAps} APs, ±${tsfStatus.lastCalcDeviationMs}ms`
-                : `✗ ${tsfStatus.lastCalcResult}`}</span>
-            {/if}
-            {#if tsfStatus.minScore !== undefined}
-              <span>· Score-Bereich: {tsfStatus.minScore}–{tsfStatus.maxScore}</span>
-            {/if}
-            <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>Snapshot</button>
-          </div>
-        {/if}
-      </section>
-
-      <section class="warnings-section">
-        <label class="warnings-label">
-          <input
-            type="checkbox"
-            bind:checked={rdsClockEnabled}
-            on:change={handleRdsToggle}
-          />
-          RDS time fallback (RDA5807M)
-        </label>
-        <small>FM-Modul empfängt RDS-Zeitstempel (CT) wenn kein NTP erreichbar ist. Nur aktiv wenn nötig.</small>
-        {#if rdsClockEnabled && rdsStatus}
-          <div class="fallback-status">
-            {#if rdsStatus.status !== "off"}
-              <span>Kanal: {rdsStatus.channelMhz} MHz</span>
-              <span>· {rdsStatus.status}</span>
-              {#if rdsStatus.status === "locked" || rdsStatus.status === "scanning"}
-                <span>· RSSI {rdsStatus.rssi}</span>
-              {/if}
-            {:else}
-              <span>Bereit (inaktiv)</span>
-            {/if}
-          </div>
-        {/if}
-      </section>
-
-      <section class="warnings-section">
-        <label class="warnings-label">
-          <input
-            type="checkbox"
-            bind:checked={rtcCrystalEnabled}
-            on:change={handleRtcCrystalToggle}
-          />
-          Externer 32kHz RTC-Quarz
-        </label>
-        <small>Genauerer Schlaf-Timer (GPIO0/1 = XTAL_32K). Änderung erfordert Neustart.</small>
-        {#if rtcCrystalStatus}
-          <div class="fallback-status">
-            {#if rtcCrystalStatus.available}
-              <span style="color: #22c55e;">Quarz erkannt ✓</span>
-              {#if rtcCrystalStatus.freqHz > 0}
-                <span>· {rtcCrystalStatus.freqHz} Hz</span>
-              {/if}
-            {:else if rtcCrystalEnabled}
-              <span>Wird beim nächsten Start geprüft</span>
-            {:else}
-              <span>Quarz nicht gefunden</span>
-            {/if}
-          </div>
-        {/if}
-        {#if rtcCrystalChanged}
-          <div class="fallback-status">
-            <small style="color: #f59e0b;">Änderung erfordert Neustart</small>
-            <button class="btn-tiny" type="button" on:click={applyRtcCrystal}>Jetzt anwenden &amp; Neustart</button>
-          </div>
-        {/if}
-      </section>
-
-      <hr />
-      <section class="restart-section">
-        <button
-          class="btn-small btn-danger"
-          type="button"
-          disabled={restarting}
-          on:click={handleRestart}
-        >
-          {restarting ? "Startet neu…" : "ESP32 neu starten"}
+      <!-- Accordion: WLAN -->
+      <div class="acc-item">
+        <button class="acc-head" type="button" on:click={() => toggleSection("wifi")}>
+          <span class="acc-icon">{openSection === "wifi" ? "▾" : "▸"}</span>
+          WLAN
+          {#if hasChanges}<span class="acc-badge">●</span>{/if}
         </button>
-      </section>
+        {#if openSection === "wifi"}
+          <div class="acc-body">
+            <form on:submit|preventDefault={handleSave}>
+              <label for="internalSSID">Hotspot SSID</label>
+              <input type="text" id="internalSSID" value={$systemStore.internalSSID}
+                on:input={(e) => handleFieldChange("internalSSID", e)} />
 
-      <hr />
-      <section class="log-section">
-        <button
-          class="log-toggle"
-          type="button"
-          on:click={() => (showLogs = !showLogs)}
-        >
-          {showLogs ? "▾" : "▸"} Event Log
-        </button>
-        {#if showLogs}
-          <EventLog />
-        {/if}
-      </section>
+              <label for="internalPW">Hotspot Passwort</label>
+              <input type="password" id="internalPW" value={$systemStore.internalPW}
+                on:input={(e) => handleFieldChange("internalPW", e)} />
 
-      <hr />
-      <section class="ota-section">
-        <h3>Firmware Update</h3>
-        <div class="ota-row">
-          <input
-            type="file"
-            accept=".bin"
-            on:change={(e) => (firmwareFiles = e.target.files)}
-          />
-          <button
-            class="btn-small btn-blue"
-            type="button"
-            disabled={!firmwareFiles || otaUploading}
-            on:click={handleOtaUpload}
-          >
-            {otaUploading ? "Uploading…" : "Upload"}
-          </button>
-        </div>
-      </section>
+              <label for="externalSSID">Externes WLAN SSID</label>
+              <input type="text" id="externalSSID" value={$systemStore.externalSSID}
+                on:input={(e) => handleFieldChange("externalSSID", e)} />
 
-      <footer>
-        <div class="footer-left">
-          {#if statusInfo}
-            <div class="status-info">
-              <div class="status-line">
-                <span class="status-label">Last Test:</span>
-                <span class="status-value">{statusInfo.lastTestTime}</span>
+              <label for="externalPW">Externes WLAN Passwort</label>
+              <input type="password" id="externalPW" value={$systemStore.externalPW}
+                on:input={(e) => handleFieldChange("externalPW", e)} />
+
+              <label for="externalSSID2">Fallback SSID <span class="optional">(optional)</span></label>
+              <input type="text" id="externalSSID2" value={$systemStore.externalSSID2}
+                placeholder="optional" on:input={(e) => handleFieldChange("externalSSID2", e)} />
+
+              <label for="externalPW2">Fallback Passwort</label>
+              <input type="password" id="externalPW2" value={$systemStore.externalPW2}
+                placeholder="optional" on:input={(e) => handleFieldChange("externalPW2", e)} />
+
+              <div class="acc-actions">
+                <button class="btn-small btn-blue" type="button" on:click={handleSave}
+                  disabled={!hasChanges}>Speichern</button>
               </div>
-              {#if statusInfo.currentTime}
-                <div class="status-line">
-                  <span class="status-label">Current Time:</span>
-                  <span class="status-value">{statusInfo.currentTime}</span>
+            </form>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Accordion: Sicherheit -->
+      <div class="acc-item">
+        <button class="acc-head" type="button" on:click={() => toggleSection("security")}>
+          <span class="acc-icon">{openSection === "security" ? "▾" : "▸"}</span>
+          Sicherheit
+        </button>
+        {#if openSection === "security"}
+          <div class="acc-body">
+            <label for="webPassword">Web-Passwort <span class="optional">(optional)</span></label>
+            <input type="password" id="webPassword" value={$systemStore.webPassword}
+              placeholder={$systemStore.webPasswordSet
+                ? "••••••••  (leer lassen um beizubehalten)"
+                : "Leer = kein Schutz"}
+              on:input={(e) => handleFieldChange("webPassword", e)} />
+            <small class="web-pw-hint">
+              {#if $systemStore.webPasswordSet}
+                Schutz aktiv · {authTokenCount} Gerät{authTokenCount === 1 ? "" : "e"} angemeldet
+              {:else}
+                Leer lassen um den Schutz zu deaktivieren
+              {/if}
+            </small>
+            <div class="acc-actions">
+              <button class="btn-small btn-blue" type="button" on:click={handleSave}
+                disabled={!hasChanges}>Speichern</button>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Accordion: Energie & Uhr -->
+      <div class="acc-item">
+        <button class="acc-head" type="button" on:click={() => toggleSection("clock")}>
+          <span class="acc-icon">{openSection === "clock" ? "▾" : "▸"}</span>
+          Energie &amp; Uhr
+        </button>
+        {#if openSection === "clock"}
+          <div class="acc-body">
+            <section class="warnings-section">
+              <label class="warnings-label">
+                <input type="checkbox" bind:checked={deepSleepEnabled} on:change={handleDeepSleepToggle} />
+                Deep sleep
+              </label>
+              <small>ESP32 schläft zwischen Alarmen. Wacht 5 min + Drift-Puffer vor jedem Event auf.</small>
+            </section>
+
+            <section class="warnings-section">
+              <label class="warnings-label">
+                <input type="checkbox" bind:checked={rtcCrystalEnabled} on:change={handleRtcCrystalToggle} />
+                Externer 32kHz RTC-Quarz
+              </label>
+              <small>Genauerer Schlaf-Timer (GPIO0/1 = XTAL_32K). Änderung erfordert Neustart.</small>
+              {#if rtcCrystalStatus}
+                <div class="fallback-status">
+                  {#if rtcCrystalStatus.available}
+                    <span style="color: #22c55e;">Quarz erkannt ✓</span>
+                    {#if rtcCrystalStatus.freqHz > 0}<span>· {rtcCrystalStatus.freqHz} Hz</span>{/if}
+                  {:else if rtcCrystalEnabled}
+                    <span>Wird beim nächsten Start geprüft</span>
+                  {:else}
+                    <span>Quarz nicht gefunden</span>
+                  {/if}
                 </div>
               {/if}
-              <div class="status-line">
-                <span class="status-label">STA Config Valid:</span>
-                <span
-                  class="status-value {statusInfo.staConfigValid
-                    ? 'success'
-                    : 'connection_failed'}"
-                >
-                  {statusInfo.staConfigValid ? "Yes" : "No"}
-                </span>
-              </div>
-              <div class="status-line">
-                <span class="status-label">System Time:</span>
-                <span class="status-value">{statusInfo.systemTime}</span>
-              </div>
-              <div class="status-line">
-                <span class="status-label">Clock Synced:</span>
-                <span
-                  class="status-value {statusInfo.clockSynced
-                    ? 'success'
-                    : 'connection_failed'}"
-                >
-                  {statusInfo.clockSynced ? "Yes" : "No"}
-                </span>
-              </div>
+              {#if rtcCrystalChanged}
+                <div class="fallback-status">
+                  <small style="color: #f59e0b;">Änderung erfordert Neustart</small>
+                  <button class="btn-tiny" type="button" on:click={applyRtcCrystal}>Jetzt anwenden &amp; Neustart</button>
+                </div>
+              {/if}
+            </section>
+
+            <section class="warnings-section">
+              <label class="warnings-label">
+                <input type="checkbox" bind:checked={tsfFallbackEnabled} on:change={handleTsfToggle} />
+                TSF-Zeitfallback
+              </label>
+              <small>Nutzt WiFi-Beacon-Timestamps zur Zeitschätzung wenn kein NTP erreichbar ist.</small>
+              {#if tsfFallbackEnabled && tsfStatus}
+                <div class="fallback-status">
+                  <span>{tsfStatus.storedAps} APs gespeichert</span>
+                  {#if tsfStatus.lastSnapshotMs > 0}<span>· Snapshot vor {formatAgo(tsfStatus.lastSnapshotMs)}</span>{/if}
+                  {#if tsfStatus.lastCalcResult !== "none"}
+                    <span>· {tsfStatus.lastCalcResult === "success"
+                      ? `✓ ${tsfStatus.lastCalcAps} APs, ±${tsfStatus.lastCalcDeviationMs}ms`
+                      : `✗ ${tsfStatus.lastCalcResult}`}</span>
+                  {/if}
+                  {#if tsfStatus.minScore !== undefined}<span>· Score: {tsfStatus.minScore}–{tsfStatus.maxScore}</span>{/if}
+                  <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>Snapshot</button>
+                </div>
+              {/if}
+            </section>
+
+            <section class="warnings-section">
+              <label class="warnings-label">
+                <input type="checkbox" bind:checked={rdsClockEnabled} on:change={handleRdsToggle} />
+                RDS-Zeitfallback (RDA5807M)
+              </label>
+              <small>FM-Modul empfängt RDS-Zeitstempel (CT) wenn kein NTP erreichbar ist.</small>
+              {#if rdsClockEnabled && rdsStatus}
+                <div class="fallback-status">
+                  {#if rdsStatus.status !== "off"}
+                    <span>Kanal: {rdsStatus.channelMhz} MHz</span>
+                    <span>· {rdsStatus.status}</span>
+                    {#if rdsStatus.status === "locked" || rdsStatus.status === "scanning"}
+                      <span>· RSSI {rdsStatus.rssi}</span>
+                    {/if}
+                  {:else}
+                    <span>Bereit (inaktiv)</span>
+                  {/if}
+                </div>
+              {/if}
+            </section>
+
+            <div class="acc-actions">
+              <button class="btn-small btn-blue" type="button" on:click={handleNtpResync}>
+                Uhr jetzt synchronisieren
+              </button>
             </div>
-          {/if}
-        </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Accordion: Warnungen -->
+      <div class="acc-item">
+        <button class="acc-head" type="button" on:click={() => toggleSection("warnings")}>
+          <span class="acc-icon">{openSection === "warnings" ? "▾" : "▸"}</span>
+          Warnungen
+        </button>
+        {#if openSection === "warnings"}
+          <div class="acc-body">
+            <section class="warnings-section">
+              <label class="warnings-label">
+                <input type="checkbox" bind:checked={warningsEnabled} on:change={handleWarningsToggle} />
+                LED-Warnungen aktiv
+              </label>
+              <small>Pixel 0 blinkt rot (keine Zeit) oder gelb (veraltete NTP-Sync).</small>
+            </section>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Accordion: System -->
+      <div class="acc-item">
+        <button class="acc-head" type="button" on:click={() => toggleSection("system")}>
+          <span class="acc-icon">{openSection === "system" ? "▾" : "▸"}</span>
+          System
+        </button>
+        {#if openSection === "system"}
+          <div class="acc-body">
+            {#if statusInfo}
+              <div class="status-info">
+                {#if statusInfo.currentTime}
+                  <div class="status-line">
+                    <span class="status-label">Aktuelle Zeit:</span>
+                    <span class="status-value">{statusInfo.currentTime}</span>
+                  </div>
+                {/if}
+                <div class="status-line">
+                  <span class="status-label">System Time:</span>
+                  <span class="status-value">{statusInfo.systemTime}</span>
+                </div>
+                <div class="status-line">
+                  <span class="status-label">NTP synced:</span>
+                  <span class="status-value {statusInfo.clockSynced ? 'success' : 'connection_failed'}">
+                    {statusInfo.clockSynced ? "Ja" : "Nein"}
+                  </span>
+                </div>
+                <div class="status-line">
+                  <span class="status-label">Letzter Test:</span>
+                  <span class="status-value">{statusInfo.lastTestTime}</span>
+                </div>
+                <div class="status-line">
+                  <span class="status-label">STA verbunden:</span>
+                  <span class="status-value {statusInfo.staConfigValid ? 'success' : 'connection_failed'}">
+                    {statusInfo.staConfigValid ? "Ja" : "Nein"}
+                  </span>
+                </div>
+              </div>
+            {/if}
+
+            <section class="log-section">
+              <button class="log-toggle" type="button" on:click={() => (showLogs = !showLogs)}>
+                {showLogs ? "▾" : "▸"} Event Log
+              </button>
+              {#if showLogs}<EventLog />{/if}
+            </section>
+
+            <div class="acc-actions">
+              <button class="btn-small btn-danger" type="button" disabled={restarting} on:click={handleFactoryReset}>
+                {restarting ? "Wird zurückgesetzt…" : "Werkseinstellungen"}
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Accordion: Firmware -->
+      <div class="acc-item">
+        <button class="acc-head" type="button" on:click={() => toggleSection("firmware")}>
+          <span class="acc-icon">{openSection === "firmware" ? "▾" : "▸"}</span>
+          Firmware Update
+        </button>
+        {#if openSection === "firmware"}
+          <div class="acc-body">
+            <div class="ota-row">
+              <input type="file" accept=".bin" on:change={(e) => (firmwareFiles = e.target.files)} />
+              <button class="btn-small btn-blue" type="button"
+                disabled={!firmwareFiles || otaUploading} on:click={handleOtaUpload}>
+                {otaUploading ? "Uploading…" : "Upload"}
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <footer>
         <div class="footer-right">
-          <button
-            class="btn-small btn-blue"
-            type="button"
-            on:click={handleCancel}>Cancel</button
-          >
-          <button
-            class="btn-small btn-blue"
-            type="button"
-            on:click={handleSave}
-            disabled={!hasChanges}>Save</button
-          >
+          <button class="btn-small btn-blue" type="button" on:click={handleCancel}>Schließen</button>
         </div>
       </footer>
     </article>
@@ -637,15 +650,10 @@
 
   footer {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     gap: 1rem;
-  }
-
-  .footer-left {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+    padding-top: 0.5rem;
   }
 
   .footer-right {
@@ -761,9 +769,51 @@
     color: inherit;
   }
 
-  .ota-section h3 {
+  /* Accordion */
+  .acc-item {
+    border-bottom: 1px solid var(--pico-muted-border-color, #333);
+  }
+
+  .acc-head {
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0.65rem 0;
+    text-align: left;
+    cursor: pointer;
     font-size: 0.9rem;
-    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .acc-head:hover {
+    opacity: 0.8;
+  }
+
+  .acc-icon {
+    font-size: 0.75rem;
+    width: 1rem;
+    flex-shrink: 0;
+  }
+
+  .acc-badge {
+    margin-left: auto;
+    color: #f59e0b;
+    font-size: 0.7rem;
+  }
+
+  .acc-body {
+    padding: 0.25rem 0 0.75rem 1.4rem;
+  }
+
+  .acc-actions {
+    margin-top: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
   .ota-row {
