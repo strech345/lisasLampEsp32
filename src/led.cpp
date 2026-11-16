@@ -138,6 +138,7 @@ void stopSinglePixelBlink() {
 
 void statusLedInit() {
     pinMode(STATUS_LED_PIN, OUTPUT);
+    statusLedOff(); // invertierte Logik: HIGH = aus, sonst leuchtet LED sofort dauerhaft
 }
 
 // Status-LED an: LOW = an (invertierte Logik auf dem Board)
@@ -149,17 +150,15 @@ void statusLedOff() {
     digitalWrite(STATUS_LED_PIN, HIGH);
 }
 
-// Blinkt die Status-LED wenn apActive=true (500 ms an/aus), sonst LED aus.
+// Blinkt die Status-LED: schnell (500ms) wenn apActive=true, langsam (150ms an / 3000ms aus) im Bereit-Modus.
 // Muss regelmäßig aus loop() aufgerufen werden.
 void statusLedTick(bool apActive) {
     static unsigned long lastToggleMs = 0;
     static bool ledState = false;
-    if(!apActive) {
-        if(ledState) { statusLedOff(); ledState = false; }
-        return;
-    }
+    // AP aktiv: 500ms an/aus — Bereit: kurz aufblitzen (150ms an, 3000ms aus)
+    unsigned long interval = apActive ? 500UL : (ledState ? 150UL : 3000UL);
     unsigned long now = millis();
-    if(now - lastToggleMs >= 500) {
+    if(now - lastToggleMs >= interval) {
         lastToggleMs = now;
         ledState = !ledState;
         ledState ? statusLedOn() : statusLedOff();
