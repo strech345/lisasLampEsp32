@@ -4,23 +4,22 @@ _Stand: November 2026_
 
 ---
 
-## Verdrahtungsdiagramm
+## Verdrahtungsdiagramm (Draufsicht)
 
 ```
-                              USB
-                         ┌────┤├────┐
-           [5V Netzteil]─┤5V      GND├─[GND Sammelschiene]
-                  [GND] ─┤GND     G21├─ (TX0, frei)
-                  [3V3] ─┤3V3     G20├─ (RX0, frei)
-    RDA5807M ── SDA ────┤G4      G10├── CLK ──┐
-    RDA5807M ── SCL ────┤G5       G3├── SW  ──┤── KY-040 Encoder
-    RDA5807M ── VCC ────┤G6       G2├── DT  ──┘
-  WS2812B ─── Data ────┤G7       G1├────────── XTAL_32K_N ──┐
-  [Onboard blaue LED] ──┤G8       G0├────────── XTAL_32K_P ──┴─ 32.768kHz Quarz (opt.)
-                         └──────────┘
-                             [BTN]
-                           GPIO9 Boot
-
+                              ┌─── USB-C ───┐
+                              │             │
+   [5V Netzteil] ─── 5V ──────┤             ├──── GND ──────────── [GND Sammelschiene]
+           [GND] ─── GND ─────┤             ├──── G21 ──────────── (TX0, frei)
+           [3V3] ─── 3V3 ─────┤  ESP32-C3   ├──── G20 ──────────── (RX0, frei)
+    RDA5807M SDA ─── G4 ──────┤  Super Mini ├──── G10 ── CLK ─┐
+    RDA5807M SCL ─── G5 ──────┤             ├──── G3  ── SW  ─┤── KY-040 Encoder
+    RDA5807M VCC ─── G6 ──────┤  ┌───────┐  ├──── G2  ── DT  ─┘
+    WS2812B Data ─── G7 ──────┤  │ Chip  │  ├──── G1  ──────────── XTAL_32K_N ─┐
+   (Onboard LED) ─── G8 ──────┤  └───────┘  ├──── G0  ──────────── XTAL_32K_P ─┴─ 32k Quarz (opt.)
+                              │             │
+                              │  ○ G9 Boot  │
+                              └─────────────┘
 
 Stromversorgung der Peripherie:
   RDA5807M VCC/GND    ── über G6 geschaltet (LOW = stromlos)
