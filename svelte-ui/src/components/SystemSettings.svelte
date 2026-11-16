@@ -11,6 +11,11 @@
 
   let warningsEnabled = true;
   let deepSleepEnabled = true;
+  let tsfFallbackEnabled = true;
+  let tsfStatus = null;
+  let rdsClockEnabled = false;
+  let rdsStatus = null;
+  let rdsRefreshInterval = null;
 
   onMount(() => {
     if (show) {
@@ -18,6 +23,7 @@
       loadWarnings();
       loadDeepSleep();
     }
+    return () => clearInterval(rdsRefreshInterval);
   });
 
   async function loadWarnings() {
@@ -58,6 +64,67 @@
         body: JSON.stringify({ enabled: deepSleepEnabled }),
       });
     } catch {}
+  }
+
+  async function loadTsfStatus() {
+    try {
+      const res = await fetch("/get_tsf_fallback");
+      if (res.ok) {
+        const data = await res.json();
+        tsfFallbackEnabled = data.enabled;
+        tsfStatus = data;
+      }
+    } catch {}
+  }
+
+  async function handleTsfToggle() {
+    try {
+      await fetch("/set_tsf_fallback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: tsfFallbackEnabled }),
+      });
+    } catch {}
+  }
+
+  async function handleTsfSnapshot() {
+    try {
+      await fetch("/trigger_tsf_snapshot", { method: "POST" });
+      setTimeout(loadTsfStatus, 3000);
+    } catch {}
+  }
+
+  async function loadRdsStatus() {
+    try {
+      const res = await fetch("/get_rds_clock");
+      if (res.ok) {
+        const data = await res.json();
+        rdsClockEnabled = data.enabled;
+        rdsStatus = data;
+      }
+    } catch {}
+  }
+
+  async function handleRdsToggle() {
+    try {
+      await fetch("/set_rds_clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: rdsClockEnabled }),
+      });
+      if (rdsClockEnabled) {
+        rdsRefreshInterval = setInterval(loadRdsStatus, 10000);
+      } else {
+        clearInterval(rdsRefreshInterval);
+      }
+    } catch {}
+  }
+
+  function formatAgo(ms) {
+    if (!ms) return "—";
+    if (ms < 60000) return Math.floor(ms / 1000) + "s";
+    if (ms < 3600000) return Math.floor(ms / 60000) + " min";
+    return Math.floor(ms / 3600000) + " h";
   }
 
   let statusInfo = null;
@@ -185,6 +252,8 @@
     loadStatusInfo();
     loadWarnings();
     loadDeepSleep();
+    loadTsfStatus();
+    loadRdsStatus();
   }
 </script>
 
@@ -271,6 +340,57 @@
           LED warnings enabled
         </label>
         <small>When active, pixel 0 blinks red (no time) or yellow (stale NTP sync).</small>
+      </section>
+
+      <section class="warnings-section">
+        <label class="warnings-label">
+          <input
+            type="checkbox"
+            bind:checked={tsfFallbackEnabled}
+            on:change={handleTsfToggle}
+          />
+          TSF time fallback
+        </label>
+        <small>Nutzt WiFi-Beacon-Timestamps zur Zeitschätzung wenn kein NTP erreichbar ist.</small>
+        {#if tsfFallbackEnabled && tsfStatus}
+          <div class="fallback-status">
+            <span>{tsfStatus.storedAps} APs gespeichert</span>
+            {#if tsfStatus.lastSnapshotMs > 0}
+              <span>· Snapshot vor {formatAgo(tsfStatus.lastSnapshotMs)}</span>
+            {/if}
+            {#if tsfStatus.lastCalcResult !== "none"}
+              <span>· {tsfStatus.lastCalcResult === "success"
+                ? `✓ ${tsfStatus.lastCalcAps} APs, ±${tsfStatus.lastCalcDeviationMs}ms`
+                : `✗ ${tsfStatus.lastCalcResult}`}</span>
+            {/if}
+            <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>Snapshot</button>
+          </div>
+        {/if}
+      </section>
+
+      <section class="warnings-section">
+        <label class="warnings-label">
+          <input
+            type="checkbox"
+            bind:checked={rdsClockEnabled}
+            on:change={handleRdsToggle}
+          />
+          RDS time fallback (RDA5807M)
+        </label>
+        <small>FM-Modul empfängt RDS-Zeitstempel (CT) wenn kein NTP erreichbar ist. Nur aktiv wenn nötig.</small>
+        {#if rdsClockEnabled && rdsStatus}
+          <div class="fallback-status">
+            {#if rdsStatus.status !== "off"}
+              <span>Kanal: {rdsStatus.channelMhz} MHz</span>
+              <span>· {rdsStatus.status}</span>
+              {#if rdsStatus.status === "locked" || rdsStatus.status === "scanning"}
+                <span>· RSSI {rdsStatus.rssi}</span>
+              {/if}
+            {:else}
+              <span>Bereit (inaktiv)</span>
+            {/if}
+          </div>
+        {/if}
       </section>
 
       <hr />
@@ -479,6 +599,31 @@
     margin-top: 0.25rem;
     font-size: 0.75rem;
     color: var(--secondary-text-color, #888);
+  }
+
+  .fallback-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color, #888);
+  }
+
+  .btn-tiny {
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    color: inherit;
+    line-height: 1.4;
+  }
+
+  .btn-tiny:hover {
+    opacity: 0.7;
   }
 
   .restart-section {
