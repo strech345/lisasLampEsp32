@@ -1,67 +1,84 @@
-# ESP32-C3 GPIO-Belegung — LisasLamp
+# GPIO-Belegung — LisasLamp (ESP32-C3 Super Mini)
 
 _Stand: November 2026_
 
 ---
 
-## Pin-Übersicht
+## Board-Diagramm
+
+Der ESP32-C3 Super Mini hat zwei Pinreihen mit je 8 Pins (USB-Anschluss oben).
+GPIO8 und GPIO9 sind **Onboard-Komponenten** (LED / Boot-Taster) ohne Header-Pin.
 
 ```
-                    ┌──────────────────────┐
-                    │       ESP32-C3       │
-          XTAL_32K_P┤ GPIO  0  [opt.]      │
-          XTAL_32K_N┤ GPIO  1  [opt.]      │
-          Encoder DT┤ GPIO  2              │
-          Encoder SW┤ GPIO  3              │
-         RDS I²C SDA┤ GPIO  4              │
-         RDS I²C SCL┤ GPIO  5              │
-          RDS Strom ┤ GPIO  6              │
-          LED-Strip ┤ GPIO  7              │
-          Status-LED┤ GPIO  8              │
-          Boot-Taster┤ GPIO  9              │
-         Encoder CLK┤ GPIO 10              │
-              [frei]┤ GPIO 11              │
-         Flash (SPI)┤ GPIO 12–17           │
-           USB (CDC)┤ GPIO 18–19           │
-                    └──────────────────────┘
+         USB
+    ┌────┤├────┐
+5V ─┤          ├─ GND
+GND─┤          ├─ GPIO21  (TX)
+3V3─┤          ├─ GPIO20  (RX)
+ G4─┤          ├─ GPIO10  → Encoder CLK
+ G5─┤          ├─ GPIO3   → Encoder SW  ⚡Wakeup
+ G6─┤          ├─ GPIO2   → Encoder DT
+ G7─┤          ├─ GPIO1   → XTAL_32K_N (RTC-Quarz opt.)
+ G8─┤  [LED]   ├─ GPIO0   → XTAL_32K_P (RTC-Quarz opt.)
+    └──────────┘
+       [BTN]
+       GPIO9 (Boot)
+
+Legende:
+  G4 = GPIO4   G5 = GPIO5   G6 = GPIO6   G7 = GPIO7   G8 = GPIO8
+  [LED] = Onboard blaue LED (GPIO8, kein Header-Pin)
+  [BTN] = Onboard Boot-Taster (GPIO9, kein Header-Pin)
+  ⚡    = GPIO-Wakeup aus Deep Sleep
 ```
 
 ---
 
 ## Detailtabelle
 
-| GPIO | Funktion        | Modul              | Richtung | Anmerkungen                                           |
-|-----:|-----------------|--------------------|---------:|-------------------------------------------------------|
-|    0 | XTAL_32K_P      | RTC-Quarz (opt.)   | —        | Positive Seite des 32.768-kHz-Quarzes; frei wenn kein Quarz bestückt |
-|    1 | XTAL_32K_N      | RTC-Quarz (opt.)   | —        | Negative Seite des 32.768-kHz-Quarzes; frei wenn kein Quarz bestückt |
-|    2 | Encoder DT      | KY-040             | IN       | Drehrichtungssignal; Pullup intern                    |
-|    3 | Encoder SW      | KY-040             | IN       | Taster-Signal; Pulldown im Deep-Sleep für GPIO-Wakeup |
-|    4 | RDS I²C SDA     | RDA5807M           | BIDIR    | I²C-Datenleitung zum FM-Chip                          |
-|    5 | RDS I²C SCL     | RDA5807M           | OUT      | I²C-Taktleitung zum FM-Chip                           |
-|    6 | RDS Strom       | RDA5807M           | OUT      | HIGH = Modul eingeschaltet; LOW = ausgeschaltet       |
-|    7 | LED-Strip       | WS2812FX / NeoPixel | OUT     | Datenleitung zum WS2812B-LED-Streifen                 |
-|    8 | Status-LED      | Onboard-LED        | OUT      | Blaue Status-LED; an während boot/wifi aktiv          |
-|    9 | Boot-Taster     | Boot-Button        | IN       | Interner Boot-Button; Pullup; langer Druck = Werksreset |
-|   10 | Encoder CLK     | KY-040             | IN       | Taktsignal des Drehencoders; Pullup im Deep-Sleep für GPIO-Wakeup |
-|   11 | —               | frei               | —        | Kein Peripheriegerät angeschlossen                    |
-| 12–17 | Flash (SPI)    | internes Flash     | —        | Für internes SPI-Flash reserviert; nicht verwenden    |
-| 18–19 | USB (CDC)      | USB-CDC            | BIDIR    | USB-Kommunikation (D−/D+); Serial-Monitor             |
+| GPIO | Header? | Funktion        | Modul              | Richtung | Anmerkungen                                                  |
+|-----:|:-------:|-----------------|--------------------|:--------:|--------------------------------------------------------------|
+|    0 | ✓       | XTAL_32K_P      | RTC-Quarz (opt.)   | —        | Pos. Seite des 32.768-kHz-Quarzes; ungenutzt wenn kein Quarz |
+|    1 | ✓       | XTAL_32K_N      | RTC-Quarz (opt.)   | —        | Neg. Seite des 32.768-kHz-Quarzes; ungenutzt wenn kein Quarz |
+|    2 | ✓       | Encoder DT      | KY-040             | IN       | Drehrichtungssignal; interner Pullup                         |
+|    3 | ✓       | Encoder SW      | KY-040             | IN       | Taster; Pulldown im Deep Sleep für GPIO-Wakeup               |
+|    4 | ✓       | RDS I²C SDA     | RDA5807M           | BIDIR    | I²C-Datenleitung zum FM-Chip                                 |
+|    5 | ✓       | RDS I²C SCL     | RDA5807M           | OUT      | I²C-Taktleitung zum FM-Chip                                  |
+|    6 | ✓       | RDS Strom       | RDA5807M           | OUT      | HIGH = Modul an; LOW = stromlos (0 mA)                       |
+|    7 | ✓       | LED-Strip       | WS2812FX           | OUT      | Datenleitung zu 5× WS2812B (GRBW)                           |
+|    8 | —       | Status-LED      | Onboard (blau)     | OUT      | Kein Header-Pin; an = Boot/WiFi aktiv; invertierte Logik     |
+|    9 | —       | Boot-Taster     | Onboard            | IN       | Kein Header-Pin; Pullup; langer Druck = Werksreset           |
+|   10 | ✓       | Encoder CLK     | KY-040             | IN       | Taktsignal; Pullup im Deep Sleep für GPIO-Wakeup             |
+| 11   | —       | —               | —                  | —        | Nicht am Header; intern nicht verwendet                      |
+| 12–17| —       | Flash (SPI)     | internes Flash     | —        | Für SPI-Flash reserviert; niemals verwenden                  |
+| 18–19| —       | USB (CDC)       | USB-CDC            | BIDIR    | USB D−/D+; Serial-Monitor bei Debug-Builds                   |
+| 20   | ✓       | TX0 (frei)      | UART0              | OUT      | Header-Pin; aktuell ungenutzt                                |
+| 21   | ✓       | RX0 (frei)      | UART0              | IN       | Header-Pin; aktuell ungenutzt                                |
 
 ---
 
-## XTAL_32K — Externer Uhrenquarz (optional)
+## Freie Header-Pins
 
-GPIO0 und GPIO1 sind beim ESP32-C3 als `XTAL_32K_P` (positive) und `XTAL_32K_N` (negative) Anschlüsse eines
-externen **32.768-kHz-Uhrenquarzes** nutzbar. Dieser Quarz verbessert die Genauigkeit des RTC-Schlaftime
-erheblich: Der interne RC-Oszillator driftet um ~1–2 % pro Tag, ein externer Quarz typischerweise nur
-~20 ppm (~1,7 s/Tag).
+| GPIO | Anmerkung |
+|-----:|-----------|
+|   20 | TX0 — für UART-Debug oder zukünftige Peripherie nutzbar |
+|   21 | RX0 — für UART-Debug oder zukünftige Peripherie nutzbar |
 
-Die Extension `src/rtc_crystal.cpp` aktiviert den Quarz beim Boot wenn `rtcCrystalEnabled = true` gesetzt
-ist, prüft per Kalibrierungsmessung ob er tatsächlich schwingt (Erwartungsbereich 32.000–33.000 Hz), und
-fällt sicher auf den internen RC-Oszillator zurück wenn kein Quarz bestückt ist.
+---
 
-**Warum GPIO0/1 frei halten?**
-Solange kein Quarz bestückt ist, können GPIO0 und GPIO1 theoretisch als normale GPIOs genutzt werden.
-Da der ESP32-C3 beim Anlegen der XTAL_32K-Funktion kurze Bootstrap-Pulse sendet, sollten dort keine
-Peripheriegeräte angeschlossen werden, die auf kurze Pulse empfindlich reagieren.
-Der Rotary-Encoder-CLK wurde deshalb von GPIO1 auf **GPIO10** verlegt.
+## XTAL_32K — Externer 32.768-kHz-Uhrenquarz (optional)
+
+GPIO0 (`XTAL_32K_P`) und GPIO1 (`XTAL_32K_N`) sind die Anschlüsse für einen externen
+Uhrenquarz. Dieser verbessert die RTC-Genauigkeit erheblich:
+
+| Taktquelle        | Typischer Drift  |
+|-------------------|-----------------|
+| Interner RC-Oszi  | ~1–2 % / Tag    |
+| Externer 32k-Quarz| ~20 ppm (~1,7 s/Tag) |
+
+Die Extension `rtc_crystal` aktiviert den Quarz beim Boot, prüft per Kalibrierung
+ob er schwingt (Zielbereich 32.000–33.000 Hz), und fällt sicher auf den internen
+RC-Oszillator zurück wenn kein Quarz bestückt ist.
+
+**Hinweis:** Der ESP32-C3 sendet beim Aktivieren kurze Bootstrap-Pulse auf GPIO0/1.
+Deshalb wurden GPIO0 und GPIO1 für keine andere Funktion genutzt und der
+Encoder-CLK von GPIO1 auf **GPIO10** verlegt.
