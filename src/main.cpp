@@ -79,7 +79,6 @@ void setup() {
 
     // --- LED initialisieren ---
     ledInit();
-    statusLedOn();
 
     // --- Systemeinstellungen laden ---
     ensureSystemSettingsExistsAndResetIfNot();
