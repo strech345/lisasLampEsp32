@@ -1,5 +1,5 @@
 // LED-Steuerung — Implementierung
-// WS2812FX auf GPIO 7 (5 RGBW-Pixel); Status-LED auf GPIO 8 (invertierte Logik).
+// WS2812FX auf GPIO 10 (5 RGBW-Pixel); Status-LED auf GPIO 8 (invertierte Logik).
 #include <Arduino.h>
 #include <WS2812FX.h>
 #include "debug_utils.h"
@@ -16,7 +16,7 @@ struct LedState {
 static unsigned long s_flashEndMs = 0; // Zeitpunkt wann der Flash-Effekt endet (0 = kein Flash)
 static LedState      s_preFlashState;  // Gespeicherter Zustand vor dem Flash
 
-#define LED_PIN      7
+#define LED_PIN      10
 #define LED_COUNT    5
 #define STATUS_LED_PIN 8
 

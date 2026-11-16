@@ -75,8 +75,8 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
 static RotaryEncoderCallback _rotaryEncoderCallback;
 
 // Pin-Belegung des KY-040 Encoders
-// CLK auf GPIO10: GPIO0/1 sind für den optionalen 32.768-kHz-Uhrenquarz reserviert
-#define ROTARY_ENCODER_CLK_PIN 10
+// Encoder-Pins G2/G3/G4 liegen physisch nebeneinander auf der rechten Boardseite
+#define ROTARY_ENCODER_CLK_PIN 4
 #define ROTARY_ENCODER_DT_PIN  2
 #define ROTARY_ENCODER_SW_PIN  3
 #define ROTARY_ENCODER_STEPS   4

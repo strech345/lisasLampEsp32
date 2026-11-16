@@ -12,11 +12,11 @@
 #include <time.h>
 #include <ArduinoJson.h>
 
-// GPIO-Belegung ESP32-C3: 1(CLK), 2(DT), 3(SW), 7(LED), 8(STATUS_LED), 9(BOOT)
+// GPIO-Belegung ESP32-C3: 2(DT), 3(SW), 4(CLK), 8(STATUS_LED), 9(BOOT), 10(LED)
 // Passe diese Pins an deine Hardware an:
-#define RDS_POWER_PIN 6  // GPIO 6: steuert Modul-Stromversorgung (HIGH = an)
-#define RDS_SDA_PIN   4  // GPIO 4: I2C SDA
-#define RDS_SCL_PIN   5  // GPIO 5: I2C SCL
+#define RDS_POWER_PIN 7  // GPIO 7: steuert Modul-Stromversorgung (HIGH = an)
+#define RDS_SDA_PIN   5  // GPIO 5: I2C SDA
+#define RDS_SCL_PIN   6  // GPIO 6: I2C SCL
 
 #define RDA5807M_ADDR  0x11  // Random-access I2C-Adresse
 

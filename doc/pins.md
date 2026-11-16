@@ -9,16 +9,15 @@ _Stand: November 2026_
 ```
                               ┌─── USB-C ───┐
                               │             │
-   [5V Netzteil] ─── 5V ──────┤             ├──── GND ──────────── [GND Sammelschiene]
-           [GND] ─── GND ─────┤             ├──── G21 ──────────── (TX0, frei)
-           [3V3] ─── 3V3 ─────┤  ESP32-C3   ├──── G20 ──────────── (RX0, frei)
-    RDA5807M SDA ─── G4 ──────┤  Super Mini ├──── G10 ── CLK ─┐
-    RDA5807M SCL ─── G5 ──────┤             ├──── G3  ── SW  ─┤── KY-040 Encoder
-    RDA5807M VCC ─── G6 ──────┤  ┌───────┐  ├──── G2  ── DT  ─┘
-    WS2812B Data ─── G7 ──────┤  │ Chip  │  ├──── G1  ──────────── XTAL_32K_N ─┐
-   (Onboard LED) ─── G8 ──────┤  └───────┘  ├──── G0  ──────────── XTAL_32K_P ─┴─ 32k Quarz (opt.)
+    RDA5807M SDA ─── G5 ──────┤             ├──── 5V  ──────────── [5V Netzteil]
+    RDA5807M SCL ─── G6 ──────┤             ├──── GND ──────────── [GND Sammelschiene]
+    RDA5807M VCC ─── G7 ──────┤  ESP32-C3   ├──── 3V3 ──────────── [3V3]
+   (Onboard LED) ─── G8 ──────┤  Super Mini ├──── G4  ── CLK ─┐
+   (Boot-Taster) ─── G9 ──────┤             ├──── G3  ── SW  ─┤── KY-040 Encoder
+    WS2812B Data ─── G10 ─────┤  ┌───────┐  ├──── G2  ── DT  ─┘
+      (TX0 frei) ─── G20 ─────┤  │ Chip  │  ├──── G1  ──────────── XTAL_32K_N ─┐
+      (RX0 frei) ─── G21 ─────┤  └───────┘  ├──── G0  ──────────── XTAL_32K_P ─┴─ 32k Quarz (opt.)
                               │             │
-                              │  ○ G9 Boot  │
                               └─────────────┘
 
 Stromversorgung der Peripherie:
@@ -39,13 +38,13 @@ Stromversorgung der Peripherie:
 |    1 | ✓       | XTAL_32K_N     | RTC-Quarz (opt.)   | —        | Neg. Quarz-Pin; kein anderes Gerät anschließen            |
 |    2 | ✓       | Encoder DT     | KY-040             | IN       | Drehrichtung; interner Pullup                             |
 |    3 | ✓       | Encoder SW     | KY-040             | IN       | Taster; Pulldown im Deep Sleep → GPIO-Wakeup ⚡           |
-|    4 | ✓       | RDS I²C SDA    | RDA5807M           | BIDIR    | I²C-Daten; 4,7 kΩ Pullup auf 3V3 empfohlen               |
-|    5 | ✓       | RDS I²C SCL    | RDA5807M           | OUT      | I²C-Takt; 4,7 kΩ Pullup auf 3V3 empfohlen                |
-|    6 | ✓       | RDS Strom      | RDA5807M           | OUT      | HIGH = Modul an; LOW = 0 mA (vollständig stromlos)        |
-|    7 | ✓       | LED-Strip Data | WS2812B (5×GRBW)   | OUT      | NeoPixel-Datenleitung; 300–500 Ω Serienwiderstand empf.   |
-|    8 | —       | Status-LED     | Onboard (blau)     | OUT      | Kein Header-Pin; invertierte Logik (LOW = an)             |
-|    9 | —       | Boot-Taster    | Onboard            | IN       | Kein Header-Pin; interner Pullup; langer Druck = Reset    |
-|   10 | ✓       | Encoder CLK    | KY-040             | IN       | Takt; Pullup im Deep Sleep → GPIO-Wakeup ⚡               |
+|    4 | ✓       | Encoder CLK    | KY-040             | IN       | Takt; Pullup im Deep Sleep → GPIO-Wakeup ⚡               |
+|    5 | ✓       | RDS I²C SDA    | RDA5807M           | BIDIR    | I²C-Daten; 4,7 kΩ Pullup auf 3V3 empfohlen               |
+|    6 | ✓       | RDS I²C SCL    | RDA5807M           | OUT      | I²C-Takt; 4,7 kΩ Pullup auf 3V3 empfohlen                |
+|    7 | ✓       | RDS Strom      | RDA5807M           | OUT      | HIGH = Modul an; LOW = 0 mA (vollständig stromlos)        |
+|    8 | ✓       | Status-LED     | Onboard (blau)     | OUT      | Invertierte Logik (LOW = an); beeinflusst LED wenn genutzt |
+|    9 | ✓       | Boot-Taster    | Onboard            | IN       | Interner Pullup; langer Druck = Factory Reset              |
+|   10 | ✓       | LED-Strip Data | WS2812B (5×GRBW)   | OUT      | NeoPixel-Datenleitung; 300–500 Ω Serienwiderstand empf.   |
 |   20 | ✓       | TX0 (frei)     | UART0              | OUT      | Aktuell ungenutzt                                         |
 |   21 | ✓       | RX0 (frei)     | UART0              | IN       | Aktuell ungenutzt                                         |
 | 12–17| —       | Flash SPI      | internes Flash     | —        | Reserviert; niemals als GPIO verwenden                    |
