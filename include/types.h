@@ -50,6 +50,8 @@ struct SystemSettings {
     bool tsfFallbackEnabled;
     bool rdsClockEnabled;
     uint16_t rdsLastChannel; // Frequenz in 10kHz-Einheiten, z.B. 1011 = 101.1 MHz; 0 = nicht gesetzt
+    bool rtcCrystalEnabled;  // Benutzer-Einstellung: externen 32-kHz-Quarz verwenden
+    bool rtcCrystalAvailable; // Letzter Boot-Befund: Quarz war messbar (wird intern gesetzt)
 };
 
 #define MAX_TSF_ENTRIES 10

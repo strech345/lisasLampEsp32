@@ -29,6 +29,8 @@ void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body);
 void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String& body);
 void handleGetRdsClock(AsyncWebServerRequest* request, const String& body);
 void handleSetRdsClock(AsyncWebServerRequest* request, const String& body);
+void handleGetRtcCrystal(AsyncWebServerRequest* request, const String& body);
+void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body);
 
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,

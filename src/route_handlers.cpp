@@ -11,6 +11,7 @@
 #include "event_log.h"
 #include "tsf_clock.h"
 #include "rds_clock.h"
+#include "rtc_crystal.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -319,7 +320,9 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/set_tsf_fallback", HTTP_POST, handleSetTsfFallback},
             {"/trigger_tsf_snapshot", HTTP_POST, handleTriggerTsfSnapshot},
             {"/get_rds_clock", HTTP_GET, handleGetRdsClock},
-            {"/set_rds_clock", HTTP_POST, handleSetRdsClock}};
+            {"/set_rds_clock", HTTP_POST, handleSetRdsClock},
+            {"/get_rtc_crystal", HTTP_GET, handleGetRtcCrystal},
+            {"/set_rtc_crystal", HTTP_POST, handleSetRtcCrystal}};
 }
 
 void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {
@@ -365,4 +368,28 @@ void handleSetRdsClock(AsyncWebServerRequest* request, const String& body) {
     newSettings.rdsClockEnabled = doc["enabled"] | false;
     g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
     request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void handleGetRtcCrystal(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getRtcCrystalStatusJson());
+}
+
+// Einstellung speichern und Neustart auslösen (RTC-Taktquelle nur beim Boot umschaltbar)
+void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body) {
+    if(g_stateCallback == nullptr || body.isEmpty()) {
+        request->send(400, "text/plain", "Bad Request");
+        return;
+    }
+    JsonDocument doc;
+    if(deserializeJson(doc, body)) {
+        request->send(400, "text/plain", "Invalid JSON");
+        return;
+    }
+    SystemSettings newSettings = *g_systemSettings;
+    newSettings.rtcCrystalEnabled = doc["enabled"] | false;
+    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
+    logEvent("RTC: Einstellung geändert, Neustart");
+    request->send(200, "application/json", "{\"status\":\"restarting\"}");
+    delay(200);
+    ESP.restart();
 }

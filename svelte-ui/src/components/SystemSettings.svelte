@@ -16,6 +16,9 @@
   let rdsClockEnabled = false;
   let rdsStatus = null;
   let rdsRefreshInterval = null;
+  let rtcCrystalEnabled = false;
+  let rtcCrystalStatus = null;
+  let rtcCrystalChanged = false;
 
   onMount(() => {
     if (show) {
@@ -91,6 +94,34 @@
     try {
       await fetch("/trigger_tsf_snapshot", { method: "POST" });
       setTimeout(loadTsfStatus, 3000);
+    } catch {}
+  }
+
+  async function loadRtcCrystalStatus() {
+    try {
+      const res = await fetch("/get_rtc_crystal");
+      if (res.ok) {
+        const data = await res.json();
+        rtcCrystalEnabled = data.enabled;
+        rtcCrystalStatus = data;
+      }
+    } catch {}
+  }
+
+  async function handleRtcCrystalToggle() {
+    rtcCrystalChanged = true;
+  }
+
+  async function applyRtcCrystal() {
+    try {
+      await fetch("/set_rtc_crystal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: rtcCrystalEnabled }),
+      });
+      messageStore.show("success", "RTC-Quarz-Einstellung gespeichert. ESP32 startet neu…");
+      show = false;
+      setTimeout(() => location.reload(), 6000);
     } catch {}
   }
 
@@ -254,6 +285,7 @@
     loadDeepSleep();
     loadTsfStatus();
     loadRdsStatus();
+    loadRtcCrystalStatus();
   }
 </script>
 
@@ -389,6 +421,38 @@
             {:else}
               <span>Bereit (inaktiv)</span>
             {/if}
+          </div>
+        {/if}
+      </section>
+
+      <section class="warnings-section">
+        <label class="warnings-label">
+          <input
+            type="checkbox"
+            bind:checked={rtcCrystalEnabled}
+            on:change={handleRtcCrystalToggle}
+          />
+          Externer 32kHz RTC-Quarz
+        </label>
+        <small>Genauerer Schlaf-Timer (GPIO0/1 = XTAL_32K). Änderung erfordert Neustart.</small>
+        {#if rtcCrystalStatus}
+          <div class="fallback-status">
+            {#if rtcCrystalStatus.available}
+              <span style="color: #22c55e;">Quarz erkannt ✓</span>
+              {#if rtcCrystalStatus.freqHz > 0}
+                <span>· {rtcCrystalStatus.freqHz} Hz</span>
+              {/if}
+            {:else if rtcCrystalEnabled}
+              <span>Wird beim nächsten Start geprüft</span>
+            {:else}
+              <span>Quarz nicht gefunden</span>
+            {/if}
+          </div>
+        {/if}
+        {#if rtcCrystalChanged}
+          <div class="fallback-status">
+            <small style="color: #f59e0b;">Änderung erfordert Neustart</small>
+            <button class="btn-tiny" type="button" on:click={applyRtcCrystal}>Jetzt anwenden &amp; Neustart</button>
           </div>
         {/if}
       </section>

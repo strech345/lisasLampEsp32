@@ -145,6 +145,8 @@ SystemSettings getDefaultSystemSettings() {
     defaultSettings.tsfFallbackEnabled = true;
     defaultSettings.rdsClockEnabled = false;
     defaultSettings.rdsLastChannel = 0;
+    defaultSettings.rtcCrystalEnabled = false;
+    defaultSettings.rtcCrystalAvailable = false;
     return defaultSettings;
 }
 
