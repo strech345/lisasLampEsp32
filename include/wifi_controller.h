@@ -7,7 +7,7 @@
 #include "types.h"
 #include <DNSServer.h>
 
-static const unsigned long STOP_WIFI_AFTER_MS = 5 * 60 * 1000;       // 5 Minuten ohne Client → WiFi abschalten
+static const unsigned long STOP_WIFI_AFTER_MS = 1 * 60 * 1000;       // 1 Minute ohne Client → WiFi abschalten
 static const unsigned long START_WIFI_AFTER_MS = 5 * 60 * 60 * 1000; // alle 5h automatisch für NTP-Sync starten
 
 void wifiLoop();                  // Muss in loop() aufgerufen werden

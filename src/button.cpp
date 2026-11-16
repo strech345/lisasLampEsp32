@@ -17,6 +17,21 @@ static FullConfig* s_appConfig = nullptr;
 static LampState* s_lampState = nullptr;
 static WiFiTestTracker* s_wifiTracker = nullptr;
 
+// Pin-Belegung des KY-040 Encoders
+#define ROTARY_ENCODER_CLK_PIN 4
+#define ROTARY_ENCODER_DT_PIN  2
+#define ROTARY_ENCODER_SW_PIN  3
+#define ROTARY_ENCODER_STEPS   4
+#define BOOT_BUTTON_PIN        9
+
+const unsigned long shortPressAfterMiliseconds = 50;
+const unsigned long longPressAfterMiliseconds  = 1000;
+
+static RotaryEncoderCallback _rotaryEncoderCallback;
+
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_DT_PIN, ROTARY_ENCODER_CLK_PIN,
+                                                          ROTARY_ENCODER_SW_PIN, -1, ROTARY_ENCODER_STEPS);
+
 // Speichert Zeiger auf den globalen Zustand für die Callback-Funktionen
 void initButtonCallbacks(FullConfig* pAppConfig, LampState* pLampState, WiFiTestTracker* pWifiTracker) {
     s_appConfig = pAppConfig;
@@ -41,13 +56,13 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
     case RotaryEncoderEventType::Rotate: {
         // Helligkeit ändern (0–7), sofort speichern und anwenden
         int v = value;
-        if(v < 0) v = 0;
-        if(v > 7) v = 7;
+        if(v < 0) { v = 0; rotaryEncoder.setEncoderValue(0); } // Snap-back: verhindert Phantomschritt unter 0
+        if(v > 7) { v = 7; rotaryEncoder.setEncoderValue(7); } // Snap-back: verhindert Phantomschritt über 7
         s_appConfig->brightnessMode = (byte)v;
         serialPrint("Brightness mode set to: " + String(s_appConfig->brightnessMode) + String(" (from ")
                     + String(value) + String(")"));
+        setBrightnessLevel(s_appConfig->brightnessMode); // setzt Helligkeit und zeigt sofort an
         saveFullConfig(*s_appConfig, true);
-        setBrightnessLevel(s_appConfig->brightnessMode);
         // Drehen beendet Good-Night-Modus (Nutzer will aktiv die Helligkeit steuern)
         if(*s_lampState == LAMP_STATE_GOOD_NIGHT) {
             *s_lampState = LAMP_STATE_DEFAULT;
@@ -72,22 +87,6 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
     }
 }
 
-static RotaryEncoderCallback _rotaryEncoderCallback;
-
-// Pin-Belegung des KY-040 Encoders
-// Encoder-Pins G2/G3/G4 liegen physisch nebeneinander auf der rechten Boardseite
-#define ROTARY_ENCODER_CLK_PIN 4
-#define ROTARY_ENCODER_DT_PIN  2
-#define ROTARY_ENCODER_SW_PIN  3
-#define ROTARY_ENCODER_STEPS   4
-#define BOOT_BUTTON_PIN        9
-
-// Entprellzeiten in Millisekunden
-const unsigned long shortPressAfterMiliseconds = 50;   // Mindestdauer für kurzen Druck
-const unsigned long longPressAfterMiliseconds  = 1000; // Mindestdauer für langen Druck
-
-AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_DT_PIN, ROTARY_ENCODER_CLK_PIN,
-                                                          ROTARY_ENCODER_SW_PIN, -1, ROTARY_ENCODER_STEPS);
 
 // Interrupt-Handler: wird vom Encoder-Chip aufgerufen bei jeder Pegelwechsel
 void IRAM_ATTR readEncoderISR() {
@@ -102,7 +101,7 @@ void initRotaryEncoder(byte value, RotaryEncoderCallback callback) {
     rotaryEncoder.setup(readEncoderISR);
     bool circleValues = false;
     serialPrint("Initializing rotary encoder with value: " + String(value));
-    rotaryEncoder.setBoundaries(0, 7, circleValues);
+    rotaryEncoder.setBoundaries(-1000, 1000, circleValues); // Grenzen selbst verwalten im Callback
     rotaryEncoder.setEncoderValue(value);
 }
 
@@ -164,20 +163,21 @@ void handleRotation() {
     }
 }
 
-// Läuft in der Hauptschleife: prüft alle 20ms Taster und Drehbewegung
+// Läuft in der Hauptschleife: Drehbewegung sofort, Taster alle 20ms (Debounce)
 void rotary_loop() {
-    unsigned long currentMillis = millis();
-    static unsigned long previousMillis = 0;
-    const unsigned long interval = 20;
-
     if(!_rotaryEncoderCallback) {
         return;
     }
 
-    if(currentMillis - previousMillis >= interval) {
+    // Drehbewegung braucht kein Debounce — sofort prüfen für minimale Latenz
+    handleRotation();
+
+    // Taster alle 20ms prüfen (Debounce gegen Prellen)
+    unsigned long currentMillis = millis();
+    static unsigned long previousMillis = 0;
+    if(currentMillis - previousMillis >= 20) {
         previousMillis = currentMillis;
         handle_rotary_button(currentMillis);
         handle_boot_button(currentMillis);
-        handleRotation();
     }
 }

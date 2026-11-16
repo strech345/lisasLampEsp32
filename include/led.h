@@ -7,7 +7,6 @@
 
 void ledInit();
 void ledUpdate();           // Muss in loop() aufgerufen werden
-void setBrightness(uint8_t brightness);
 void setLedColor(uint32_t color);
 void setAnimationMode(uint8_t mode);
 void setAnimationSpeed(uint16_t speed);
@@ -16,7 +15,7 @@ void startCelebrationEffect();
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();
-void statusLedTick(bool apActive); // Blinkt wenn AP aktiv, sonst aus
+void statusLedTick(bool wifiActive); // Immer: langsam (kein WLAN) oder schnell (WLAN aktiv)
 
 // Lässt WARNING_PIXEL in blinkColor blinken; alle anderen Pixel bleiben statisch
 void startSinglePixelBlink(uint32_t blinkColor);

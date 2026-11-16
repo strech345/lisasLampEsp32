@@ -160,14 +160,14 @@ void handleClientRequests() {
 
 static unsigned long s_wifiStopTimerMs = 0;
 
-// Schaltet WiFi ab wenn STOP_WIFI_AFTER_MS (5min) lang kein Client verbunden war
+// Schaltet WiFi ab wenn STOP_WIFI_AFTER_MS (1min) lang kein Client verbunden war
 void checkWifiStop() {
     if(!isWiFiActive() || hasWifiClients()) {
         s_wifiStopTimerMs = millis();
         return;
     }
     if(isTimeForAction(&s_wifiStopTimerMs, STOP_WIFI_AFTER_MS)) {
-        serialPrint("checkWifiStop: 5min ohne Client — stoppe AP");
+        serialPrint("checkWifiStop: 1min ohne Client — stoppe AP");
         stopWifi();
         s_wifiStopTimerMs = 0;
     }
@@ -254,6 +254,7 @@ void startWifi(bool withAP) {
             WiFi.setTxPower(WIFI_AP_TX_POWER);
             delay(100);
             serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+            WiFi.softAPConfig(localIP, localIP, subnetMask);
             bool ok = WiFi.softAP(s->internalSSID, s->internalPW, s_wifiChannel, 0, MAX_CLIENTS);
             serialPrint(String("softAP(upgrade)=") + (ok ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel) + " IP=" + WiFi.softAPIP().toString());
             dnsServer.start(53, "*", localIP);
@@ -272,6 +273,7 @@ void startWifi(bool withAP) {
             WiFi.setTxPower(WIFI_AP_TX_POWER);
             delay(100);
             serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+            WiFi.softAPConfig(localIP, localIP, subnetMask);
             bool apOkApsta = WiFi.softAP(s->internalSSID, s->internalPW, s_wifiChannel, 0, MAX_CLIENTS);
             serialPrint(String("softAP(APSTA)=") + (apOkApsta ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel) + " IP=" + WiFi.softAPIP().toString());
         } else {
@@ -286,6 +288,7 @@ void startWifi(bool withAP) {
         WiFi.setTxPower(WIFI_AP_TX_POWER);
         delay(100);
         serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+        WiFi.softAPConfig(localIP, localIP, subnetMask);
         bool apOk = WiFi.softAP(s->internalSSID, strlen(s->internalPW) > 0 ? s->internalPW : nullptr, s_wifiChannel, 0, MAX_CLIENTS);
         serialPrint(String("softAP(AP)=") + (apOk ? "OK" : "FAIL") + "  SSID='" + s->internalSSID + "'  PW-len=" + String(strlen(s->internalPW)) + "  ch=" + String(s_wifiChannel) + "  IP=" + WiFi.softAPIP().toString());
     }

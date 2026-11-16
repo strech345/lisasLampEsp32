@@ -22,6 +22,12 @@ static LedState      s_preFlashState;  // Gespeicherter Zustand vor dem Flash
 
 WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
+// Interne Hilfsfunktion — setzt Helligkeit mit Log
+static void applyBrightness(uint8_t brightness) {
+    serialPrint("Setting brightness to " + String(brightness));
+    ws2812fx.setBrightness(brightness);
+}
+
 // Initialisiert LEDs mit Startfarbe und startet den Animationsmotor
 void ledInit() {
     statusLedInit();
@@ -30,6 +36,7 @@ void ledInit() {
     ws2812fx.start();
     ws2812fx.setColor(0xFFC896);
 }
+
 
 // Muss in der Hauptschleife aufgerufen werden: stellt nach einem Flash den alten Zustand wieder her
 void ledUpdate() {
@@ -59,15 +66,10 @@ void flashLeds(uint32_t color, unsigned long durationMs) {
     ws2812fx.setColor(color);
     // Flash auch dann sichtbar machen wenn die Lampe gerade dunkel ist
     uint8_t b = s_preFlashState.brightness >= 64 ? s_preFlashState.brightness : 160;
-    ws2812fx.setBrightness(b);
+    applyBrightness(b);
     if(!ws2812fx.isRunning()) ws2812fx.start();
 
     s_flashEndMs = millis() + durationMs;
-}
-
-void setBrightness(uint8_t brightness) {
-    serialPrint("Setting brightness to " + String(brightness));
-    ws2812fx.setBrightness(brightness);
 }
 
 // Setzt die Farbe nur wenn sie sich geändert hat (vermeidet unnötige Schreibvorgänge)
@@ -93,26 +95,24 @@ void setAnimationSpeed(uint16_t speed) {
     ws2812fx.setSpeed(speed);
 }
 
-// Setzt Helligkeit über eine Stufe 0–7 (0 = aus, 7 = voll)
-// Die Stufenwerte sind nichtlinear damit kleine Stufen sichtbar sind
+// Setzt Helligkeit über Stufe 0–7 und zeigt das Ergebnis sofort an.
+// 0 = aus (stop → strip_off), 1–7 = an (start falls nötig + trigger + service).
 void setBrightnessLevel(uint8_t level) {
-    if(level == 0) {
-        if(ws2812fx.isRunning()) {
-            serialPrint("Stopping WS2812FX (brightness 0)");
-            ws2812fx.stop();
-        }
-    } else {
-        if(!ws2812fx.isRunning()) {
-            serialPrint("Starting WS2812FX (brightness > 0)");
-            ws2812fx.start();
-        }
-    }
     // Stufe → PWM-Wert: 0→0, 1→32, 2→64, 3→96, 4→128, 5→160, 6→200, 7→255
     static const uint8_t brightnessMap[8] = {0, 32, 64, 96, 128, 160, 200, 255};
-    if(level > 7)
-        level = 7;
-    serialPrint("Setting brightness level to " + String(level) + " (mapped to " + String(brightnessMap[level]) + ")");
-    setBrightness(brightnessMap[level]);
+    if(level > 7) level = 7;
+    uint8_t bv = brightnessMap[level];
+    serialPrint("Setting brightness level to " + String(level) + " (mapped to " + String(bv) + ")");
+
+    if(level == 0) {
+        applyBrightness(0);
+        if(ws2812fx.isRunning()) ws2812fx.stop(); // stop() ruft strip_off() → sofort dunkel
+    } else {
+        if(!ws2812fx.isRunning()) ws2812fx.start();
+        applyBrightness(bv);
+        ws2812fx.trigger();
+        ws2812fx.service(); // sofortiger Animation-Frame mit neuer Helligkeit
+    }
 }
 
 // Startet den Regenbogen-Effekt für den Feier-Modus
@@ -150,13 +150,14 @@ void statusLedOff() {
     digitalWrite(STATUS_LED_PIN, HIGH);
 }
 
-// Blinkt die Status-LED: schnell (500ms) wenn apActive=true, langsam (150ms an / 3000ms aus) im Bereit-Modus.
-// Muss regelmäßig aus loop() aufgerufen werden.
-void statusLedTick(bool apActive) {
+// Blinkt die Status-LED immer: langsam (800ms an / 1200ms aus) wenn kein WLAN aktiv,
+// schnell (200ms an / 300ms aus) wenn WLAN aktiv. Muss aus loop() aufgerufen werden.
+void statusLedTick(bool wifiActive) {
     static unsigned long lastToggleMs = 0;
     static bool ledState = false;
-    // AP aktiv: 500ms an/aus — Bereit: kurz aufblitzen (150ms an, 3000ms aus)
-    unsigned long interval = apActive ? 500UL : (ledState ? 150UL : 3000UL);
+    unsigned long onTime  = wifiActive ? 200UL :  800UL;
+    unsigned long offTime = wifiActive ? 300UL : 1200UL;
+    unsigned long interval = ledState ? onTime : offTime;
     unsigned long now = millis();
     if(now - lastToggleMs >= interval) {
         lastToggleMs = now;

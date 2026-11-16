@@ -46,13 +46,13 @@ void onStateUpdatedFromWifi(StateChangeType type, void* data);
 void setup() {
 #ifdef DEBUG
     Serial.begin(115200);
-    // Warte bis USB-CDC bereit ist (max. 5 Sekunden)
+    Serial.setTxTimeoutMs(0); // nie blockieren wenn kein USB-Host verbunden
+    // Warte bis USB-CDC bereit ist (max. 2 Sekunden)
     unsigned long startWait = millis();
-    while(!Serial && millis() - startWait < 5000) {
+    while(!Serial && millis() - startWait < 2000) {
         delay(10);
     }
-    // Kurze Pause damit das Terminal die ersten Ausgaben nicht verliert
-    delay(1000);
+    if(Serial) delay(500); // kurze Pause nur wenn Monitor wirklich verbunden
 
     Serial.println("\n\n");
     Serial.println("----------------------------------------");
@@ -154,12 +154,12 @@ void setup() {
 // Hauptschleife — läuft dauerhaft nach setup()
 void loop() {
     // --- Hardware-Eingaben und Verbindungen ---
-    ledUpdate();
     wifiLoop();
     tsfClockLoop();
     rdsClockLoop();
     statusLedTick(isWiFiActive());
     rotary_loop();
+    ledUpdate(); // nach rotary_loop: Helligkeitsänderung sofort rendern
 
     // --- Zustandsmaschinen der Lampenmodi prüfen ---
     checkAlarmStates(appConfig.alarmDuration);
