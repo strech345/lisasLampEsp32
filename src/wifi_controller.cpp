@@ -20,8 +20,32 @@
 #include "tsf_clock.h"
 
 #define MAX_CLIENTS 4
-#define WIFI_CHANNEL 6
+#define WIFI_AP_TX_POWER WIFI_POWER_17dBm
 #define DNS_INTERVAL 30 // DNS-Anfragen alle 30ms verarbeiten
+
+static int s_wifiChannel = 1; // wird in initWiFiController() per Scan gesetzt
+
+// Scannt Kanal 1/6/11 und wählt den am wenigsten belasteten
+static int bestChannel() {
+    serialPrint("WiFi: scanne besten Kanal...");
+    WiFi.mode(WIFI_MODE_STA);
+    int found = WiFi.scanNetworks(false, true);
+    int load[15] = {};
+    for (int i = 0; i < found; i++) {
+        int ch = WiFi.channel(i);
+        if (ch >= 1 && ch <= 14)
+            load[ch - 1] += (-WiFi.RSSI(i));
+    }
+    int candidates[] = {1, 6, 11};
+    int best = 1, bestLoad = INT_MAX;
+    for (int ch : candidates) {
+        serialPrint("WiFi: Kanal " + String(ch) + " Last=" + String(load[ch - 1]));
+        if (load[ch - 1] < bestLoad) { bestLoad = load[ch - 1]; best = ch; }
+    }
+    WiFi.scanDelete();
+    serialPrint("WiFi: bester Kanal=" + String(best));
+    return best;
+}
 
 // Feste IP für den eigenen Hotspot (AP-Modus) — Samsung-Geräte brauchen eine öffentliche IP
 static const IPAddress localIP(4, 3, 2, 1);
@@ -86,6 +110,9 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
     configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
     sntp_set_time_sync_notification_cb(ntpSyncCallback);
     WiFi.onEvent(WiFiEvent);
+    WiFi.persistent(false);    // keine Credentials in NVS speichern
+    WiFi.setSleep(false);      // sleep=aus: bessere Empfangsqualität (Testergebnis)
+    s_wifiChannel = bestChannel();
     WiFi.mode(WIFI_MODE_NULL);
 
     setUpDNSServer(dnsServer, localIP);
@@ -102,6 +129,21 @@ void wifiLoop() {
     checkWifiStop();
     updateTelemetryWiFiStatus();
     tryReconnectSta();
+
+    static unsigned long lastStatusMs = 0;
+    if(isTimeForAction(&lastStatusMs, 10000)) {
+        wifi_mode_t m = WiFi.getMode();
+        uint8_t primaryCh = 0;
+        wifi_second_chan_t secondCh;
+        esp_wifi_get_channel(&primaryCh, &secondCh);
+        wifi_country_t country;
+        esp_wifi_get_country(&country);
+        serialPrint("WiFi: mode=" + String(m) + " ch=" + String(primaryCh)
+                    + " IP=" + WiFi.softAPIP().toString()
+                    + " clients=" + String(WiFi.softAPgetStationNum())
+                    + " txpwr=" + String(WiFi.getTxPower())
+                    + " country=" + String(country.cc));
+    }
 }
 
 // Verarbeitet DNS-Anfragen für das Captive-Portal (nur im AP- oder APSTA-Modus)
@@ -118,13 +160,14 @@ void handleClientRequests() {
 
 static unsigned long s_wifiStopTimerMs = 0;
 
-// Schaltet WiFi ab wenn 60 Sekunden lang kein Client verbunden war
+// Schaltet WiFi ab wenn STOP_WIFI_AFTER_MS (5min) lang kein Client verbunden war
 void checkWifiStop() {
     if(!isWiFiActive() || hasWifiClients()) {
         s_wifiStopTimerMs = millis();
         return;
     }
     if(isTimeForAction(&s_wifiStopTimerMs, STOP_WIFI_AFTER_MS)) {
+        serialPrint("checkWifiStop: 5min ohne Client — stoppe AP");
         stopWifi();
         s_wifiStopTimerMs = 0;
     }
@@ -207,8 +250,12 @@ void startWifi(bool withAP) {
         if(withAP && WiFi.getMode() == WIFI_MODE_STA) {
             serialPrint("Upgrading STA → APSTA");
             WiFi.mode(WIFI_MODE_APSTA);
-            WiFi.softAPConfig(localIP, localIP, subnetMask);
-            WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
+            esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
+            WiFi.setTxPower(WIFI_AP_TX_POWER);
+            delay(100);
+            serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+            bool ok = WiFi.softAP(s->internalSSID, s->internalPW, s_wifiChannel, 0, MAX_CLIENTS);
+            serialPrint(String("softAP(upgrade)=") + (ok ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel) + " IP=" + WiFi.softAPIP().toString());
             dnsServer.start(53, "*", localIP);
             s_wifiStopTimerMs = millis();
             logEvent("AP activated (upgrade)");
@@ -221,8 +268,12 @@ void startWifi(bool withAP) {
     if(strlen(s->externalSSID) > 0) {
         if(withAP) {
             WiFi.mode(WIFI_MODE_APSTA);
-            WiFi.softAPConfig(localIP, localIP, subnetMask);
-            WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
+            esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
+            WiFi.setTxPower(WIFI_AP_TX_POWER);
+            delay(100);
+            serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+            bool apOkApsta = WiFi.softAP(s->internalSSID, s->internalPW, s_wifiChannel, 0, MAX_CLIENTS);
+            serialPrint(String("softAP(APSTA)=") + (apOkApsta ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel) + " IP=" + WiFi.softAPIP().toString());
         } else {
             WiFi.mode(WIFI_MODE_STA);
         }
@@ -231,8 +282,12 @@ void startWifi(bool withAP) {
         // Kein externes WLAN konfiguriert → nur AP oder gar nicht
         if(!withAP) return;
         WiFi.mode(WIFI_MODE_AP);
-        WiFi.softAPConfig(localIP, localIP, subnetMask);
-        WiFi.softAP(s->internalSSID, s->internalPW, WIFI_CHANNEL, 0, MAX_CLIENTS);
+        esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
+        WiFi.setTxPower(WIFI_AP_TX_POWER);
+        delay(100);
+        serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+        bool apOk = WiFi.softAP(s->internalSSID, strlen(s->internalPW) > 0 ? s->internalPW : nullptr, s_wifiChannel, 0, MAX_CLIENTS);
+        serialPrint(String("softAP(AP)=") + (apOk ? "OK" : "FAIL") + "  SSID='" + s->internalSSID + "'  PW-len=" + String(strlen(s->internalPW)) + "  ch=" + String(s_wifiChannel) + "  IP=" + WiFi.softAPIP().toString());
     }
 
     // server.begin() nur beim ersten Mal aufrufen — AsyncWebServer unterstützt kein Neustart
@@ -243,7 +298,9 @@ void startWifi(bool withAP) {
     if(withAP) {
         dnsServer.start(53, "*", localIP);
         s_wifiStopTimerMs = millis();
-        serialPrint("AP aktiv — SSID: '" + String(s->internalSSID) + "'  IP: " + WiFi.softAPIP().toString());
+        wifi_mode_t actualMode = WiFi.getMode();
+        serialPrint("AP aktiv — SSID: '" + String(s->internalSSID) + "'  IP: " + WiFi.softAPIP().toString()
+                    + "  mode=" + String(actualMode) + "  ch=" + String(s_wifiChannel));
     }
 }
 
