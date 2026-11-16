@@ -4,81 +4,74 @@ _Stand: November 2026_
 
 ---
 
-## Board-Diagramm
-
-Der ESP32-C3 Super Mini hat zwei Pinreihen mit je 8 Pins (USB-Anschluss oben).
-GPIO8 und GPIO9 sind **Onboard-Komponenten** (LED / Boot-Taster) ohne Header-Pin.
+## Verdrahtungsdiagramm
 
 ```
-         USB
-    ┌────┤├────┐
-5V ─┤          ├─ GND
-GND─┤          ├─ GPIO21  (TX)
-3V3─┤          ├─ GPIO20  (RX)
- G4─┤          ├─ GPIO10  → Encoder CLK
- G5─┤          ├─ GPIO3   → Encoder SW  ⚡Wakeup
- G6─┤          ├─ GPIO2   → Encoder DT
- G7─┤          ├─ GPIO1   → XTAL_32K_N (RTC-Quarz opt.)
- G8─┤  [LED]   ├─ GPIO0   → XTAL_32K_P (RTC-Quarz opt.)
-    └──────────┘
-       [BTN]
-       GPIO9 (Boot)
+                              USB
+                         ┌────┤├────┐
+           [5V Netzteil]─┤5V      GND├─[GND Sammelschiene]
+                  [GND] ─┤GND     G21├─ (TX0, frei)
+                  [3V3] ─┤3V3     G20├─ (RX0, frei)
+    RDA5807M ── SDA ────┤G4      G10├── CLK ──┐
+    RDA5807M ── SCL ────┤G5       G3├── SW  ──┤── KY-040 Encoder
+    RDA5807M ── VCC ────┤G6       G2├── DT  ──┘
+  WS2812B ─── Data ────┤G7       G1├────────── XTAL_32K_N ──┐
+  [Onboard blaue LED] ──┤G8       G0├────────── XTAL_32K_P ──┴─ 32.768kHz Quarz (opt.)
+                         └──────────┘
+                             [BTN]
+                           GPIO9 Boot
 
-Legende:
-  G4 = GPIO4   G5 = GPIO5   G6 = GPIO6   G7 = GPIO7   G8 = GPIO8
-  [LED] = Onboard blaue LED (GPIO8, kein Header-Pin)
-  [BTN] = Onboard Boot-Taster (GPIO9, kein Header-Pin)
-  ⚡    = GPIO-Wakeup aus Deep Sleep
+
+Stromversorgung der Peripherie:
+  RDA5807M VCC/GND    ── über G6 geschaltet (LOW = stromlos)
+  WS2812B  VCC        ── 5V direkt
+  WS2812B  GND        ── GND
+  KY-040   VCC        ── 3V3
+  KY-040   GND        ── GND
 ```
 
 ---
 
 ## Detailtabelle
 
-| GPIO | Header? | Funktion        | Modul              | Richtung | Anmerkungen                                                  |
-|-----:|:-------:|-----------------|--------------------|:--------:|--------------------------------------------------------------|
-|    0 | ✓       | XTAL_32K_P      | RTC-Quarz (opt.)   | —        | Pos. Seite des 32.768-kHz-Quarzes; ungenutzt wenn kein Quarz |
-|    1 | ✓       | XTAL_32K_N      | RTC-Quarz (opt.)   | —        | Neg. Seite des 32.768-kHz-Quarzes; ungenutzt wenn kein Quarz |
-|    2 | ✓       | Encoder DT      | KY-040             | IN       | Drehrichtungssignal; interner Pullup                         |
-|    3 | ✓       | Encoder SW      | KY-040             | IN       | Taster; Pulldown im Deep Sleep für GPIO-Wakeup               |
-|    4 | ✓       | RDS I²C SDA     | RDA5807M           | BIDIR    | I²C-Datenleitung zum FM-Chip                                 |
-|    5 | ✓       | RDS I²C SCL     | RDA5807M           | OUT      | I²C-Taktleitung zum FM-Chip                                  |
-|    6 | ✓       | RDS Strom       | RDA5807M           | OUT      | HIGH = Modul an; LOW = stromlos (0 mA)                       |
-|    7 | ✓       | LED-Strip       | WS2812FX           | OUT      | Datenleitung zu 5× WS2812B (GRBW)                           |
-|    8 | —       | Status-LED      | Onboard (blau)     | OUT      | Kein Header-Pin; an = Boot/WiFi aktiv; invertierte Logik     |
-|    9 | —       | Boot-Taster     | Onboard            | IN       | Kein Header-Pin; Pullup; langer Druck = Werksreset           |
-|   10 | ✓       | Encoder CLK     | KY-040             | IN       | Taktsignal; Pullup im Deep Sleep für GPIO-Wakeup             |
-| 11   | —       | —               | —                  | —        | Nicht am Header; intern nicht verwendet                      |
-| 12–17| —       | Flash (SPI)     | internes Flash     | —        | Für SPI-Flash reserviert; niemals verwenden                  |
-| 18–19| —       | USB (CDC)       | USB-CDC            | BIDIR    | USB D−/D+; Serial-Monitor bei Debug-Builds                   |
-| 20   | ✓       | TX0 (frei)      | UART0              | OUT      | Header-Pin; aktuell ungenutzt                                |
-| 21   | ✓       | RX0 (frei)      | UART0              | IN       | Header-Pin; aktuell ungenutzt                                |
+| GPIO | Header? | Funktion       | Modul              | Richtung | Anmerkungen                                               |
+|-----:|:-------:|----------------|--------------------|:--------:|-----------------------------------------------------------|
+|    0 | ✓       | XTAL_32K_P     | RTC-Quarz (opt.)   | —        | Pos. Quarz-Pin; Bootstrap-Pulse beim Aktivieren           |
+|    1 | ✓       | XTAL_32K_N     | RTC-Quarz (opt.)   | —        | Neg. Quarz-Pin; kein anderes Gerät anschließen            |
+|    2 | ✓       | Encoder DT     | KY-040             | IN       | Drehrichtung; interner Pullup                             |
+|    3 | ✓       | Encoder SW     | KY-040             | IN       | Taster; Pulldown im Deep Sleep → GPIO-Wakeup ⚡           |
+|    4 | ✓       | RDS I²C SDA    | RDA5807M           | BIDIR    | I²C-Daten; 4,7 kΩ Pullup auf 3V3 empfohlen               |
+|    5 | ✓       | RDS I²C SCL    | RDA5807M           | OUT      | I²C-Takt; 4,7 kΩ Pullup auf 3V3 empfohlen                |
+|    6 | ✓       | RDS Strom      | RDA5807M           | OUT      | HIGH = Modul an; LOW = 0 mA (vollständig stromlos)        |
+|    7 | ✓       | LED-Strip Data | WS2812B (5×GRBW)   | OUT      | NeoPixel-Datenleitung; 300–500 Ω Serienwiderstand empf.   |
+|    8 | —       | Status-LED     | Onboard (blau)     | OUT      | Kein Header-Pin; invertierte Logik (LOW = an)             |
+|    9 | —       | Boot-Taster    | Onboard            | IN       | Kein Header-Pin; interner Pullup; langer Druck = Reset    |
+|   10 | ✓       | Encoder CLK    | KY-040             | IN       | Takt; Pullup im Deep Sleep → GPIO-Wakeup ⚡               |
+|   20 | ✓       | TX0 (frei)     | UART0              | OUT      | Aktuell ungenutzt                                         |
+|   21 | ✓       | RX0 (frei)     | UART0              | IN       | Aktuell ungenutzt                                         |
+| 12–17| —       | Flash SPI      | internes Flash     | —        | Reserviert; niemals als GPIO verwenden                    |
+| 18–19| —       | USB D−/D+      | USB-CDC            | BIDIR    | Serial-Monitor (Debug-Builds)                             |
 
 ---
 
-## Freie Header-Pins
+## Empfohlene Schutzbeschaltung
 
-| GPIO | Anmerkung |
-|-----:|-----------|
-|   20 | TX0 — für UART-Debug oder zukünftige Peripherie nutzbar |
-|   21 | RX0 — für UART-Debug oder zukünftige Peripherie nutzbar |
+| Bauteil          | Maßnahme                                      |
+|------------------|-----------------------------------------------|
+| WS2812B Data     | 300–500 Ω Serienwiderstand direkt am GPIO7    |
+| RDA5807M I²C     | 4,7 kΩ Pullup-Widerstände SDA+SCL → 3V3      |
+| RDA5807M Strom   | GPIO6 → NPN-Transistor oder P-Kanal-MOSFET   |
+| 32kHz Quarz      | Quarz so nah wie möglich an GPIO0/GPIO1       |
 
 ---
 
 ## XTAL_32K — Externer 32.768-kHz-Uhrenquarz (optional)
 
-GPIO0 (`XTAL_32K_P`) und GPIO1 (`XTAL_32K_N`) sind die Anschlüsse für einen externen
-Uhrenquarz. Dieser verbessert die RTC-Genauigkeit erheblich:
+| Taktquelle         | Typischer Drift       |
+|--------------------|-----------------------|
+| Interner RC-Oszi   | ~1–2 % / Tag          |
+| Externer 32k-Quarz | ~20 ppm (~1,7 s/Tag)  |
 
-| Taktquelle        | Typischer Drift  |
-|-------------------|-----------------|
-| Interner RC-Oszi  | ~1–2 % / Tag    |
-| Externer 32k-Quarz| ~20 ppm (~1,7 s/Tag) |
-
-Die Extension `rtc_crystal` aktiviert den Quarz beim Boot, prüft per Kalibrierung
-ob er schwingt (Zielbereich 32.000–33.000 Hz), und fällt sicher auf den internen
-RC-Oszillator zurück wenn kein Quarz bestückt ist.
-
-**Hinweis:** Der ESP32-C3 sendet beim Aktivieren kurze Bootstrap-Pulse auf GPIO0/1.
-Deshalb wurden GPIO0 und GPIO1 für keine andere Funktion genutzt und der
-Encoder-CLK von GPIO1 auf **GPIO10** verlegt.
+Die Extension `rtc_crystal` prüft beim Boot per `rtc_clk_cal()` ob der Quarz schwingt
+(Zielbereich 32.000–33.000 Hz) und fällt sicher auf den RC-Oszillator zurück wenn
+kein Quarz bestückt ist. Der Encoder-CLK wurde deshalb von GPIO1 auf GPIO10 verlegt.
