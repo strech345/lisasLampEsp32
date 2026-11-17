@@ -41,17 +41,4 @@ time_t loadLastKnownTime();
 bool saveTsfEntries(const TsfEntry* entries, uint8_t count);
 uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount);
 
-// Bis zu 8 Web-Auth-Tokens (FIFO); jedes Token = 32 Hex-Chars (16 zufällige Bytes)
-#define MAX_AUTH_TOKENS 8
-#define AUTH_TOKEN_LEN  16
-
-struct AuthTokenStore {
-    char tokens[MAX_AUTH_TOKENS][AUTH_TOKEN_LEN * 2 + 1]; // je 32 Hex-Chars + '\0'
-    uint8_t count;
-    uint8_t nextSlot; // FIFO: nächster Schreibindex (0–7)
-};
-
-bool saveAuthTokens(const AuthTokenStore& store);
-bool loadAuthTokens(AuthTokenStore& store);
-
 #endif // STORE_H

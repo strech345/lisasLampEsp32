@@ -147,7 +147,6 @@ SystemSettings getDefaultSystemSettings() {
     defaultSettings.rdsLastChannel = 0;
     defaultSettings.rtcCrystalEnabled = false;
     defaultSettings.rtcCrystalAvailable = false;
-    defaultSettings.webPassword[0] = '\0';
     return defaultSettings;
 }
 
@@ -206,25 +205,6 @@ uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount) {
     preferences.getBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
     preferences.end();
     return count;
-}
-
-static const char* AUTH_TOKENS_KEY = "authTokens";
-
-bool saveAuthTokens(const AuthTokenStore& store) {
-    return saveStruct(AUTH_TOKENS_KEY, store);
-}
-
-// Lädt gespeicherte Auth-Tokens; gibt false zurück wenn noch keine vorhanden
-bool loadAuthTokens(AuthTokenStore& store) {
-    if(!preferences.begin(PREF_NAMESPACE, true)) {
-        memset(&store, 0, sizeof(AuthTokenStore));
-        return false;
-    }
-    size_t bytesRead = preferences.getBytes(AUTH_TOKENS_KEY, &store, sizeof(AuthTokenStore));
-    preferences.end();
-    if(bytesRead == sizeof(AuthTokenStore)) return true;
-    memset(&store, 0, sizeof(AuthTokenStore));
-    return false;
 }
 
 bool ensureSystemSettingsExistsAndResetIfNot() {

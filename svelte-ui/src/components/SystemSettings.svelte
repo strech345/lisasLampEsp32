@@ -24,7 +24,7 @@
   let rtcCrystalEnabled = false;
   let rtcCrystalStatus = null;
   let rtcCrystalChanged = false;
-  let authTokenCount = 0;
+
   let articleEl;
 
   // Pull-to-Refresh im Dialog verhindern (overscroll-behavior wird in manchen WebViews ignoriert)
@@ -303,16 +303,6 @@
     } catch {}
   }
 
-  async function loadAuthStatus() {
-    try {
-      const res = await fetch("/get_auth_status");
-      if (res.ok) {
-        const data = await res.json();
-        authTokenCount = data.tokenCount ?? 0;
-      }
-    } catch {}
-  }
-
   // Load system settings, status and warnings when modal opens
   $: if (show) {
     systemStore.load();
@@ -322,7 +312,6 @@
     loadTsfStatus();
     loadRdsStatus();
     loadRtcCrystalStatus();
-    loadAuthStatus();
     // Non-passive Listener nach DOM-Update registrieren
     setTimeout(() => {
       if (articleEl) {
@@ -344,6 +333,7 @@
         <h2>System Settings</h2>
       </header>
 
+      <div class="acc-scroll">
       <!-- Accordion: WLAN -->
       <div class="acc-item">
         <button class="acc-head" type="button" on:click={() => toggleSection("wifi")}>
@@ -383,35 +373,6 @@
                   disabled={!hasChanges}>Speichern</button>
               </div>
             </form>
-          </div>
-        {/if}
-      </div>
-
-      <!-- Accordion: Sicherheit -->
-      <div class="acc-item">
-        <button class="acc-head" type="button" on:click={() => toggleSection("security")}>
-          <span class="acc-icon">{openSection === "security" ? "▾" : "▸"}</span>
-          Sicherheit
-        </button>
-        {#if openSection === "security"}
-          <div class="acc-body">
-            <label for="webPassword">Web-Passwort <span class="optional">(optional)</span></label>
-            <input type="password" id="webPassword" value={$systemStore.webPassword}
-              placeholder={$systemStore.webPasswordSet
-                ? "••••••••  (leer lassen um beizubehalten)"
-                : "Leer = kein Schutz"}
-              on:input={(e) => handleFieldChange("webPassword", e)} />
-            <small class="web-pw-hint">
-              {#if $systemStore.webPasswordSet}
-                Schutz aktiv · {authTokenCount} Gerät{authTokenCount === 1 ? "" : "e"} angemeldet
-              {:else}
-                Leer lassen um den Schutz zu deaktivieren
-              {/if}
-            </small>
-            <div class="acc-actions">
-              <button class="btn-small btn-blue" type="button" on:click={handleSave}
-                disabled={!hasChanges}>Speichern</button>
-            </div>
           </div>
         {/if}
       </div>
@@ -602,6 +563,8 @@
         {/if}
       </div>
 
+      </div> <!-- /acc-scroll -->
+
       <footer>
         <div class="footer-right">
           <button class="btn-small btn-blue" type="button" on:click={handleCancel}>Schließen</button>
@@ -614,6 +577,29 @@
 <style>
   dialog {
     max-width: 500px;
+  }
+
+  dialog > article {
+    max-height: 90dvh;
+    overflow-y: auto !important;
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--pico-card-background-color, #fff);
+  }
+
+  footer {
+    position: sticky;
+    bottom: 0;
+    background: var(--pico-card-background-color, #fff);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 1rem;
+    padding-top: 0.5rem;
   }
 
   .close {
@@ -646,14 +632,6 @@
 
   form > input {
     margin-bottom: 1rem;
-  }
-
-  footer {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 1rem;
-    padding-top: 0.5rem;
   }
 
   .footer-right {
@@ -732,10 +710,6 @@
 
   .btn-tiny:hover {
     opacity: 0.7;
-  }
-
-  .restart-section {
-    margin-bottom: 0.25rem;
   }
 
   :global(.btn-danger) {
@@ -827,21 +801,6 @@
     font-size: 0.85rem;
   }
 
-  .web-pw-hint {
-    display: block;
-    margin-top: -0.75rem;
-    margin-bottom: 1rem;
-    font-size: 0.75rem;
-    color: var(--secondary-text-color, #888);
-  }
 
-  .btn-link {
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
-    font-size: inherit;
-    color: inherit;
-    text-decoration: underline;
-  }
+
 </style>

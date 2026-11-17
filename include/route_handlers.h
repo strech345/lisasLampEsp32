@@ -31,10 +31,6 @@ void handleGetRdsClock(AsyncWebServerRequest* request, const String& body);
 void handleSetRdsClock(AsyncWebServerRequest* request, const String& body);
 void handleGetRtcCrystal(AsyncWebServerRequest* request, const String& body);
 void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body);
-void handleLoginPage(AsyncWebServerRequest* request, const String& body);
-void handleLoginPost(AsyncWebServerRequest* request, const String& body);
-void handleGetAuthStatus(AsyncWebServerRequest* request, const String& body);
-
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback);
