@@ -64,6 +64,19 @@ void checkToGoSleep() {
     // Standardmäßig bis zum nächsten periodischen WiFi-Sync schlafen
     unsigned long sleepTimeMs = START_WIFI_AFTER_MS;
 
+    // Deep Sleep vermeiden, wenn ein Ereignis im Vorlauffenster liegt
+    auto preventSleepIfImminent = [&](int64_t msToEvent) {
+        if (msToEvent > 0 && msToEvent < (int64_t)EVENT_LEAD_TIME_MS) {
+            sleepTimeMs = 0;
+        }
+    };
+    preventSleepIfImminent(msToNextAlarm);
+    preventSleepIfImminent(msToNextCelebration);
+    if (sleepTimeMs == 0) {
+        serialPrint("Deep Sleep wird nicht eingeleitet – bevorstehender Alarm oder Feier");
+        return;
+    }
+
     // Für zeitgesteuerte Ereignisse: Vorlaufzeit = 5 Min. + geschätzter RTC-Drift
     // Damit wacht die Lampe rechtzeitig vor dem Alarm auf, auch wenn der RTC driftet
     auto applyEventLead = [&](int64_t msToEvent) {
