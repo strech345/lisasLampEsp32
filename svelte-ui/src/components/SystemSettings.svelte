@@ -4,7 +4,6 @@
   import { systemStore } from "../stores/systemStore.js";
   import EventLog from "./EventLog.svelte";
 
-  let showLogs = false;
   let openSection = null; // Accordion: nur eine Sektion offen
 
   function toggleSection(name) {
@@ -25,27 +24,43 @@
   let rtcCrystalStatus = null;
   let rtcCrystalChanged = false;
 
-  let articleEl;
-
-  // Pull-to-Refresh im Dialog verhindern (overscroll-behavior wird in manchen WebViews ignoriert)
-  function preventDialogPullRefresh(e) {
-    const el = articleEl;
-    if (!el) return;
-    const dy = e.touches[0].clientY - (el._ptr_startY || e.touches[0].clientY);
-    if (el.scrollTop === 0 && dy > 0) e.preventDefault();
-    else if (el.scrollTop + el.clientHeight >= el.scrollHeight && dy < 0) e.preventDefault();
+  // Svelte-Action: Pull-to-Refresh / Scroll-Chaining im Scrollbereich verhindern.
+  // Startpunkt bewusst in einer lokalen Variable (nicht am reaktiven State),
+  // sonst triggert jeder Touch ein Neuladen der Komponente.
+  function noPullRefresh(el) {
+    let startY = 0;
+    const onStart = (e) => (startY = e.touches[0].clientY);
+    const onMove = (e) => {
+      const dy = e.touches[0].clientY - startY;
+      const atTop = el.scrollTop <= 0;
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      if ((atTop && dy > 0) || (atBottom && dy < 0)) e.preventDefault();
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    return {
+      destroy() {
+        el.removeEventListener("touchstart", onStart);
+        el.removeEventListener("touchmove", onMove);
+      },
+    };
   }
-  function trackDialogTouch(e) {
-    if (articleEl) articleEl._ptr_startY = e.touches[0].clientY;
-  }
 
+  // Komponente wird nur gerendert, wenn der Dialog offen ist → einmal laden.
   onMount(() => {
-    if (show) {
-      systemStore.load();
-      loadWarnings();
-      loadDeepSleep();
-    }
-    return () => clearInterval(rdsRefreshInterval);
+    systemStore.load();
+    loadStatusInfo();
+    loadWarnings();
+    loadDeepSleep();
+    loadTsfStatus();
+    loadRdsStatus();
+    loadRtcCrystalStatus();
+    // Seiten-Scroll hinter dem Dialog sperren (Pico-Klasse)
+    document.documentElement.classList.add("modal-is-open");
+    return () => {
+      clearInterval(rdsRefreshInterval);
+      document.documentElement.classList.remove("modal-is-open");
+    };
   });
 
   async function loadWarnings() {
@@ -303,31 +318,11 @@
     } catch {}
   }
 
-  // Load system settings, status and warnings when modal opens
-  $: if (show) {
-    systemStore.load();
-    loadStatusInfo();
-    loadWarnings();
-    loadDeepSleep();
-    loadTsfStatus();
-    loadRdsStatus();
-    loadRtcCrystalStatus();
-    // Non-passive Listener nach DOM-Update registrieren
-    setTimeout(() => {
-      if (articleEl) {
-        articleEl.addEventListener('touchstart', trackDialogTouch, {passive: true});
-        articleEl.addEventListener('touchmove', preventDialogPullRefresh, {passive: false});
-      }
-    }, 0);
-  } else if (articleEl) {
-    articleEl.removeEventListener('touchstart', trackDialogTouch);
-    articleEl.removeEventListener('touchmove', preventDialogPullRefresh);
-  }
 </script>
 
 {#if show}
   <dialog open>
-    <article bind:this={articleEl}>
+    <article>
       <header>
         <button aria-label="Close" class="close" on:click={handleCancel}></button>
         <h2>System Settings</h2>
@@ -335,40 +330,46 @@
 
       <div class="acc-scroll">
       <!-- Accordion: WLAN -->
-      <div class="acc-item">
+      <div class="acc-item" class:open={openSection === "wifi"}>
         <button class="acc-head" type="button" on:click={() => toggleSection("wifi")}>
           <span class="acc-icon">{openSection === "wifi" ? "▾" : "▸"}</span>
           WLAN
           {#if hasChanges}<span class="acc-badge">●</span>{/if}
         </button>
         {#if openSection === "wifi"}
-          <div class="acc-body">
+          <div class="acc-body" use:noPullRefresh>
             <form on:submit|preventDefault={handleSave}>
-              <label for="internalSSID">Hotspot SSID</label>
-              <input type="text" id="internalSSID" value={$systemStore.internalSSID}
-                on:input={(e) => handleFieldChange("internalSSID", e)} />
+              <div class="group">
+                <label for="internalSSID">Hotspot SSID</label>
+                <input type="text" id="internalSSID" value={$systemStore.internalSSID}
+                  on:input={(e) => handleFieldChange("internalSSID", e)} />
 
-              <label for="internalPW">Hotspot Passwort</label>
-              <input type="password" id="internalPW" value={$systemStore.internalPW}
-                on:input={(e) => handleFieldChange("internalPW", e)} />
+                <label for="internalPW">Hotspot Passwort</label>
+                <input type="password" id="internalPW" value={$systemStore.internalPW}
+                  on:input={(e) => handleFieldChange("internalPW", e)} />
+              </div>
 
-              <label for="externalSSID">Externes WLAN SSID</label>
-              <input type="text" id="externalSSID" value={$systemStore.externalSSID}
-                on:input={(e) => handleFieldChange("externalSSID", e)} />
+              <div class="group">
+                <label for="externalSSID">Externes WLAN SSID</label>
+                <input type="text" id="externalSSID" value={$systemStore.externalSSID}
+                  on:input={(e) => handleFieldChange("externalSSID", e)} />
 
-              <label for="externalPW">Externes WLAN Passwort</label>
-              <input type="password" id="externalPW" value={$systemStore.externalPW}
-                on:input={(e) => handleFieldChange("externalPW", e)} />
+                <label for="externalPW">Externes WLAN Passwort</label>
+                <input type="password" id="externalPW" value={$systemStore.externalPW}
+                  on:input={(e) => handleFieldChange("externalPW", e)} />
+              </div>
 
-              <label for="externalSSID2">Fallback SSID <span class="optional">(optional)</span></label>
-              <input type="text" id="externalSSID2" value={$systemStore.externalSSID2}
-                placeholder="optional" on:input={(e) => handleFieldChange("externalSSID2", e)} />
+              <div class="group">
+                <label for="externalSSID2">Fallback SSID <span class="optional">(optional)</span></label>
+                <input type="text" id="externalSSID2" value={$systemStore.externalSSID2}
+                  placeholder="optional" on:input={(e) => handleFieldChange("externalSSID2", e)} />
 
-              <label for="externalPW2">Fallback Passwort</label>
-              <input type="password" id="externalPW2" value={$systemStore.externalPW2}
-                placeholder="optional" on:input={(e) => handleFieldChange("externalPW2", e)} />
+                <label for="externalPW2">Fallback Passwort</label>
+                <input type="password" id="externalPW2" value={$systemStore.externalPW2}
+                  placeholder="optional" on:input={(e) => handleFieldChange("externalPW2", e)} />
+              </div>
 
-              <div class="acc-actions">
+              <div class="acc-actions group">
                 <button class="btn-small btn-blue" type="button" on:click={handleSave}
                   disabled={!hasChanges}>Speichern</button>
               </div>
@@ -378,14 +379,14 @@
       </div>
 
       <!-- Accordion: Energie & Uhr -->
-      <div class="acc-item">
+      <div class="acc-item" class:open={openSection === "clock"}>
         <button class="acc-head" type="button" on:click={() => toggleSection("clock")}>
           <span class="acc-icon">{openSection === "clock" ? "▾" : "▸"}</span>
           Energie &amp; Uhr
         </button>
         {#if openSection === "clock"}
-          <div class="acc-body">
-            <section class="warnings-section">
+          <div class="acc-body" use:noPullRefresh>
+            <section class="warnings-section group">
               <label class="warnings-label">
                 <input type="checkbox" bind:checked={deepSleepEnabled} on:change={handleDeepSleepToggle} />
                 Deep sleep
@@ -393,7 +394,7 @@
               <small>ESP32 schläft zwischen Alarmen. Wacht 5 min + Drift-Puffer vor jedem Event auf.</small>
             </section>
 
-            <section class="warnings-section">
+            <section class="warnings-section group">
               <label class="warnings-label">
                 <input type="checkbox" bind:checked={rtcCrystalEnabled} on:change={handleRtcCrystalToggle} />
                 Externer 32kHz RTC-Quarz
@@ -419,7 +420,7 @@
               {/if}
             </section>
 
-            <section class="warnings-section">
+            <section class="warnings-section group">
               <label class="warnings-label">
                 <input type="checkbox" bind:checked={tsfFallbackEnabled} on:change={handleTsfToggle} />
                 TSF-Zeitfallback
@@ -440,7 +441,7 @@
               {/if}
             </section>
 
-            <section class="warnings-section">
+            <section class="warnings-section group">
               <label class="warnings-label">
                 <input type="checkbox" bind:checked={rdsClockEnabled} on:change={handleRdsToggle} />
                 RDS-Zeitfallback (RDA5807M)
@@ -461,7 +462,7 @@
               {/if}
             </section>
 
-            <div class="acc-actions">
+            <div class="acc-actions group">
               <button class="btn-small btn-blue" type="button" on:click={handleNtpResync}>
                 Uhr jetzt synchronisieren
               </button>
@@ -471,14 +472,14 @@
       </div>
 
       <!-- Accordion: Warnungen -->
-      <div class="acc-item">
+      <div class="acc-item" class:open={openSection === "warnings"}>
         <button class="acc-head" type="button" on:click={() => toggleSection("warnings")}>
           <span class="acc-icon">{openSection === "warnings" ? "▾" : "▸"}</span>
           Warnungen
         </button>
         {#if openSection === "warnings"}
-          <div class="acc-body">
-            <section class="warnings-section">
+          <div class="acc-body" use:noPullRefresh>
+            <section class="warnings-section group">
               <label class="warnings-label">
                 <input type="checkbox" bind:checked={warningsEnabled} on:change={handleWarningsToggle} />
                 LED-Warnungen aktiv
@@ -490,15 +491,15 @@
       </div>
 
       <!-- Accordion: System -->
-      <div class="acc-item">
+      <div class="acc-item" class:open={openSection === "system"}>
         <button class="acc-head" type="button" on:click={() => toggleSection("system")}>
           <span class="acc-icon">{openSection === "system" ? "▾" : "▸"}</span>
           System
         </button>
         {#if openSection === "system"}
-          <div class="acc-body">
+          <div class="acc-body" use:noPullRefresh>
             {#if statusInfo}
-              <div class="status-info">
+              <div class="status-info group">
                 {#if statusInfo.currentTime}
                   <div class="status-line">
                     <span class="status-label">Aktuelle Zeit:</span>
@@ -528,14 +529,7 @@
               </div>
             {/if}
 
-            <section class="log-section">
-              <button class="log-toggle" type="button" on:click={() => (showLogs = !showLogs)}>
-                {showLogs ? "▾" : "▸"} Event Log
-              </button>
-              {#if showLogs}<EventLog />{/if}
-            </section>
-
-            <div class="acc-actions">
+            <div class="acc-actions group">
               <button class="btn-small btn-danger" type="button" disabled={restarting} on:click={handleFactoryReset}>
                 {restarting ? "Wird zurückgesetzt…" : "Werkseinstellungen"}
               </button>
@@ -544,14 +538,27 @@
         {/if}
       </div>
 
+      <!-- Accordion: Event Log -->
+      <div class="acc-item" class:open={openSection === "log"}>
+        <button class="acc-head" type="button" on:click={() => toggleSection("log")}>
+          <span class="acc-icon">{openSection === "log" ? "▾" : "▸"}</span>
+          Event Log
+        </button>
+        {#if openSection === "log"}
+          <div class="acc-body" use:noPullRefresh>
+            <EventLog />
+          </div>
+        {/if}
+      </div>
+
       <!-- Accordion: Firmware -->
-      <div class="acc-item">
+      <div class="acc-item" class:open={openSection === "firmware"}>
         <button class="acc-head" type="button" on:click={() => toggleSection("firmware")}>
           <span class="acc-icon">{openSection === "firmware" ? "▾" : "▸"}</span>
           Firmware Update
         </button>
         {#if openSection === "firmware"}
-          <div class="acc-body">
+          <div class="acc-body" use:noPullRefresh>
             <div class="ota-row">
               <input type="file" accept=".bin" on:change={(e) => (firmwareFiles = e.target.files)} />
               <button class="btn-small btn-blue" type="button"
@@ -579,22 +586,53 @@
     max-width: 500px;
   }
 
+  /* Header, Footer und alle Accordion-Köpfe fest;
+     nur der Inhalt der offenen Section scrollt. */
   dialog > article {
-    max-height: 90dvh;
-    overflow-y: auto !important;
+    max-height: calc(100dvh - var(--pico-spacing) * 2);
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
   }
 
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--pico-card-background-color, #fff);
+  header,
+  footer {
+    flex: none;
+  }
+
+  .acc-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .acc-item {
+    flex: none;
+  }
+
+  .acc-item.open {
+    flex: 0 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .acc-item.open > .acc-head {
+    flex: none;
+  }
+
+  .acc-item.open > .acc-body {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 0.25rem; /* Platz für Fokus-Rahmen */
   }
 
   footer {
-    position: sticky;
-    bottom: 0;
-    background: var(--pico-card-background-color, #fff);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -615,7 +653,17 @@
   }
 
   form {
-    margin-bottom: 1rem;
+    margin-bottom: 0;
+  }
+
+  /* Gliederung: Gruppen durch Linien getrennt (Breite = Textbreite) */
+  .group {
+    margin: 0 !important;
+    padding: 0.75rem 0;
+  }
+
+  .group + .group {
+    border-top: 1px solid var(--pico-muted-border-color, #ddd);
   }
 
   .optional {
@@ -624,14 +672,14 @@
     color: var(--pico-muted-color, #888);
   }
 
-  form > label {
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
+  .group > label {
+    margin-top: 0.75rem;
+    margin-bottom: 0.35rem;
     display: block;
   }
 
-  form > input {
-    margin-bottom: 1rem;
+  .group > label:first-child {
+    margin-top: 0;
   }
 
   .footer-right {
@@ -727,20 +775,6 @@
     background-color: #fca5a5 !important;
     border-color: #fca5a5 !important;
     cursor: not-allowed !important;
-  }
-
-  .log-section {
-    margin-bottom: 0.5rem;
-  }
-
-  .log-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 600;
-    padding: 0;
-    color: inherit;
   }
 
   /* Accordion */

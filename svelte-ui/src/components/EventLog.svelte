@@ -78,9 +78,13 @@
 
 <div class="event-log">
   <div class="log-header">
-    <span class="log-title">Event Log</span>
-    <button class="btn-small btn-blue" type="button" on:click={loadLog} disabled={loading}>
-      {loading ? "…" : "⟳"}
+    <button class="btn-blue refresh-btn" type="button" on:click={loadLog} disabled={loading}
+      aria-label="Aktualisieren" title="Aktualisieren">
+      <svg class:spin={loading} viewBox="0 0 24 24" width="22" height="22" fill="none"
+        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+        <polyline points="21 3 21 9 15 9" />
+      </svg>
     </button>
   </div>
 
@@ -128,19 +132,35 @@
   .log-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     margin-bottom: 0.5rem;
   }
 
-  .log-title {
-    font-weight: 600;
-    font-size: 0.9rem;
+  .refresh-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .refresh-btn svg {
+    display: block;
+  }
+
+  .spin {
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .log-table-wrap {
-    overflow-x: auto;
-    max-height: 260px;
-    overflow-y: auto;
+    overflow-x: auto; /* vertikal scrollt die Section im Dialog */
     border: 1px solid var(--pico-table-border-color, #e0e0e0);
     border-radius: 4px;
   }
