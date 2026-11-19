@@ -77,6 +77,18 @@ am Gerät verifizieren.
 9. **Build**: `build.sh`/`deploy.sh` zusammenführen; rechnerspezifische `upload_port`/`monitor_port` in `platformio_override.ini` (gitignored) auslagern; Bibliotheksversionen exakt pinnen.
 10. **ArduinoJson 7**: `containsKey` → `is<bool>()`.
 
+### Status Teil 2 (19.11.2026) — erledigt, je ein Commit
+
+- Pins zentral in `include/pins.h`; Zugangsdaten in `include/secrets.h`, Ports in `platformio_override.ini`
+- Tote Dateien/Funktionen entfernt (`bak/`, `KY040.h`, `preferences_utils.h`, `rda5807m.h`, …)
+- `updateLed()` → `applyStateEntry()` mit `switch`
+- `startWifi()`: `startCaptivePortal()` statt doppeltem Code
+- Periodische Serial-Ausgaben reduziert
+- TSF-Callback-Barriere, RDS-Wiederholung (1 h / 24 h), RDS-Modul-Erkennung per I2C
+- Schalter-Endpunkte → `POST /set_option`; Handler dateiintern
+- Bibliotheksversionen exakt gepinnt
+- Nicht umgesetzt: Mock-Modus vervollständigen (reicht für UI-Tests), Settings-Migration (S6, TODO in README)
+
 ## Teil 3 — Dokumentation säubern (nach Teil 2)
 
 Vorhanden: `README` (ohne Endung), `SVELTE_INTEGRATION.md`, `svelte-ui/DEPLOYMENT.md`, `svelte-ui/MOCK_MODE.md`,
