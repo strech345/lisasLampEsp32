@@ -43,37 +43,46 @@ void checkAndApplyColorMode(const FullConfig& config) {
     // Weißtöne für RGBW-LEDs, Format 0xWWRRGGBB (WW = zusätzliche weiße LED).
     // Die weiße LED dominiert stark; deutliche Unterschiede entstehen nur, wenn sie für warme/kalte
     // Töne zurückgenommen und Farbe zugemischt wird (statt nur etwas Farbe obendrauf).
+    // boostHex: Farbe auf Stufe 7 — weiße LED voll bzw. Farb-Chips dazu für deutlich mehr Licht;
+    // der Ton verschiebt sich dabei etwas (am Gerät abgestimmt)
     uint32_t colorHex = 0;
+    uint32_t boostHex = 0;
     switch(config.colorMode) {
     case 0: // Kaltweiß (~6000 K): weiße LED etwas reduziert, Blau dazu
         colorHex = 0xC00000A0;
+        boostHex = 0xFF6080FF;
         modeName = "Cool White";
         break;
     case 1: // Neutralweiß (~4000 K): nur die weiße LED
         colorHex = 0xFF000000;
+        boostHex = 0xFFFFB060;
         modeName = "Neutral White";
         break;
     case 2: // Warmweiß (~2700 K): weiße LED stark reduziert, kräftig Bernstein (Rot + etwas Grün)
         colorHex = 0x50FF6000;
+        boostHex = 0xA0FF8000;
         modeName = "Warm White";
         break;
     case 4: // Kerzenlicht (~2200 K): weiße LED fast aus, Rot mit wenig Grün
         colorHex = 0x18FF3800;
+        boostHex = 0x40FF5000;
         modeName = "Candle";
         break;
-    case 3: // Benutzerdefinierte Farbe
+    case 3: // Benutzerdefinierte Farbe (ohne Boost)
         colorToApply = config.color;
         colorHex = (uint32_t(0) << 24) | (uint32_t(colorToApply.r) << 16) | (uint32_t(colorToApply.g) << 8)
             | uint32_t(colorToApply.b);
+        boostHex = colorHex;
         modeName = "Custom";
         break;
     default:
         colorHex = 0xFF000000;
+        boostHex = colorHex;
         modeName = "Neutral White (default)";
         break;
     }
 
-    setLedColor(colorHex);
+    setLedColors(colorHex, boostHex);
     setAnimationMode(config.animationMode);
     setAnimationSpeed(config.animationSpeed);
     serialPrint("LED color set to " + modeName + " (Hex: " + String(colorHex, HEX) + ")");

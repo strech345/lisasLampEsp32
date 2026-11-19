@@ -15,6 +15,10 @@ Die Lampe hat zwei Bedienelemente: den **Drehknopf** (KY-040, drehen und drücke
 | Rechts | Helligkeit eine Stufe heller (0–7) |
 | Links | Helligkeit eine Stufe dunkler; Stufe 0 = aus |
 
+- Die Stufen sind an das Auge angepasst (jede etwa 1,5-mal heller als die vorige); Stufe 1 eignet
+  sich als Nachtlicht.
+- **Stufe 7 = Boost:** Zusätzlich zur weißen LED schalten Farb-Chips dazu, deutlich heller, der Ton
+  verschiebt sich etwas. Gilt für Kerzenlicht, Warm-, Neutral- und Kaltweiß (nicht für eigene Farben).
 - Jede Rastung ist genau eine Stufe. Die Helligkeit wird nach 5 s ohne weitere Änderung gespeichert
   (schont den Flash; vor dem Deep Sleep wird sofort gespeichert).
 - Drehen heißt „Lampe benutzen“: Aus **Gute Nacht**, **Sleep** und einer **Systemwarnung** wechselt

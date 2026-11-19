@@ -4,7 +4,8 @@
 
 void ledInit();
 void ledUpdate();           // Muss in loop() aufgerufen werden
-void setLedColor(uint32_t color);
+void setLedColor(uint32_t color);                             // eine Farbe für alle Stufen
+void setLedColors(uint32_t baseColor, uint32_t boostColor);    // Normal- und Boost-Farbe (Stufe 7)
 void setAnimationMode(uint8_t mode);
 void setAnimationSpeed(uint16_t speed);
 void setBrightnessLevel(uint8_t level);

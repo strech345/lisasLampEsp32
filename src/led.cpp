@@ -67,9 +67,28 @@ void flashLeds(uint32_t color, unsigned long durationMs) {
     s_flashEndMs = millis() + durationMs;
 }
 
+// Farbe für Stufe 1–6 und für Stufe 7 ("Boost": zusätzliche Farb-Chips für mehr Licht)
+static uint32_t s_baseColor = 0;
+static uint32_t s_boostColor = 0;
+static uint8_t s_level = 0; // aktuelle Helligkeitsstufe 0–7
+
+// Zeigt die zur aktuellen Stufe passende Farbe (Stufe 7 → Boost-Farbe)
+static void applyColorForLevel() {
+    uint32_t color = (s_level == 7) ? s_boostColor : s_baseColor;
+    if(color != ws2812fx.getColor())
+        ws2812fx.setColor(color);
+}
+
+// Setzt eine Farbe für alle Stufen (Hinweise, Warnungen)
 void setLedColor(uint32_t color) {
-    if(color == ws2812fx.getColor()) return;
-    ws2812fx.setColor(color);
+    setLedColors(color, color);
+}
+
+// Setzt Normal- und Boost-Farbe (0xWWRRGGBB); die Boost-Farbe gilt nur auf Stufe 7
+void setLedColors(uint32_t baseColor, uint32_t boostColor) {
+    s_baseColor = baseColor;
+    s_boostColor = boostColor;
+    applyColorForLevel();
 }
 
 void setAnimationMode(uint8_t mode) {
@@ -87,11 +106,14 @@ void setAnimationSpeed(uint16_t speed) {
 
 // Setzt Helligkeit über Stufe 0–7 und zeigt das Ergebnis sofort an.
 // 0 = aus (Strip wird explizit mit 0 beschrieben, damit WS2812 nicht im letzten Zustand bleiben),
-// 1–7 = an (start falls nötig + trigger + service).
+// 1–7 = an (start falls nötig + trigger + service); Stufe 7 zeigt zusätzlich die Boost-Farbe.
 void setBrightnessLevel(uint8_t level) {
-    // Stufe → PWM-Wert: 0→0, 1→32, 2→64, 3→96, 4→128, 5→160, 6→200, 7→255
-    static const uint8_t brightnessMap[8] = {0, 32, 64, 96, 128, 160, 200, 255};
+    // Stufe → PWM-Wert, geometrisch gestuft (Faktor ~1,53 je Stufe): Das Auge empfindet Helligkeit
+    // logarithmisch, so wirkt jeder Schritt gleich groß (linear wären die oberen Stufen kaum spürbar)
+    static const uint8_t brightnessMap[8] = {0, 20, 31, 47, 71, 108, 166, 255};
     if(level > 7) level = 7;
+    s_level = level;
+    applyColorForLevel();
     uint8_t bv = brightnessMap[level];
     serialPrint("Setting brightness level to " + String(level) + " (mapped to " + String(bv) + ")");
 
