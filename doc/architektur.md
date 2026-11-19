@@ -1,4 +1,4 @@
-# LisasLamp ESP32 — Architekturübersicht
+# Architektur
 
 _Stand: November 2026_
 
@@ -8,119 +8,123 @@ _Stand: November 2026_
 
 | Datei | Aufgabe |
 |---|---|
-| `src/main.cpp` | Einstiegspunkt: `setup()` und `loop()`, globale Zustandsvariablen, WiFi-Callback |
-| `src/lamp_state.cpp` | Zustandsmaschine: bestimmt welcher LED-Effekt gilt; wertet alle Modi aus |
-| `src/led.cpp` | WS2812FX-Treiber: Helligkeit, Farbe, Animationen, Blink-Effekte |
-| `src/button.cpp` | Drehencoder-Auswertung: Klick, Langer Druck, Drehen → Callbacks |
-| `src/alarm.cpp` | Alarmverwaltung: Zeitprüfung, Farb- und Helligkeitskurve beim Aufwachen |
-| `src/good_night.cpp` | Einschlaf-Modus: Helligkeit dimmt über konfigurierte Dauer auf 0 |
-| `src/celebration.cpp` | Feiertagserkennung: startet Effekt an konfigurierten Daten |
-| `src/alerts.cpp` | Kurzzeit-Statusmeldungen (OK/Warning/Error) mit optionalem Timeout |
-| `src/sleep_manager.cpp` | Deep-Sleep-Verwaltung: berechnet Aufwachzeit, leitet Schlaf ein |
-| `src/wifi_controller.cpp` | WiFi-Steuerung: AP/STA/APSTA, Auto-Start/Stop, NTP-Sync, Reconnect |
-| `src/captive_portal.cpp` | Webserver- und DNS-Setup; leitet alle unbekannten URLs zum Portal weiter |
-| `src/route_handlers.cpp` | HTTP-Handler: REST-API für Konfiguration, Status, OTA |
-| `src/store.cpp` | NVS-Persistenz: Konfiguration und Systemeinstellungen lesen/schreiben |
-| `src/event_log.cpp` | Ringpuffer mit 200 Einträgen für interne Ereignisse; thread-safe |
-| `src/json_utils.cpp` | JSON-Serialisierung/-Deserialisierung für alle Datenstrukturen |
-| `src/rgb_effects.cpp` | Hilfsfunktionen für LED-Farbberechnungen (z.B. Sonnenaufgangs-Fade) |
-| `src/system_utils.cpp` | Zeithelfer: `isTimeForAction()`, `getTimeoutState()` |
-| `src/tsf_clock.cpp` | TSF-Uhrzeit-Fallback: Beacon-Scan per Promiscuous-Modus, Medianfilter |
-| `src/rds_clock.cpp` | RDS-Uhrzeit-Fallback: RDA5807M FM-Chip, RDS-CT-Gruppe auswerten |
-| `src/rtc_crystal.cpp` | RTC-Quarz-Extension: 32.768-kHz-Uhrenquarz aktivieren und testen |
+| `src/main.cpp` | `setup()`/`loop()`, globaler Zustand, Auftragsablage Web → `loop()` |
+| `src/lamp_state.cpp` | Zustandsmaschine: aktiven Modus bestimmen, LEDs beim Zustandswechsel setzen |
+| `src/led.cpp` | WS2812FX-Treiber: Farbe, Helligkeitsstufen 0–7, Animation, Blitz, Status-LED |
+| `src/button.cpp` | Drehknopf und Boot-Taste: rastungsgenaues Drehen, kurzer/langer Druck |
+| `src/alarm.cpp` | Wecker: Auslösung (10-min-Fenster), Helligkeitsverlauf, Zeit bis zum nächsten Wecker |
+| `src/good_night.cpp` | Gute-Nacht-Modus: Helligkeit dimmt über die eingestellte Dauer auf 0 |
+| `src/celebration.cpp` | Feier-Modus an festen Tagen ab 7:00 |
+| `src/alerts.cpp` | Kurze Hinweise (OK/Warnung/Fehler) mit Ablaufzeit |
+| `src/sleep_manager.cpp` | Deep Sleep: Bedingungen, Aufwachzeit inkl. Uhrabweichung, Wakeup-Pins |
+| `src/wifi_controller.cpp` | WLAN AP/STA/APSTA, Auto-Start/-Stopp, Kanalwahl, NTP, Wiederverbinden |
+| `src/captive_portal.cpp` | Webserver-/DNS-Setup, Captive-Portal-URLs, POST-Prüfung (JSON, Origin, Größe) |
+| `src/route_handlers.cpp` | HTTP-API (siehe unten) |
+| `src/json_utils.cpp` | JSON ↔ Strukturen inkl. Wertebereichsprüfung |
+| `src/store.cpp` | NVS-Persistenz, Standardwerte (aus `secrets.h`), verzögertes Speichern |
+| `src/event_log.cpp` | Ringpuffer (200 Einträge) für das Ereignisprotokoll, Mutex-geschützt |
+| `src/tsf_clock.cpp` | TSF-Uhrzeit-Fallback über WLAN-Beacons |
+| `src/rds_clock.cpp` | RDS-Uhrzeit über RDA5807M (optional) |
+| `src/rtc_crystal.cpp` | optionaler 32-kHz-Uhrenquarz |
+| `src/system_utils.cpp`, `src/debug_utils.cpp` | `isTimeForAction()`, `serialPrint()` |
+| `include/types.h` | gemeinsame Strukturen (`FullConfig`, `SystemSettings`, `LampState`, …) |
+| `include/pins.h` | alle GPIOs (siehe [hardware.md](hardware.md)) |
+| `include/secrets.example.h` | Vorlage für Standard-Zugangsdaten (`secrets.h` ist gitignored) |
+
+Weitere Doku: [zustaende.md](zustaende.md), [bedienung.md](bedienung.md),
+[wlan-und-zeit.md](wlan-und-zeit.md), [build-und-deploy.md](build-und-deploy.md).
 
 ---
 
-## Boot-Vorgang (`setup()`)
+## Tasks und Thread-Sicherheit
 
-1. **Serial** — USB-CDC-Debug-Ausgabe starten (max. 5s warten)
-2. **LittleFS** — Dateisystem für Web-UI-Assets mounten
-3. **Konfiguration laden** — `loadFullConfig()` aus NVS; Standardwerte falls leer
-4. **LED init** — WS2812FX starten, Status-LED einschalten
-5. **Systemeinstellungen laden** — SSID, Passwörter, Flags aus NVS
-5a. **RTC-Quarz** — `initRtcCrystal()` prüft ob externer 32-kHz-Quarz schwingt; fällt auf RC-Oszi zurück (muss vor allem anderen geschehen, da Taktquelle nur beim Boot umschaltbar ist)
-6. **Module initialisieren** — `initLampState()`, `initSleepManager()`, `initButtonCallbacks()`, `initTsfClock()`, `initRdsClock()` mit Zeigern auf globale Variablen
-7. **Farbmodus anwenden** — konfigurierte LED-Farbe setzen
-8. **Alarme wiederherstellen** — `setAlarms()` berechnet nächste Auslösezeit
-9. **WiFi und Webserver** — Routen initialisieren, Controller konfigurieren, `startWifi()`
-10. **Aufwachgrund prüfen** — GPIO → Default-Modus; Timer → Sleep-Modus
-11. **Helligkeit und Encoder** — Encoder mit gespeichertem Helligkeitswert starten
-12. **Systemzeit wiederherstellen** — NVS-Timestamp laden wenn kein NTP vorhanden
-13. **Boot-Ereignis** protokollieren
+Diese Stellen laufen außerhalb von `loop()`:
+
+| Kontext | Was dort passiert | Regel |
+|---|---|---|
+| `async_tcp`-Task (Webserver) | HTTP-Handler | nur prüfen, Auftrag ablegen, antworten |
+| WiFi-Event-Task | `WiFiEvent()` | nur Nachricht in eine Queue (`postMsg`) |
+| lwIP-Task | SNTP-Callback | nur Drift berechnen, Nachricht in die Queue |
+| WiFi-Task (Promiscuous) | Beacon-Callback (TSF) | nur in Puffer schreiben, Speicherbarriere vor dem Zähler |
+
+**Auftragsablage (`main.cpp`):** Ein Handler ruft `onStateUpdatedFromWifi(type, data)` auf. Das kopiert
+die Daten unter einem Mutex in `s_pending` (pro Auftragstyp ein Platz, der letzte gewinnt).
+`processPendingCommands()` läuft als Erstes in `loop()` und führt alles aus: Config übernehmen,
+speichern, WLAN neu starten (nur wenn SSID/Passwort geändert), Neustart/Werksreset (ca. 500 ms
+verzögert, damit die HTTP-Antwort noch rausgeht). LEDs, WLAN, NVS und `ESP.restart()` werden damit nur
+aus `loop()` angefasst.
 
 ---
+
+## Boot (`setup()`)
+
+1. Serial (UART0), LittleFS, `FullConfig` aus NVS laden
+2. **Aufwachgrund** auswerten: Taster → Normalbetrieb mit Helligkeit 1; Timer → Sleep
+3. **LEDs sofort** setzen (Farbe, Helligkeit; bei Timer-Wakeup aus) — vor allem Langsamen
+4. `SystemSettings` laden, RTC-Quarz prüfen (Taktquelle nur beim Boot umschaltbar)
+5. Module initialisieren (Zeiger auf den globalen Zustand), Wecker übernehmen
+6. WLAN-Controller (Kanal aus RTC-Speicher oder Scan), Webserver, `startWifi()` —
+   bei Timer-Wakeup ohne Hotspot
+7. Encoder (Ruhepegel lernen), Systemzeit ggf. aus NVS wiederherstellen
+
+Gemessen: Licht nach ca. 60 ms, einsatzbereit nach ca. 0,35 s (Deep-Sleep-Wakeup) bzw. 3,5 s
+(Einschalten mit Kanal-Scan).
 
 ## Hauptschleife (`loop()`)
 
 ```
-ledUpdate()           — WS2812FX-Animationen und Blink-Effekte
-wifiLoop()            — DNS, Auto-Start/Stop, Telemetrie, Reconnect
-tsfClockLoop()        — TSF-Beacon-Scan und Zeitberechnung
-rdsClockLoop()        — RDS-FM-Scan und Zeitberechnung
-rotary_loop()         — Encoder-Ereignisse auswerten und Callbacks auslösen
-checkAlarmStates()    — Alarm auslösen wenn Zeit erreicht
-checkAlertState()     — Zeitbegrenzten Alert beenden wenn abgelaufen
-checkGoodNightMode()  — Gute-Nacht-Modus nach Ablauf der Dauer beenden
-checkCelebrationLogic()— Feiertagsdatum prüfen, Modus starten/stoppen
-checkLampState()      — Zustandsmaschine: aktiven Modus bestimmen (letzte Priorität)
-updateLed()           — LED-Effekte bei Zustandswechsel anwenden
-checkToSave()         — Verzögerten NVS-Schreibvorgang ausführen
-checkToGoSleep()      — Deep Sleep einleiten wenn Bedingungen erfüllt
+processPendingCommands()   Aufträge vom Webserver ausführen
+wifiLoop()                 Events, DNS, Auto-Start/-Stopp, NTP-Status, Wiederverbinden
+tsfClockLoop()             TSF-Snapshot/-Fallback
+rdsClockLoop()             RDS-Zustandsmaschine
+statusLedTick()            Blinkmuster der Status-LED
+rotary_loop()              Drehknopf und Tasten
+ledUpdate()                WS2812FX rendern, Blitz beenden
+checkAlarmStates()         Wecker starten/stoppen (alle 10 s)
+checkAlertState()          Hinweis-Ablauf
+checkGoodNightMode()       Gute-Nacht-Ablauf
+checkCelebrationLogic()    Feiertag prüfen
+checkLampState()           aktiven Zustand bestimmen (muss nach den Modi laufen)
+updateLed()                LEDs beim Zustandswechsel setzen, Helligkeitsverläufe alle 5 s
+checkToSave()              verzögertes Speichern (5 s)
+checkToGoSleep()           Deep Sleep prüfen (alle 10 s)
 ```
 
 ---
 
-## Modul-Kommunikation
+## Persistenz (NVS-Namespace `lisas_lamp_cfg`)
 
-Die Module kommunizieren nicht direkt miteinander, sondern über Zeiger auf globale Variablen in `main.cpp`. Die wichtigsten sind:
+| Schlüssel | Inhalt |
+|---|---|
+| `fullConfig` | `FullConfig`: Farbe, Modi, Helligkeit, 10 Wecker, Dauern |
+| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz |
+| `tsfData` | bis zu 16 TSF-Referenzen |
+| `lastKnownTime` | letzte gültige Uhrzeit (alle 30 min bei gültigem NTP) |
 
-| Variable | Typ | Wer schreibt | Wer liest |
-|---|---|---|---|
-| `lampState` | `LampState` | `lamp_state.cpp`, `button.cpp` | `lamp_state.cpp`, `sleep_manager.cpp` |
-| `appConfig` | `FullConfig` | `main.cpp` (WiFi-Callback), `button.cpp` | alle Module |
-| `systemSettings` | `SystemSettings` | `main.cpp` (WiFi-Callback) | `wifi_controller.cpp` |
-| `wifiTracker` | `WiFiTestTracker` | `wifi_controller.cpp` | `lamp_state.cpp`, `route_handlers.cpp` |
-
-Der Webserver ruft bei Konfigurationsänderungen `onStateUpdatedFromWifi()` in `main.cpp` auf, die den Zustand aktualisiert und betroffene Module benachrichtigt.
+Strukturen werden binär gespeichert. **Ändert sich ihre Größe** (Firmware-Update), werden sie auf
+Standard zurückgesetzt — siehe TODO in der [README](../README.md).
 
 ---
 
-## RTC-Quarz-Extension (`src/rtc_crystal.cpp`)
+## HTTP-API
 
-Der ESP32-C3 hat einen internen RC-Oszillator als RTC-Taktquelle (~150 kHz, geteilt auf ~36 kHz). Dieser
-driftet um ~1–2 % pro Tag, was bei langem Deep-Sleep zu verpassten Alarmen führen kann.
+Alle POSTs: `Content-Type: application/json` (sonst 415), passender `Origin` falls gesendet (sonst 403),
+Body höchstens 4096 Bytes (sonst 413). Fehler: `{"status":"error","message":"…"}`.
+POSTs ohne Nutzdaten senden `{}`.
 
-Mit einem externen 32.768-kHz-Quarz an **GPIO0** (XTAL_32K_P) und **GPIO1** (XTAL_32K_N) lässt sich die
-Genauigkeit auf ~20 ppm (~1,7 s/Tag) verbessern.
-
-### Ablauf beim Boot
-
-1. `initRtcCrystal()` wird in `setup()` als erstes aufgerufen (vor allen anderen Modulen).
-2. Falls `rtcCrystalEnabled = false` → kein Eingriff, RC-Oszillator bleibt aktiv.
-3. Falls aktiviert: `rtc_clk_32k_bootstrap(200)` sendet Anlauf-Pulse, dann 300 ms warten.
-4. `rtc_clk_cal(RTC_CAL_32K_XTAL, 1000)` misst die Taktperiode des Quarzes.
-5. Liegt die berechnete Frequenz im Bereich 32.000–33.000 Hz → Quarz übernimmt die RTC-Taktquelle.
-6. Sonst → RC-Oszillator bleibt aktiv; `rtcCrystalAvailable = false` wird in NVS gespeichert.
-
-### API
-
-| Endpunkt | Methode | Beschreibung |
+| Endpunkt | Methode | Inhalt |
 |---|---|---|
-| `/get_rtc_crystal` | GET | JSON: `{"enabled": bool, "available": bool, "freqHz": uint32}` |
-| `/set_option` | POST | `{"option": "rtcCrystal", "enabled": bool}` → speichert Einstellung und löst Neustart aus |
+| `/`, `/app.js`, `/pico.min.css`, `/meerkat.avif` | GET | Weboberfläche (gzip aus LittleFS) |
+| `/ping` | GET | `pong` (Verbindungsprüfung der UI) |
+| `/get_config` | GET | `FullConfig` als JSON |
+| `/set_config` | POST | Teil-Update der `FullConfig`; fehlende Felder bleiben, `brightnessMode` wird ignoriert (Drehknopf ist Master), Wertebereiche geprüft |
+| `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`) und alle Schalter |
+| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32, Passwort leer (= unverändert) oder 8–63; `clearInternalPW`/`clearExternalPW`/`clearExternalPW2` entfernen ein Passwort |
+| `/set_option` | POST | `{"option": "warnings\|deepSleep\|tsfFallback\|rdsClock\|rtcCrystal", "enabled": bool}`; `rtcCrystal` startet neu |
+| `/get_status` | GET | Uhrzeit, NTP-Status, externe WLAN-Verbindung |
+| `/get_event_log` | GET | Ereignisprotokoll (neueste zuerst) |
+| `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal` | GET | Detailstatus der Zeitquellen |
+| `/trigger_ntp_sync`, `/trigger_tsf_snapshot` | POST | Aktion auslösen |
+| `/restart`, `/factory_reset` | POST | Neustart bzw. Werksreset (verzögert) |
 
-Da die RTC-Taktquelle nur beim Boot umgeschaltet werden kann, löst `rtcCrystal` über `/set_option` immer einen Neustart aus.
-
-## Schalter-API (`/set_option`)
-
-Alle An/Aus-Schalter laufen über einen Endpunkt (POST, `Content-Type: application/json`):
-
-```json
-{"option": "warnings | deepSleep | tsfFallback | rdsClock | rtcCrystal", "enabled": true}
-```
-
-- Antwort `{"status":"ok"}`, bei `rtcCrystal` `{"status":"restarting"}`; Fehler → 400 mit `{"status":"error","message":"…"}`.
-- Ausführung als Auftrag in `loop()`, kein WLAN-Neustart.
-- Aktuelle Werte: Felder `warningsEnabled`, `deepSleepEnabled`, `tsfFallbackEnabled`, `rdsClockEnabled`,
-  `rtcCrystalEnabled` in `GET /get_system_config`. Ausführliche Status-Infos weiterhin über
-  `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal`.
+Der Webserver ist ohne Login erreichbar; Schutz bietet das Hotspot-Passwort.
