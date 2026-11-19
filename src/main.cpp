@@ -13,7 +13,6 @@
 #include "led.h"
 #include "store.h"
 #include "types.h"
-#include "preferences_utils.h"
 #include "wifi_controller.h"
 #include <system_utils.h>
 #include <esp_sleep.h>

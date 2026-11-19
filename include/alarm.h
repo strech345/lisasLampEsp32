@@ -11,7 +11,6 @@ extern Alarm alarms[MAX_ALARMS];
 void setAlarms(const Alarm newAlarms[MAX_ALARMS]); // Alarme übernehmen (laufender Alarm/Auslösetage bleiben erhalten, außer bei Änderung)
 void resetAlarms();
 
-int getActiveAlarmIndex();
 void setActiveAlarm(int index);
 void stopActiveAlarm();
 

@@ -10,3 +10,4 @@ data/index.html.gzip
 # Zugangsdaten und rechnerspezifische Einstellungen (Vorlagen *.example.* sind eingecheckt)
 include/secrets.h
 platformio_override.ini
+.DS_Store

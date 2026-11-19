@@ -398,11 +398,6 @@ void syncTimeWithNTP() {
     sntp_restart();
 }
 
-// Gibt true zurück wenn die Uhrzeit per NTP synchronisiert und der Sync nicht älter als 24 h ist
-bool isTimeSyncedWithNTP() {
-    return g_wifiTracker != nullptr && g_wifiTracker->clockSynced;
-}
-
 // Verbindung verloren (läuft im Hauptthread): Wiederholungen, Fallback-WLAN, dann STA aufgeben
 static void handleStaDisconnected() {
     // Kein Telemetrie-Update nötig: der NTP-Status hängt nicht mehr an der Verbindung

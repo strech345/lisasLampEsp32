@@ -27,7 +27,6 @@ bool hasWifiClients();        // Gibt true zurück wenn mindestens ein Gerät ve
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info); // Intern: reagiert auf STA-Verbindungsereignisse
 void tryReconnectSta();       // Alle 5min: versucht STA-Verbindung wiederherzustellen (Primär/Fallback-Wechsel)
 void syncTimeWithNTP();       // SNTP-Sync neu starten; Drift wird im Callback berechnet
-bool isTimeSyncedWithNTP();      // true wenn NTP-Sync vorhanden und jünger als 24 h
 void updateTelemetryWiFiStatus(); // minütlich: NTP-Alter (24 h) prüfen, alle 30 min Zeit in NVS sichern
 
 #endif // WIFI_CONTROLLER_H

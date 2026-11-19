@@ -57,11 +57,6 @@ void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
     calculateMillisToNextAlarm();
 }
 
-// Gibt den Index des aktuell laufenden Alarms zurück (-1 wenn keiner aktiv)
-int getActiveAlarmIndex() {
-    return activeAlarmId;
-}
-
 bool isAlarmActive() {
     return activeAlarmId != -1;
 }
