@@ -85,13 +85,13 @@ enum LampState {
     LAMP_STATE_DEFAULT     = 0,
     LAMP_STATE_ALARM       = 1,
     LAMP_STATE_GOOD_NIGHT  = 2,
-    LAMP_STATE_ERROR       = 3, // Temporärer Alert: rot blinkend
+    LAMP_STATE_ERROR       = 3, // Kurzer Hinweis: rot
     LAMP_STATE_SUCCESS     = 4, // Temporärer Alert: grün
-    LAMP_STATE_WARNING     = 5, // Temporärer Alert: gelb blinkend
+    LAMP_STATE_WARNING     = 5, // Kurzer Hinweis: gelb
     LAMP_STATE_SLEEP       = 6, // Lampe aus, wartet auf Nutzer-Eingriff
     LAMP_STATE_CELEBRATION = 7,
-    LAMP_STATE_SYS_ERROR   = 8, // Dauerhaft: keine Systemzeit — einzelner Pixel blinkt rot
-    LAMP_STATE_SYS_WARNING = 9  // Dauerhaft: NTP veraltet (> 24h) — einzelner Pixel blinkt gelb
+    LAMP_STATE_SYS_ERROR   = 8, // Dauerhaft (nur bei Lampe an): keine Systemzeit — Lampe rot
+    LAMP_STATE_SYS_WARNING = 9  // Dauerhaft (nur bei Lampe an): Zeitquelle > 24 h alt — Lampe gelb
 };
 
 // Status-Snapshot für die Web-API

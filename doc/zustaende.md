@@ -1,85 +1,78 @@
-# LisasLamp ESP32 — Lampenzustände
+# Lampenzustände
 
-_Stand: November 2026_
+_Stand: November 2026 · Code: `src/lamp_state.cpp`, Enum `LampState` in `include/types.h`_
 
 ---
 
-## Alle Zustände
+## Zustände
 
-| Zustand | Wert | Beschreibung | LED-Effekt |
+| Zustand | Wert | Bedeutung | LEDs beim Eintritt |
 |---|---|---|---|
-| `LAMP_STATE_DEFAULT` | 0 | Normalbetrieb | Konfigurierte Farbe und Animation |
-| `LAMP_STATE_ALARM` | 1 | Wecker läuft | Sonnenaufgangs-Farbverlauf, Helligkeit steigt linear an |
-| `LAMP_STATE_GOOD_NIGHT` | 2 | Einschlaf-Modus | Aktuelle Farbe, Helligkeit dimmt linear auf 0 |
-| `LAMP_STATE_ERROR` | 3 | Kurzzeit-Fehleranzeige (Alert) | Alle LEDs rot |
-| `LAMP_STATE_SUCCESS` | 4 | Kurzzeit-Erfolgsmeldung (Alert) | Alle LEDs grün |
-| `LAMP_STATE_WARNING` | 5 | Kurzzeit-Warnung (Alert) | Alle LEDs gelb |
-| `LAMP_STATE_SLEEP` | 6 | Lampe aus | LEDs aus (Helligkeit 0) |
-| `LAMP_STATE_CELEBRATION` | 7 | Feiertagsmodus | Bunter Animations-Effekt |
-| `LAMP_STATE_SYS_ERROR` | 8 | Systemfehler (Uhrzeit fehlt) | Pixel 0 blinkt rot |
-| `LAMP_STATE_SYS_WARNING` | 9 | Systemwarnung (NTP veraltet >24h) | Pixel 0 blinkt gelb |
+| `LAMP_STATE_DEFAULT` | 0 | Normalbetrieb | Nutzerfarbe, -animation und -helligkeit (0 = aus) |
+| `LAMP_STATE_ALARM` | 1 | Wecker läuft | Nutzerfarbe; Helligkeit steigt in den ersten 70 % der Dauer von 1 auf 7 |
+| `LAMP_STATE_GOOD_NIGHT` | 2 | Einschlafen | Nutzerfarbe; Helligkeit sinkt über die Dauer von der Nutzer-Helligkeit auf 0 |
+| `LAMP_STATE_ERROR` | 3 | kurzer Hinweis: Fehler | rot |
+| `LAMP_STATE_SUCCESS` | 4 | kurzer Hinweis: OK | grün |
+| `LAMP_STATE_WARNING` | 5 | kurzer Hinweis: Warnung | gelb |
+| `LAMP_STATE_SLEEP` | 6 | Lampe aus, bis zur Bedienung | aus |
+| `LAMP_STATE_CELEBRATION` | 7 | Feier-Modus | Regenbogen, Helligkeit 7 |
+| `LAMP_STATE_SYS_ERROR` | 8 | Systemfehler: keine gültige Uhrzeit | ganze Lampe rot, Nutzer-Helligkeit |
+| `LAMP_STATE_SYS_WARNING` | 9 | Systemwarnung: Zeit veraltet | ganze Lampe gelb, Nutzer-Helligkeit |
+
+Kurze Hinweise nutzen die Nutzer-Helligkeit, bei ausgeschalteter Lampe Stufe 7 (damit sie sichtbar sind).
+Wecker- und Gute-Nacht-Helligkeit werden alle 5 s nachgeführt.
 
 ---
 
-## Prioritätsreihenfolge
-
-`checkLampState()` in `lamp_state.cpp` prüft Bedingungen von höchster zu niedrigster Priorität:
+## Priorität (`checkLampState()`)
 
 ```
-1. Alert (Error/Warning/OK)    — sofortige Statusanzeige
-2. Alarm                       — Wecker läuft
-3. Gute Nacht                  — Einschlafen aktiv
-4. Celebration                 — Feiertagsmodus
-5. Sleep                       — Lampe aus (bleibt bis Nutzeraktion)
-6. Systemwarnung               — NTP-Sync fehlt (nur wenn Warnungen aktiviert)
-7. Default                     — Normalbetrieb
+1. Kurzer Hinweis      — merkt sich den Zustand davor und stellt ihn danach wieder her
+2. Wecker              — endet der Wecker → Sleep
+3. Gute Nacht          — endet die Dauer → Sleep
+4. Feier-Modus
+5. Sleep               — bleibt, bis die Lampe bedient wird
+6. Systemwarnung       — nur wenn „Warnungen“ an UND Helligkeit > 0
+7. Normalbetrieb
 ```
 
-Sleep und Zustandsübergänge zu Sleep haben keine niedrigere Priorität als die Reihenfolge suggeriert — Sleep wird explizit als "bleibt bestehen" behandelt: der Zustand ändert sich erst durch Nutzeraktion.
+Eine ausgeschaltete Lampe (Sleep oder Helligkeit 0) wird nie durch eine Systemwarnung eingeschaltet.
+Ein Hinweis (z. B. beim Speichern oder langen Tastendruck) unterbricht einen Zustand nur kurz: Aus Sleep
+wird danach wieder Sleep.
 
 ---
 
-## Übergangstabelle
+## Übergänge
 
-| Ereignis | Neuer Zustand | Auslösende Datei |
+| Ereignis | Neuer Zustand | Ort |
 |---|---|---|
-| Boot via GPIO (Encoder-Druck) | Default | `main.cpp` |
-| Boot via Timer (Deep Sleep) | Sleep | `main.cpp` |
-| Alarm-Zeit erreicht | Alarm | `alarm.cpp` → `checkAlarmStates()` |
-| Alarm-Dauer abgelaufen | Sleep | `lamp_state.cpp` → Alarm → Sleep |
-| Gute-Nacht aktiviert | Good Night | `lamp_state.cpp` → `onShortPress()` |
-| Gute-Nacht-Dauer abgelaufen | Sleep | `good_night.cpp` → `checkGoodNightMode()` |
-| Feiertagsdatum erkannt | Celebration | `celebration.cpp` → `checkCelebrationLogic()` |
-| `startAlert(ALERT_OK, ...)` | Success | `alerts.cpp` |
-| `startAlert(ALERT_WARNING, ...)` | Warning | `alerts.cpp` |
-| `startAlert(ALERT_ERROR, ...)` | Error | `alerts.cpp` |
-| Alert-Dauer abgelaufen | vorheriger Zustand | `alerts.cpp` → `checkAlertState()` |
-| Warnungen aktiviert + NTP >24h alt | SysWarning | `lamp_state.cpp` |
-| Warnungen aktiviert + Zeit unbekannt | SysError | `lamp_state.cpp` |
+| Aufwecken per Taster/Drehen | Normalbetrieb, Helligkeit 1 | `main.cpp` |
+| Aufwecken per Timer | Sleep | `main.cpp` |
+| Wecker-Zeit erreicht (bis 10 min verspätet, gültige Uhrzeit) | Wecker | `alarm.cpp` |
+| Wecker-Dauer abgelaufen | Sleep | `lamp_state.cpp` |
+| Kurzer Druck im Normalbetrieb | Gute Nacht | `lamp_state.cpp` (`onShortPress`) |
+| Gute-Nacht-Dauer abgelaufen | Sleep | `good_night.cpp` |
+| Feiertag ab 7:00 | Feier-Modus | `celebration.cpp` |
+| `startAlert(…)` | Hinweis | `alerts.cpp` |
+| Hinweis abgelaufen oder kurzer Druck | Zustand vor dem Hinweis | `lamp_state.cpp` |
+| Warnungen an, Lampe an, Uhrzeit vor 2020 | Systemfehler | `lamp_state.cpp` |
+| Warnungen an, Lampe an, letzte Zeitquelle > 24 h (bzw. 30 min nach Start keine) | Systemwarnung | `lamp_state.cpp` |
+
+Eine Konfigurationsänderung über die Weboberfläche beendet einen laufenden Wecker nur, wenn genau dieser
+Wecker deaktiviert oder zeitlich geändert wurde.
 
 ---
 
-## Welche Tastengeste beendet welchen Modus
+## Bedienung je Zustand
 
-| Aktiver Modus | Geste | Wirkung |
+| Zustand | Kurzer Druck | Drehen |
 |---|---|---|
-| Sleep | Kurzer Druck | → Default (grüner Flash) |
-| Alarm | Kurzer Druck | → Default, Alarm stoppen (roter Flash) |
-| Gute Nacht | Kurzer Druck | → Default, Modus stoppen (roter Flash) |
-| Celebration | Kurzer Druck | → Default, Modus stoppen (roter Flash) |
-| Alert (Error/Warning/OK) | Kurzer Druck | Alert beenden, → letzter normaler Zustand |
-| Default | Kurzer Druck | → Gute-Nacht-Modus starten (grüner Flash) |
-| Beliebig | Langer Druck | WiFi starten (APSTA-Modus) |
-| Beliebig | Drehen | Helligkeitsstufe ändern (1–10) |
+| Normalbetrieb | → Gute Nacht (grüner Blitz) | Helligkeit ändern |
+| Sleep | → Normalbetrieb (grüner Blitz) | → Normalbetrieb mit neuer Helligkeit |
+| Wecker | Wecker stoppen → Normalbetrieb (roter Blitz) | Helligkeit (wird vom Weckverlauf überschrieben) |
+| Gute Nacht | beenden → Normalbetrieb (roter Blitz) | beenden → Normalbetrieb mit neuer Helligkeit |
+| Feier-Modus | für heute beenden → Normalbetrieb (roter Blitz) | Helligkeit ändern |
+| Hinweis | Hinweis beenden → vorheriger Zustand | Helligkeit ändern |
+| Systemwarnung/-fehler | → Gute Nacht | → Normalbetrieb mit neuer Helligkeit |
 
----
-
-## Systemwarnungen
-
-Systemwarnungen werden nur angezeigt wenn `systemSettings.warningsEnabled = true` (Standard: ein).
-Sie zeigen sich als einzeln blinkender Pixel (Pixel 0 = `WARNING_PIXEL`) damit sie von normalen Effekten unterscheidbar sind.
-
-- **SysError** (rot blinken): `time()` liefert einen Wert vor 2020 — NTP hat noch nie synchronisiert.
-- **SysWarning** (gelb blinken): Letzter erfolgreicher NTP-Sync liegt mehr als 24h zurück.
-
-Beide werden durch einen erfolgreichen NTP-Sync automatisch aufgelöst.
+Langer Druck schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis).
