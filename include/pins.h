@@ -4,7 +4,7 @@
 // Alle Module verwenden ausschließlich diese Konstanten — Pins nie direkt als Zahl im Code schreiben.
 // Jeder Wert ist per #ifndef abgesichert und lässt sich für eine andere Hardware-Variante über
 // build_flags in platformio.ini überschreiben, z. B.:  build_flags = -DPIN_LED_STRIP=5
-// Verdrahtung und Hinweise: doc/pins.md
+// Verdrahtung und Hinweise: doc/hardware.md
 
 // --- KY-040 Drehencoder ---
 // Hinweis: SW und CLK müssen RTC-fähige GPIOs (0–5) sein, sonst funktioniert der Deep-Sleep-Wakeup
