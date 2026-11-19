@@ -11,8 +11,10 @@
 #include "debug_utils.h"
 #include "event_log.h"
 
-#define FLASH_GREEN 0x0000FF00
-#define FLASH_RED   0x00FF0000
+// Farben für Hinweise, Warnungen und Tasten-Aufblitzen (0x00RRGGBB)
+#define COLOR_GREEN 0x0000FF00
+#define COLOR_RED 0x00FF0000
+#define COLOR_YELLOW 0x00FFFF00
 
 // Zeiger auf den globalen Zustand — werden in initLampState() gesetzt
 static LampState* s_lampState = nullptr;
@@ -184,6 +186,58 @@ static const char* lampStateName(LampState s) {
     }
 }
 
+// Helligkeit für kurze Hinweise: Nutzer-Helligkeit, bei ausgeschalteter Lampe volle Helligkeit,
+// damit der Hinweis sichtbar ist
+static uint8_t alertBrightness() {
+    return s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7;
+}
+
+// Setzt die LEDs beim Eintritt in einen neuen Lampenzustand (einmalig pro Zustandswechsel)
+static void applyStateEntry(LampState state) {
+    switch(state) {
+    case LAMP_STATE_DEFAULT:
+        setBrightnessLevel(s_appConfig->brightnessMode);
+        checkAndApplyColorMode(*s_appConfig);
+        break;
+    case LAMP_STATE_CELEBRATION:
+        startCelebrationEffect();
+        break;
+    case LAMP_STATE_SUCCESS:
+        setBrightnessLevel(alertBrightness());
+        setLedColor(COLOR_GREEN);
+        break;
+    case LAMP_STATE_ERROR:
+        setBrightnessLevel(alertBrightness());
+        setLedColor(COLOR_RED);
+        break;
+    case LAMP_STATE_WARNING:
+        setBrightnessLevel(alertBrightness());
+        setLedColor(COLOR_YELLOW);
+        break;
+    case LAMP_STATE_SYS_ERROR:
+        // Nutzer-Helligkeit: Systemwarnungen treten nur bei eingeschalteter Lampe auf
+        setBrightnessLevel(s_appConfig->brightnessMode);
+        setLedColor(COLOR_RED);
+        break;
+    case LAMP_STATE_SYS_WARNING:
+        setBrightnessLevel(s_appConfig->brightnessMode);
+        setLedColor(COLOR_YELLOW);
+        break;
+    case LAMP_STATE_ALARM:
+        checkAndApplyColorMode(*s_appConfig);
+        setBrightnessLevel(getAlarmBrightness(s_appConfig->alarmDuration)); // sofort, nicht erst nach 5 s
+        break;
+    case LAMP_STATE_GOOD_NIGHT:
+        // Farbe neu setzen (z. B. nach einem Alert) und Helligkeit sofort anwenden
+        checkAndApplyColorMode(*s_appConfig);
+        setBrightnessLevel(getGoodNightBrightness(s_appConfig->brightnessMode, s_appConfig->goodNightDuration));
+        break;
+    case LAMP_STATE_SLEEP:
+        setBrightnessLevel(0); // Lampe ausschalten
+        break;
+    }
+}
+
 // Wendet LED-Effekte an wenn sich der Lampenzustand geändert hat; aktualisiert Helligkeit im laufenden Betrieb
 void updateLed() {
     static LampState lastLampState;
@@ -196,44 +250,8 @@ void updateLed() {
         snprintf(buf, sizeof(buf), "State: %s -> %s", lampStateName(lastLampState), lampStateName(*s_lampState));
         logEvent(buf);
     }
-    if(*s_lampState == LAMP_STATE_DEFAULT && lastLampState != LAMP_STATE_DEFAULT) {
-        setBrightnessLevel(s_appConfig->brightnessMode);
-        checkAndApplyColorMode(*s_appConfig);
-    }
-    if(*s_lampState == LAMP_STATE_CELEBRATION && lastLampState != LAMP_STATE_CELEBRATION) {
-        startCelebrationEffect();
-    }
-    if(*s_lampState == LAMP_STATE_SUCCESS && lastLampState != LAMP_STATE_SUCCESS) {
-        setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        setLedColor(0x0000FF00); // grün
-    }
-    if(*s_lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
-        setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        setLedColor(0x00FF0000); // rot
-    }
-    if(*s_lampState == LAMP_STATE_WARNING && lastLampState != LAMP_STATE_WARNING) {
-        setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        setLedColor(0x00FFFF00); // gelb
-    }
-    if(*s_lampState == LAMP_STATE_SYS_ERROR && lastLampState != LAMP_STATE_SYS_ERROR) {
-        setBrightnessLevel(s_appConfig->brightnessMode); // Nutzer-Helligkeit (Zustand tritt nur bei Lampe an auf)
-        setLedColor(0x00FF0000); // rot
-    }
-    if(*s_lampState == LAMP_STATE_SYS_WARNING && lastLampState != LAMP_STATE_SYS_WARNING) {
-        setBrightnessLevel(s_appConfig->brightnessMode); // Nutzer-Helligkeit (Zustand tritt nur bei Lampe an auf)
-        setLedColor(0x00FFFF00); // gelb
-    }
-    if(*s_lampState == LAMP_STATE_ALARM && lastLampState != LAMP_STATE_ALARM) {
-        checkAndApplyColorMode(*s_appConfig);
-        setBrightnessLevel(getAlarmBrightness(s_appConfig->alarmDuration)); // sofort, nicht erst nach 5 s
-    }
-    if(*s_lampState == LAMP_STATE_GOOD_NIGHT && lastLampState != LAMP_STATE_GOOD_NIGHT) {
-        // Farbe neu setzen (z.B. nach einem Alert) und Helligkeit sofort anwenden
-        checkAndApplyColorMode(*s_appConfig);
-        setBrightnessLevel(getGoodNightBrightness(s_appConfig->brightnessMode, s_appConfig->goodNightDuration));
-    }
-    if(*s_lampState == LAMP_STATE_SLEEP && lastLampState != LAMP_STATE_SLEEP) {
-        setBrightnessLevel(0); // Lampe ausschalten
+    if(*s_lampState != lastLampState) {
+        applyStateEntry(*s_lampState);
     }
     lastLampState = *s_lampState;
 
@@ -273,32 +291,32 @@ void onShortPress() {
     if(*s_lampState == LAMP_STATE_SLEEP) {
         serialPrint("stopping sleep mode");
         *s_lampState = LAMP_STATE_DEFAULT;
-        *s_pendingFlash = FLASH_GREEN;
+        *s_pendingFlash = COLOR_GREEN;
         return;
     }
     if(*s_lampState == LAMP_STATE_ALARM) {
         serialPrint("stop alarm");
         *s_lampState = LAMP_STATE_DEFAULT;
         stopActiveAlarm();
-        *s_pendingFlash = FLASH_RED;
+        *s_pendingFlash = COLOR_RED;
         return;
     }
     if(*s_lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("stop good night");
         *s_lampState = LAMP_STATE_DEFAULT;
         stopGoodNightMode();
-        *s_pendingFlash = FLASH_RED;
+        *s_pendingFlash = COLOR_RED;
         return;
     }
     if(*s_lampState == LAMP_STATE_CELEBRATION) {
         serialPrint("stop celebration");
         *s_lampState = LAMP_STATE_DEFAULT;
         stopCelebration();
-        *s_pendingFlash = FLASH_RED;
+        *s_pendingFlash = COLOR_RED;
         return;
     }
     // Normalbetrieb → Gute-Nacht-Modus starten
     serialPrint("activate good night");
     activateGoodNightMode();
-    *s_pendingFlash = FLASH_GREEN;
+    *s_pendingFlash = COLOR_GREEN;
 }
