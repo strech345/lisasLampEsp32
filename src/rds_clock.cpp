@@ -2,6 +2,7 @@
 // Steuert RDA5807M-FM-Chip per I2C, scannt das Band nach einem empfangbaren Sender
 // und wertet RDS-Group-4A (Clocktime & Date) aus um die Systemzeit zu setzen.
 #include "rds_clock.h"
+#include "pins.h"
 #include "store.h"
 #include "debug_utils.h"
 #include "system_utils.h"
@@ -12,11 +13,7 @@
 #include <time.h>
 #include <ArduinoJson.h>
 
-// GPIO-Belegung ESP32-C3: 2(DT), 3(SW), 4(CLK), 8(STATUS_LED), 9(BOOT), 10(LED)
-// Passe diese Pins an deine Hardware an:
-#define RDS_POWER_PIN 7  // GPIO 7: steuert Modul-Stromversorgung (HIGH = an)
-#define RDS_SDA_PIN   5  // GPIO 5: I2C SDA
-#define RDS_SCL_PIN   6  // GPIO 6: I2C SCL
+// Pins (SDA/SCL/Strom) kommen aus include/pins.h
 
 #define RDA5807M_ADDR  0x11  // Random-access I2C-Adresse
 
@@ -198,10 +195,10 @@ void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
     g_settings = settings;
     g_tracker  = tracker;
 
-    pinMode(RDS_POWER_PIN, OUTPUT);
-    digitalWrite(RDS_POWER_PIN, LOW);
+    pinMode(PIN_RDS_POWER, OUTPUT);
+    digitalWrite(PIN_RDS_POWER, LOW);
 
-    Wire.begin(RDS_SDA_PIN, RDS_SCL_PIN);
+    Wire.begin(PIN_RDS_SDA, PIN_RDS_SCL);
 
     uint16_t ch = settings->rdsLastChannel;
     serialPrint(ch > 0
@@ -214,7 +211,7 @@ void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
 void rdsClockLoop() {
     if (g_settings == nullptr || !g_settings->rdsClockEnabled) {
         if (g_state != RDS_STATE_OFF && g_state != RDS_STATE_DONE) {
-            digitalWrite(RDS_POWER_PIN, LOW);
+            digitalWrite(PIN_RDS_POWER, LOW);
             g_state = RDS_STATE_OFF;
         }
         return;
@@ -222,7 +219,7 @@ void rdsClockLoop() {
 
     if (g_tracker != nullptr && (g_tracker->clockSynced || g_tracker->staConfigValid)) {
         if (g_state != RDS_STATE_OFF && g_state != RDS_STATE_DONE) {
-            digitalWrite(RDS_POWER_PIN, LOW);
+            digitalWrite(PIN_RDS_POWER, LOW);
             g_state = RDS_STATE_OFF;
             logEvent("RDS: Modul aus");
         }
@@ -234,7 +231,7 @@ void rdsClockLoop() {
 
     switch (g_state) {
     case RDS_STATE_OFF:
-        digitalWrite(RDS_POWER_PIN, HIGH);
+        digitalWrite(PIN_RDS_POWER, HIGH);
         g_stateMs = millis();
         g_state = RDS_STATE_POWERING;
         logEvent("RDS: Scan gestartet");
@@ -266,7 +263,7 @@ void rdsClockLoop() {
         } else {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
-                digitalWrite(RDS_POWER_PIN, LOW);
+                digitalWrite(PIN_RDS_POWER, LOW);
                 g_state = RDS_STATE_NO_SIGNAL;
                 logEvent("RDS: kein Signal gefunden");
             } else {
@@ -288,7 +285,7 @@ void rdsClockLoop() {
             snprintf(msg, sizeof(msg), "RDS: Zeit gesetzt %.1fMHz", g_currentCh / 10.0f);
             logEvent(msg);
             g_lastSyncMs = millis();
-            digitalWrite(RDS_POWER_PIN, LOW);
+            digitalWrite(PIN_RDS_POWER, LOW);
             g_state = RDS_STATE_DONE;
             logEvent("RDS: Modul aus");
             break;
@@ -297,7 +294,7 @@ void rdsClockLoop() {
         if (millis() - g_stateMs >= (g_haveLastCt ? CT_WAIT_PAIR_MS : CT_WAIT_MS)) {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
-                digitalWrite(RDS_POWER_PIN, LOW);
+                digitalWrite(PIN_RDS_POWER, LOW);
                 g_state = RDS_STATE_NO_SIGNAL;
                 logEvent("RDS: kein Signal gefunden");
             } else {

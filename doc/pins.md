@@ -1,6 +1,6 @@
 # GPIO-Belegung — LisasLamp (ESP32-C3 Super Mini)
 
-_Stand: November 2026_
+_Stand: November 2026 — maßgeblich im Code ist `include/pins.h` (dort ändern, nicht in den Modulen)._
 
 ---
 
@@ -21,7 +21,7 @@ _Stand: November 2026_
                               └─────────────┘
 
 Stromversorgung der Peripherie:
-  RDA5807M VCC/GND    ── über G6 geschaltet (LOW = stromlos)
+  RDA5807M VCC/GND    ── über G7 geschaltet (LOW = stromlos)
   WS2812B  VCC        ── 5V direkt
   WS2812B  GND        ── GND
   KY-040   VCC        ── 3V3
@@ -37,7 +37,7 @@ Stromversorgung der Peripherie:
 |    0 | ✓       | XTAL_32K_P     | RTC-Quarz (opt.)   | —        | Pos. Quarz-Pin; Bootstrap-Pulse beim Aktivieren           |
 |    1 | ✓       | XTAL_32K_N     | RTC-Quarz (opt.)   | —        | Neg. Quarz-Pin; kein anderes Gerät anschließen            |
 |    2 | ✓       | Encoder DT     | KY-040             | IN       | Drehrichtung; interner Pullup                             |
-|    3 | ✓       | Encoder SW     | KY-040             | IN       | Taster; Pulldown im Deep Sleep → GPIO-Wakeup ⚡           |
+|    3 | ✓       | Encoder SW     | KY-040             | IN       | Taster; Pullup (+Pad-Hold) im Deep Sleep → GPIO-Wakeup ⚡|
 |    4 | ✓       | Encoder CLK    | KY-040             | IN       | Takt; Pullup im Deep Sleep → GPIO-Wakeup ⚡               |
 |    5 | ✓       | RDS I²C SDA    | RDA5807M           | BIDIR    | I²C-Daten; 4,7 kΩ Pullup auf 3V3 empfohlen               |
 |    6 | ✓       | RDS I²C SCL    | RDA5807M           | OUT      | I²C-Takt; 4,7 kΩ Pullup auf 3V3 empfohlen                |
@@ -56,9 +56,9 @@ Stromversorgung der Peripherie:
 
 | Bauteil          | Maßnahme                                      |
 |------------------|-----------------------------------------------|
-| WS2812B Data     | 300–500 Ω Serienwiderstand direkt am GPIO7    |
+| WS2812B Data     | 300–500 Ω Serienwiderstand direkt am GPIO10   |
 | RDA5807M I²C     | 4,7 kΩ Pullup-Widerstände SDA+SCL → 3V3      |
-| RDA5807M Strom   | GPIO6 → NPN-Transistor oder P-Kanal-MOSFET   |
+| RDA5807M Strom   | GPIO7 → NPN-Transistor oder P-Kanal-MOSFET   |
 | 32kHz Quarz      | Quarz so nah wie möglich an GPIO0/GPIO1       |
 
 ---

@@ -1,5 +1,6 @@
 // Drehencoder- und Tastersteuerung — Implementierung
 #include "button.h"
+#include "pins.h"
 
 #include <functional>
 
@@ -18,14 +19,9 @@ static FullConfig* s_appConfig = nullptr;
 static LampState* s_lampState = nullptr;
 static WiFiTestTracker* s_wifiTracker = nullptr;
 
-// Pin-Belegung des KY-040 Encoders
-#define ROTARY_ENCODER_CLK_PIN 4
-#define ROTARY_ENCODER_DT_PIN 2
-#define ROTARY_ENCODER_SW_PIN 3
 // Flanken pro Rastung des KY-040 (voller Quadratur-Zyklus). Die Bibliothek zählt mit Schrittweite 1
 // (Rohflanken); das Umrechnen auf Rastungen passiert in handleRotation().
 #define ROTARY_ENCODER_STEPS 4
-#define BOOT_BUTTON_PIN 9
 
 const unsigned long shortPressAfterMiliseconds = 50;
 const unsigned long longPressAfterMiliseconds = 1000;
@@ -34,8 +30,8 @@ static RotaryEncoderCallback _rotaryEncoderCallback;
 
 // Schrittweite 1 = Rohflanken; letzter Parameter false = interne Pullups statt Pulldowns
 // (das KY-040-Modul hat eigene Pullups, interne Pulldowns würden dagegen arbeiten)
-AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_DT_PIN, ROTARY_ENCODER_CLK_PIN,
-                                                          ROTARY_ENCODER_SW_PIN, -1, 1, false);
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(PIN_ENCODER_DT, PIN_ENCODER_CLK,
+                                                          PIN_ENCODER_SW, -1, 1, false);
 
 // Rastungs-Erkennung: Ruhepegel der beiden Encoder-Pins (beim Start gelernt) und Rohzählerstand
 // der zuletzt ausgewerteten Rastung
@@ -126,19 +122,19 @@ void IRAM_ATTR readEncoderISR() {
 
 // Initialisiert Encoder-Pins
 void initRotaryEncoder(byte value, RotaryEncoderCallback callback) {
-    pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
     _rotaryEncoderCallback = callback;
     rotaryEncoder.begin();
     rotaryEncoder.setup(readEncoderISR);
     // Beschleunigung aus: sie addiert bei schnellem Drehen Extra-Flanken, danach passt die Zählung
     // nicht mehr zu den Rastungen und einzelne Rastungen gehen verloren
     rotaryEncoder.setAcceleration(0);
-    pinMode(ROTARY_ENCODER_DT_PIN, INPUT_PULLUP);
-    pinMode(ROTARY_ENCODER_CLK_PIN, INPUT_PULLUP);
+    pinMode(PIN_ENCODER_DT, INPUT_PULLUP);
+    pinMode(PIN_ENCODER_CLK, INPUT_PULLUP);
     delay(2); // Pullups einschwingen lassen
     // Ruhepegel lernen: beim Start steht der Knopf in einer Rastung
-    s_restDt = digitalRead(ROTARY_ENCODER_DT_PIN);
-    s_restClk = digitalRead(ROTARY_ENCODER_CLK_PIN);
+    s_restDt = digitalRead(PIN_ENCODER_DT);
+    s_restClk = digitalRead(PIN_ENCODER_CLK);
     if(s_restDt != s_restClk) { // unplausibel (gerade zwischen zwei Rastungen) → KY-040-Standard
         s_restDt = HIGH;
         s_restClk = HIGH;
@@ -192,7 +188,7 @@ void handle_rotary_button(unsigned long currentMillis) {
 
 void handle_boot_button(unsigned long currentMillis) {
     static LampButtonState bootState;
-    process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
+    process_button(digitalRead(PIN_BOOT_BUTTON) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
                    RotaryEncoderEventType::LongBootClick, currentMillis);
 }
 
@@ -203,7 +199,7 @@ void handle_boot_button(unsigned long currentMillis) {
 void handleRotation() {
     if(!_rotaryEncoderCallback)
         return;
-    if(digitalRead(ROTARY_ENCODER_DT_PIN) != s_restDt || digitalRead(ROTARY_ENCODER_CLK_PIN) != s_restClk)
+    if(digitalRead(PIN_ENCODER_DT) != s_restDt || digitalRead(PIN_ENCODER_CLK) != s_restClk)
         return; // Knopf steht zwischen zwei Rastungen → abwarten
     long pos = rotaryEncoder.readEncoder();
     long delta = pos - s_lastDetentPos;

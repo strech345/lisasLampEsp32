@@ -1,8 +1,10 @@
 // LED-Steuerung — Implementierung
-// WS2812FX auf GPIO 10 (5 RGBW-Pixel); Status-LED auf GPIO 8 (invertierte Logik).
+// WS2812FX auf PIN_LED_STRIP (5 RGBW-Pixel); Status-LED auf PIN_STATUS_LED (invertierte Logik).
+// Pins siehe include/pins.h.
 #include <Arduino.h>
 #include <WS2812FX.h>
 #include "debug_utils.h"
+#include "pins.h"
 #include "led.h"
 
 // Speichert den LED-Zustand vor einem Flash-Effekt
@@ -16,11 +18,9 @@ struct LedState {
 static unsigned long s_flashEndMs = 0; // Zeitpunkt wann der Flash-Effekt endet (0 = kein Flash)
 static LedState      s_preFlashState;  // Gespeicherter Zustand vor dem Flash
 
-#define LED_PIN      10
 #define LED_COUNT    5
-#define STATUS_LED_PIN 8
 
-WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRBW + NEO_KHZ800);
+WS2812FX ws2812fx = WS2812FX(LED_COUNT, PIN_LED_STRIP, NEO_GRBW + NEO_KHZ800);
 
 // Interne Hilfsfunktion — setzt Helligkeit mit Log
 static void applyBrightness(uint8_t brightness) {
@@ -116,17 +116,17 @@ void startCelebrationEffect() {
 }
 
 void statusLedInit() {
-    pinMode(STATUS_LED_PIN, OUTPUT);
+    pinMode(PIN_STATUS_LED, OUTPUT);
     statusLedOff(); // invertierte Logik: HIGH = aus, sonst leuchtet LED sofort dauerhaft
 }
 
 // Status-LED an: LOW = an (invertierte Logik auf dem Board)
 void statusLedOn() {
-    digitalWrite(STATUS_LED_PIN, LOW);
+    digitalWrite(PIN_STATUS_LED, LOW);
 }
 
 void statusLedOff() {
-    digitalWrite(STATUS_LED_PIN, HIGH);
+    digitalWrite(PIN_STATUS_LED, HIGH);
 }
 
 // Blinkt die Status-LED immer: langsam (2000ms an / 4000ms aus) wenn kein WLAN aktiv,

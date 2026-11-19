@@ -1,6 +1,7 @@
 // Deep-Sleep-Verwaltung — Implementierung
 // Schlafdauer wird so gewählt dass Alarm und Feiertagsereignisse trotz RTC-Drift nicht verpasst werden.
 #include "sleep_manager.h"
+#include "pins.h"
 #include <Arduino.h>
 #include <esp_sleep.h>
 #include <driver/gpio.h>
@@ -36,8 +37,8 @@ static FullConfig* s_appConfig = nullptr;
 void initSleepManager(bool* pDeepSleepEnabled, LampState* pLampState, FullConfig* pAppConfig) {
     // Nach dem Aufwachen aus Deep Sleep Pad-Hold der Encoder-Pins lösen (wurde vor dem Schlaf
     // gesetzt, damit der Pullup im Schlaf erhalten bleibt). Sonst würde pinMode() ignoriert.
-    gpio_hold_dis(GPIO_NUM_3);
-    gpio_hold_dis(GPIO_NUM_4);
+    gpio_hold_dis((gpio_num_t)PIN_ENCODER_SW);
+    gpio_hold_dis((gpio_num_t)PIN_ENCODER_CLK);
     gpio_deep_sleep_hold_dis();
 
     s_deepSleepEnabled = pDeepSleepEnabled;
@@ -136,24 +137,24 @@ void enterDeepSleep(uint64_t sleepTimeMs) {
     // Timer-Wakeup
     esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
 
-    // GPIO 3 (Encoder-Taster SW): wird im Betrieb mit INPUT_PULLUP gelesen, gedrückt = LOW.
+    // Encoder-Taster SW (PIN_ENCODER_SW): wird im Betrieb mit INPUT_PULLUP gelesen, gedrückt = LOW.
     // Im Schlaf daher ebenfalls Pullup (kein Pulldown, sonst Pin dauerhaft LOW → Dauer-Wakeup)
     // und Wake bei LOW (= Tastendruck).
-    gpio_pulldown_dis(GPIO_NUM_3);
-    gpio_pullup_en(GPIO_NUM_3);
-    gpio_hold_en(GPIO_NUM_3); // Pad-Konfiguration (Pullup) im Deep Sleep einfrieren
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << 3, ESP_GPIO_WAKEUP_GPIO_LOW);
+    gpio_pulldown_dis((gpio_num_t)PIN_ENCODER_SW);
+    gpio_pullup_en((gpio_num_t)PIN_ENCODER_SW);
+    gpio_hold_en((gpio_num_t)PIN_ENCODER_SW); // Pad-Konfiguration (Pullup) im Deep Sleep einfrieren
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_ENCODER_SW, ESP_GPIO_WAKEUP_GPIO_LOW);
 
-    // GPIO 4 (Encoder CLK): ebenfalls Pullup, Wake bei LOW = Drehbewegung.
+    // Encoder CLK (PIN_ENCODER_CLK): ebenfalls Pullup, Wake bei LOW = Drehbewegung.
     // Liegt CLK in der Rastposition bereits auf LOW, würde der Wakeup sofort auslösen →
     // dann diesen Wakeup-Pin weglassen (Taster und Timer bleiben aktiv).
-    gpio_pulldown_dis(GPIO_NUM_4);
-    gpio_pullup_en(GPIO_NUM_4);
-    gpio_hold_en(GPIO_NUM_4);
-    if(digitalRead(4) == HIGH) {
-        esp_deep_sleep_enable_gpio_wakeup(1ULL << 4, ESP_GPIO_WAKEUP_GPIO_LOW);
+    gpio_pulldown_dis((gpio_num_t)PIN_ENCODER_CLK);
+    gpio_pullup_en((gpio_num_t)PIN_ENCODER_CLK);
+    gpio_hold_en((gpio_num_t)PIN_ENCODER_CLK);
+    if(digitalRead(PIN_ENCODER_CLK) == HIGH) {
+        esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_ENCODER_CLK, ESP_GPIO_WAKEUP_GPIO_LOW);
     } else {
-        serialPrint("GPIO4 (CLK) liegt auf LOW – Drehen weckt nicht aus dem Deep Sleep");
+        serialPrint("Encoder-CLK liegt auf LOW – Drehen weckt nicht aus dem Deep Sleep");
     }
 
     gpio_deep_sleep_hold_en(); // Hold gilt im Deep Sleep global; wird in initSleepManager() gelöst
