@@ -1,23 +1,25 @@
+<!-- Event-Log-Anzeige: lädt /get_event_log alle 10 s und zeigt die Ereignisse als Tabelle. -->
 <script>
   import { onMount, onDestroy } from "svelte";
+  import { getJson } from "../lib/api.js";
+  import { messageStore } from "../stores/messageStore.js";
 
   let logData = null;
   let loading = false;
   let error = null;
   let refreshInterval = null;
 
+  // Lädt das Event-Log vom Gerät
   async function loadLog() {
     loading = true;
+    const hadError = error !== null;
     error = null;
     try {
-      const res = await fetch("/get_event_log");
-      if (res.ok) {
-        logData = await res.json();
-      } else {
-        error = "Fehler beim Laden der Logs";
-      }
+      logData = await getJson("/get_event_log");
     } catch (e) {
-      error = "Verbindungsfehler: " + e.message;
+      error = "Fehler beim Laden der Logs: " + e.message;
+      // Meldung nur beim ersten Fehler, nicht alle 10 s erneut
+      if (!hadError) messageStore.show("error", error);
     } finally {
       loading = false;
     }

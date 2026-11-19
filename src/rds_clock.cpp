@@ -25,7 +25,8 @@
 #define FM_STEP_10KHZ     10
 
 #define RSSI_THRESHOLD   25
-#define CT_WAIT_MS    35000
+#define CT_WAIT_MS    35000   // Wartezeit auf das erste CT-Paket pro Kanal
+#define CT_WAIT_PAIR_MS 130000 // verlängerte Wartezeit, sobald ein erstes CT-Paket vorliegt
 #define POWER_UP_MS     300
 
 #define REG_CONFIG  0x02
@@ -98,37 +99,84 @@ static bool isRdsReady() {
     return (readReg(REG_STATUS) & 0x8000) != 0;
 }
 
-// Analysiert RDS-Blöcke B/C/D auf Group 4A (Clocktime): dekodiert MJD-Datum,
-// Stunden, Minuten und UTC-Offset und setzt die Systemzeit wenn plausibel
-static bool tryParseCt(uint16_t blockB, uint16_t blockC, uint16_t blockD) {
+// Dekodiert RDS-Blöcke B/C/D als Group 4A (Clocktime) und liefert die UTC-Zeit.
+// Gibt false zurück wenn es keine 4A-Gruppe ist oder die Werte unplausibel sind.
+// Hinweis: RDS-CT überträgt Stunde/Minute/Datum in UTC; der lokale Offset (Bits 5:0 von Block D,
+// in 30-min-Schritten) ist nur Zusatzinfo und wird NICHT mehr abgezogen (die Zeitzone kommt aus TZ).
+static bool decodeCt(uint16_t blockB, uint16_t blockC, uint16_t blockD, time_t* outUtc) {
     if (((blockB >> 12) & 0x0F) != 4 || ((blockB >> 11) & 0x01) != 0) return false;
 
     unsigned long mjd = ((unsigned long)(blockB & 0x3) << 15) | (blockC >> 1);
     uint8_t hours    = (uint8_t)(((blockC & 0x1) << 4) | (blockD >> 12));
     uint8_t minutes  = (blockD >> 6) & 0x3F;
-    int8_t  offset   = (int8_t)(blockD & 0x1F);
-    if (blockD & 0x20) offset = -offset;
 
     if (hours > 23 || minutes > 59) return false;
 
-    long unixDay = (long)mjd - 40587L;
+    long unixDay = (long)mjd - 40587L; // MJD 40587 = 1970-01-01
     if (unixDay < 0) return false;
-    time_t unixUtc = (time_t)((long long)unixDay * 86400LL
-                              + hours * 3600L + minutes * 60L
-                              - (long)offset * 1800L);
+    time_t unixUtc = (time_t)((long long)unixDay * 86400LL + hours * 3600L + minutes * 60L);
 
-    struct tm* t = gmtime(&unixUtc);
-    if (t == nullptr || t->tm_year + 1900 < 2021) return false;
+    struct tm t;
+    if (gmtime_r(&unixUtc, &t) == nullptr || t.tm_year + 1900 < 2021) return false;
 
-    struct timeval tv = { unixUtc, 0 };
+    *outUtc = unixUtc;
+    return true;
+}
+
+// Letztes plausibles CT-Paket (für die Zwei-Paket-Prüfung); Zustand wird beim Kanalwechsel verworfen
+static bool   g_haveLastCt   = false;
+static time_t g_lastCtUtc    = 0;
+static unsigned long g_lastCtMs = 0;
+
+// Verwirft ein gemerktes CT-Paket (z.B. bei Kanalwechsel oder Neustart des Scans)
+static void resetCtPlausibility() {
+    g_haveLastCt = false;
+}
+
+// Prüft Blockfehler und CT-Plausibilität und setzt erst dann die Systemzeit.
+// RDA5807M REG 0x0B (Datenblatt): Bits 3:2 = BLERA (Fehler Block A), Bits 1:0 = BLERB (Fehler Block B);
+// 0 = fehlerfrei, 1-2 = korrigiert, 3 = nicht korrigierbar. Für Block C/D hat der Chip keine eigenen
+// Bits, daher verlangen wir zwei CT-Pakete nacheinander, deren Zeitdifferenz zur verstrichenen
+// Echtzeit passt (Toleranz 3 s); ein Bitfehler in C/D fällt dadurch praktisch immer auf.
+static bool tryParseCt(uint16_t blockB, uint16_t blockC, uint16_t blockD, uint16_t regSignal) {
+    uint8_t blera = (regSignal >> 2) & 0x03;
+    uint8_t blerb = regSignal & 0x03;
+    if (blera != 0 || blerb != 0) return false; // nur fehlerfreie Blöcke A und B akzeptieren
+
+    time_t utc;
+    if (!decodeCt(blockB, blockC, blockD, &utc)) return false;
+
+    unsigned long nowMs = millis();
+    if (!g_haveLastCt) {
+        // Erstes Paket: nur merken, noch nichts setzen
+        g_haveLastCt = true;
+        g_lastCtUtc  = utc;
+        g_lastCtMs   = nowMs;
+        return false;
+    }
+
+    // CT wird einmal pro Minute gesendet: Zeitdifferenz muss der gemessenen Echtzeit entsprechen
+    long deltaCt   = (long)(utc - g_lastCtUtc);
+    long deltaReal = (long)((nowMs - g_lastCtMs) / 1000UL);
+    if (deltaCt < 50 || deltaCt > 70 || labs(deltaCt - deltaReal) > 3) {
+        // Passt nicht: aktuelles Paket als neue Referenz nehmen
+        g_lastCtUtc = utc;
+        g_lastCtMs  = nowMs;
+        return false;
+    }
+
+    struct timeval tv = { utc, 0 };
     settimeofday(&tv, nullptr);
+    // Zeit gilt jetzt als gültig → keine "Zeit veraltet"-Warnung; clockSynced (= NTP) bleibt unverändert
+    if (g_tracker != nullptr) g_tracker->lastSucceededTestTime = millis();
     return true;
 }
 
 // Liest RDS-Blöcke aus und versucht einen CT-Parse; gibt true zurück wenn Zeit gesetzt wurde
 static bool checkRds() {
     if (!isRdsReady()) return false;
-    return tryParseCt(readReg(REG_RDSB), readReg(REG_RDSC), readReg(REG_RDSD));
+    uint16_t sig = readReg(REG_SIGNAL);
+    return tryParseCt(readReg(REG_RDSB), readReg(REG_RDSC), readReg(REG_RDSD), sig);
 }
 
 // Gibt den nächsten Kanal im Scan zurück; rollt vom Ende des Bandes zurück zum Anfang
@@ -200,6 +248,7 @@ void rdsClockLoop() {
                       : FM_START_10KHZ;
         g_scanStartCh = g_currentCh;
         chipTune(g_currentCh);
+        resetCtPlausibility(); // neuer Kanal: altes CT-Paket verwerfen
         g_stateMs = millis();
         g_state = RDS_STATE_TUNING;
         break;
@@ -223,6 +272,7 @@ void rdsClockLoop() {
             } else {
                 g_currentCh = next;
                 chipTune(g_currentCh);
+                resetCtPlausibility(); // neuer Kanal: altes CT-Paket verwerfen
                 g_stateMs = millis();
             }
         }
@@ -243,7 +293,8 @@ void rdsClockLoop() {
             logEvent("RDS: Modul aus");
             break;
         }
-        if (millis() - g_stateMs >= CT_WAIT_MS) {
+        // Mit gemerktem ersten CT-Paket auf das zweite warten (CT kommt ~1x pro Minute)
+        if (millis() - g_stateMs >= (g_haveLastCt ? CT_WAIT_PAIR_MS : CT_WAIT_MS)) {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
                 digitalWrite(RDS_POWER_PIN, LOW);
@@ -252,6 +303,7 @@ void rdsClockLoop() {
             } else {
                 g_currentCh = next;
                 chipTune(g_currentCh);
+                resetCtPlausibility(); // neuer Kanal: altes CT-Paket verwerfen
                 g_stateMs = millis();
                 g_state = RDS_STATE_TUNING;
             }

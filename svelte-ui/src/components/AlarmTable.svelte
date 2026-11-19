@@ -1,14 +1,15 @@
+<!-- Alarmliste: Tabelle der Wecker mit Aktiv-Schalter, Wochentag, Uhrzeit und Löschen. -->
 <script>
   import { configStore } from '../stores/configStore.js';
 
   const dayNames = {
-    1: "Monday",
-    2: "Tuesday", 
-    3: "Wednesday",
-    4: "Thursday",
-    5: "Friday",
-    6: "Saturday",
-    7: "Sunday"
+    1: "Montag",
+    2: "Dienstag", 
+    3: "Mittwoch",
+    4: "Donnerstag",
+    5: "Freitag",
+    6: "Samstag",
+    7: "Sonntag"
   };
 
   function pad2(n) {
@@ -55,10 +56,10 @@
   <table class="alarm-table" id="alarmsContainer" aria-live="polite">
     <thead>
       <tr>
-        <th>Active</th>
-        <th>Day</th>
-        <th>Time</th>
-        <th>Delete</th>
+        <th>Aktiv</th>
+        <th>Tag</th>
+        <th>Zeit</th>
+        <th>Löschen</th>
       </tr>
     </thead>
     <tbody>
@@ -72,7 +73,7 @@
           </td>
           <td>
             <select class="table-select" use:initSelect={alarm.day} on:change={(e) => handleDayChange(alarm.index, e)}>
-              <option value="0">Not Set</option>
+              <option value="0">Nicht gesetzt</option>
               {#each Object.entries(dayNames) as [value, name]}
                 <option value={value}>{name}</option>
               {/each}
@@ -86,7 +87,7 @@
           <td class="center-cell">
             <button class="table-button square btn-blue" type="button" 
                     on:click={() => removeAlarm(alarm.index)}
-                    aria-label="Remove alarm {alarm.index}">
+                    aria-label="Wecker entfernen {alarm.index}">
               ×
             </button>
           </td>
@@ -97,8 +98,8 @@
 </div>
 
 <div style="display: flex; justify-content: space-between; align-items: center">
-  <p><small>Maximum 10 alarms.</small></p>
-  <button class="btn-small btn-blue" type="button" on:click={addAlarm}>Add Alarm</button>
+  <p><small>Maximal 10 Wecker.</small></p>
+  <button class="btn-small btn-blue" type="button" on:click={addAlarm}>Wecker hinzufügen</button>
 </div>
 
 <style>

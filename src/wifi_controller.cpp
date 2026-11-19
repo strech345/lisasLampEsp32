@@ -1,13 +1,21 @@
 // WiFi-Controller: verwaltet AP-, STA- und APSTA-Modus, NTP-Synchronisation,
 // automatischen Start/Stop und die Reconnect-Logik mit Fallback-WLAN.
+// WiFi-Events und der NTP-Callback laufen in fremden Tasks und legen nur Nachrichten
+// in eine Queue; die eigentliche Arbeit passiert in wifiLoop() im Hauptthread.
 #include <Arduino.h>
 #include <AsyncTCP.h>
 #include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <esp_sleep.h>
+#include <esp_timer.h>
+#include <limits.h>
+#include <sys/time.h>
 #include <time.h>
 #include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
 #include "wifi_controller.h"
 #include "captive_portal.h"
 #include "debug_utils.h"
@@ -21,26 +29,39 @@
 
 #define MAX_CLIENTS 4
 #define WIFI_AP_TX_POWER WIFI_POWER_17dBm
-#define DNS_INTERVAL 30 // DNS-Anfragen alle 30ms verarbeiten
+#define DNS_INTERVAL 30             // DNS-Anfragen alle 30ms verarbeiten
+#define MIN_VALID_EPOCH 1577836800L // 2020-01-01: alles davor gilt als "Uhrzeit unbekannt"
 
 static int s_wifiChannel = 1; // wird in initWiFiController() per Scan gesetzt
+// Zuletzt gewählter Kanal im RTC-Speicher: übersteht Deep Sleep (nicht Reset/Stromausfall).
+// Nach dem Aufwachen wird er wiederverwendet → kein 1–3 s blockierender Kanal-Scan beim Start.
+RTC_DATA_ATTR static int s_cachedChannel = 0;
 
-// Scannt Kanal 1/6/11 und wählt den am wenigsten belasteten
+static void processWifiEvents();
+
+// Scannt Kanal 1/6/11 und wählt den am wenigsten belasteten.
+// Last = Summe der Signalstärken aller Netze auf dem Kanal und seinen Nachbarkanälen
 static int bestChannel() {
     serialPrint("WiFi: scanne besten Kanal...");
     WiFi.mode(WIFI_MODE_STA);
     int found = WiFi.scanNetworks(false, true);
-    int load[15] = {};
-    for (int i = 0; i < found; i++) {
-        int ch = WiFi.channel(i);
-        if (ch >= 1 && ch <= 14)
-            load[ch - 1] += (-WiFi.RSSI(i));
-    }
     int candidates[] = {1, 6, 11};
     int best = 1, bestLoad = INT_MAX;
-    for (int ch : candidates) {
-        serialPrint("WiFi: Kanal " + String(ch) + " Last=" + String(load[ch - 1]));
-        if (load[ch - 1] < bestLoad) { bestLoad = load[ch - 1]; best = ch; }
+    for(int cand : candidates) {
+        int load = 0;
+        for(int i = 0; i < found; i++) {
+            // Kanäle bis 3 Nummern entfernt überlappen noch spürbar
+            if(abs((int)WiFi.channel(i) - cand) <= 3) {
+                int weight = 100 + (int)WiFi.RSSI(i); // starkes Signal = mehr Last
+                if(weight > 0)
+                    load += weight;
+            }
+        }
+        serialPrint("WiFi: Kanal " + String(cand) + " Last=" + String(load));
+        if(load < bestLoad) {
+            bestLoad = load;
+            best = cand;
+        }
     }
     WiFi.scanDelete();
     serialPrint("WiFi: bester Kanal=" + String(best));
@@ -54,46 +75,78 @@ static const SystemSettings* g_systemSettings = nullptr;
 static std::vector<Route> g_routes;
 static WiFiTestTracker* g_wifiTracker = nullptr;
 static uint8_t s_staIdx = 0; // 0 = primäres WLAN, 1 = Fallback-WLAN
+static int s_retryCount = 0; // direkte Wiederholungsversuche nach Verbindungsabbruch
 
 // Verbindet mit dem externen WLAN an Index idx; fällt auf primäres zurück wenn kein Fallback konfiguriert
 static void beginSta(uint8_t idx) {
-    const char* ssid = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0)
-                           ? g_systemSettings->externalSSID2
-                           : g_systemSettings->externalSSID;
-    const char* pw   = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0)
-                           ? g_systemSettings->externalPW2
-                           : g_systemSettings->externalPW;
-    // Zeigervergleich absichtlich: ssid zeigt direkt in g_systemSettings
-    s_staIdx = (ssid == g_systemSettings->externalSSID2) ? 1 : 0;
-    char buf[52];
-    snprintf(buf, sizeof(buf), "STA connect%s: %.30s", s_staIdx ? " (fallback)" : "", ssid);
+    bool useFallback = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0);
+    const char* ssid = useFallback ? g_systemSettings->externalSSID2 : g_systemSettings->externalSSID;
+    const char* pw = useFallback ? g_systemSettings->externalPW2 : g_systemSettings->externalPW;
+    s_staIdx = useFallback ? 1 : 0;
+    char buf[52]; // passt zu EVENT_MSG_LEN: 24 Zeichen Präfix + 27 SSID-Zeichen
+    snprintf(buf, sizeof(buf), "STA connect%s: %.27s", useFallback ? " (fallback)" : "", ssid);
     logEvent(buf);
     WiFi.begin(ssid, pw);
+}
+
+// Startet den eigenen Hotspot (WiFi-Modus AP oder APSTA muss schon gesetzt sein)
+static bool startAccessPoint(const char* tag) {
+    const SystemSettings* s = g_systemSettings;
+    esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
+    WiFi.setTxPower(WIFI_AP_TX_POWER);
+    delay(100);
+    serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+    WiFi.softAPConfig(localIP, localIP, subnetMask);
+    const char* pw = strlen(s->internalPW) > 0 ? s->internalPW : nullptr;
+    bool ok = WiFi.softAP(s->internalSSID, pw, s_wifiChannel, 0, MAX_CLIENTS);
+    serialPrint(String("softAP(") + tag + ")=" + (ok ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel)
+                + " IP=" + WiFi.softAPIP().toString());
+    return ok;
 }
 
 DNSServer dnsServer;
 AsyncWebServer server(80);
 static bool serverStarted = false; // server.begin() darf nur einmal aufgerufen werden
 
-// RTC-Zeit kurz vor sntp_restart() — zum Berechnen des Zeitdrifts nach der Synchronisation
-static struct timeval s_preSyncTime = {0, 0};
+// --- Nachrichten aus fremden Tasks (WiFi-Event-Task, lwIP-Task) an den Hauptthread -------------
 
-// Callback von der SNTP-Bibliothek nach erfolgreicher Zeitsynchonisation
+enum WifiMsgType : uint8_t { MSG_STA_START, MSG_GOT_IP, MSG_DISCONNECTED, MSG_NTP_SYNCED };
+
+struct WifiMsg {
+    WifiMsgType type;
+    bool hasDrift;
+    int32_t driftMs;
+};
+
+static QueueHandle_t s_msgQueue = nullptr;
+
+// Darf aus jedem Task aufgerufen werden, blockiert nie (bei voller Queue geht die Nachricht verloren)
+static void postMsg(WifiMsgType type, bool hasDrift = false, int32_t driftMs = 0) {
+    if(s_msgQueue == nullptr)
+        return;
+    WifiMsg m = {type, hasDrift, driftMs};
+    xQueueSend(s_msgQueue, &m, 0);
+}
+
+// Uhrzeit kurz vor sntp_restart() — zum Berechnen des Zeitdrifts nach der Synchronisation
+static int64_t s_preSyncMonoUs = 0;  // esp_timer-Zeit (monoton) zum Zeitpunkt der Messung
+static int64_t s_preSyncEpochUs = 0; // RTC-Zeit in µs; 0 = keine gültige Referenz
+
+// Callback von der SNTP-Bibliothek (läuft im lwIP-Task): nur Drift berechnen und weiterreichen
 static void ntpSyncCallback(struct timeval* tv) {
     if(tv == nullptr)
         return;
-    if(s_preSyncTime.tv_sec > 0) {
-        long driftMs = ((long)tv->tv_sec - (long)s_preSyncTime.tv_sec) * 1000L
-                       + ((long)tv->tv_usec - (long)s_preSyncTime.tv_usec) / 1000L;
-        char buf[52];
-        snprintf(buf, sizeof(buf), "NTP sync: Abweichung %+ldms", driftMs);
-        logEvent(buf);
-        serialPrint(buf);
-    } else {
-        logEvent("NTP sync: erste Synchronisation");
+    bool hasDrift = false;
+    int32_t driftMs = 0;
+    if(s_preSyncEpochUs > 0) {
+        int64_t newUs = (int64_t)tv->tv_sec * 1000000LL + tv->tv_usec;
+        // Soviel Zeit war seit der Messung vergangen: so spät hätte die alte Uhr jetzt gezeigt
+        int64_t expectedUs = s_preSyncEpochUs + (esp_timer_get_time() - s_preSyncMonoUs);
+        driftMs = (int32_t)((newUs - expectedUs) / 1000);
+        hasDrift = true;
     }
-    s_preSyncTime = {0, 0};
-    onNtpSynced();
+    s_preSyncEpochUs = 0;
+    postMsg(MSG_NTP_SYNCED, hasDrift, driftMs);
 }
 
 // Initialisiert den WiFi-Controller einmalig: Zeitzone, DNS, Webserver, Event-Handler
@@ -106,24 +159,34 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
     g_routes = routes;
     g_wifiTracker = &tracker;
 
+    s_msgQueue = xQueueCreate(8, sizeof(WifiMsg));
+
     // Zeitzone: Mitteleuropäische Zeit mit Sommerzeit
     configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
     sntp_set_time_sync_notification_cb(ntpSyncCallback);
     WiFi.onEvent(WiFiEvent);
-    WiFi.persistent(false);    // keine Credentials in NVS speichern
-    WiFi.setSleep(false);      // sleep=aus: bessere Empfangsqualität (Testergebnis)
-    s_wifiChannel = bestChannel();
+    WiFi.persistent(false); // keine Credentials in NVS speichern
+    WiFi.setSleep(false);   // sleep=aus: bessere Empfangsqualität (Testergebnis)
+    // Nach Deep Sleep den gemerkten Kanal nehmen, sonst (Einschalten/Reset) neu scannen
+    bool fromDeepSleep = esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED;
+    if(fromDeepSleep && (s_cachedChannel == 1 || s_cachedChannel == 6 || s_cachedChannel == 11)) {
+        s_wifiChannel = s_cachedChannel;
+        serialPrint("WiFi: Kanal " + String(s_wifiChannel) + " aus RTC-Speicher (kein Scan)");
+    } else {
+        s_wifiChannel = bestChannel();
+        s_cachedChannel = s_wifiChannel;
+    }
     WiFi.mode(WIFI_MODE_NULL);
 
     setUpDNSServer(dnsServer, localIP);
     setUpWebserver(server, localIP, g_routes);
-    registerOtaRoute(server);
 
     serialPrint("WiFi controller initialized");
 }
 
-// Läuft in der Hauptschleife: DNS-Anfragen, Auto-Start/Stop, Telemetrie, Reconnect
+// Läuft in der Hauptschleife: Events, DNS-Anfragen, Auto-Start/Stop, Telemetrie, Reconnect
 void wifiLoop() {
+    processWifiEvents();
     handleClientRequests();
     checkWifiStart();
     checkWifiStop();
@@ -132,17 +195,19 @@ void wifiLoop() {
 
     static unsigned long lastStatusMs = 0;
     if(isTimeForAction(&lastStatusMs, 10000)) {
-        wifi_mode_t m = WiFi.getMode();
-        uint8_t primaryCh = 0;
-        wifi_second_chan_t secondCh;
-        esp_wifi_get_channel(&primaryCh, &secondCh);
-        wifi_country_t country;
-        esp_wifi_get_country(&country);
-        serialPrint("WiFi: mode=" + String(m) + " ch=" + String(primaryCh)
-                    + " IP=" + WiFi.softAPIP().toString()
-                    + " clients=" + String(WiFi.softAPgetStationNum())
-                    + " txpwr=" + String(WiFi.getTxPower())
-                    + " country=" + String(country.cc));
+        if(!isWiFiActive()) {
+            serialPrint("WiFi: aus");
+        } else {
+            uint8_t primaryCh = 0;
+            wifi_second_chan_t secondCh;
+            esp_wifi_get_channel(&primaryCh, &secondCh);
+            wifi_country_t country = {};
+            esp_wifi_get_country(&country);
+            char cc[3] = {country.cc[0], country.cc[1], '\0'}; // cc ist nicht null-terminiert
+            serialPrint("WiFi: mode=" + String((int)WiFi.getMode()) + " ch=" + String(primaryCh)
+                        + " IP=" + WiFi.softAPIP().toString() + " clients=" + String(WiFi.softAPgetStationNum())
+                        + " txpwr=" + String(WiFi.getTxPower()) + " country=" + String(cc));
+        }
     }
 }
 
@@ -187,21 +252,30 @@ void checkWifiStart() {
     }
 }
 
-// Aktualisiert den NTP-Sync-Status einmal pro Minute und speichert die Zeit in NVS
+// Zeitpunkt (millis) des letzten erfolgreichen NTP-Syncs; nur im Hauptthread (processWifiEvents) gesetzt.
+// Eigenes Flag, weil sntp_get_sync_status() COMPLETED nur einmal meldet und danach auf RESET fällt.
+static unsigned long s_lastNtpSyncMs = 0;
+
+#define NTP_STALE_AFTER_MS (24UL * 60UL * 60UL * 1000UL)   // älter als 24 h → NTP-Zeit gilt als veraltet
+#define NTP_SAVE_INTERVAL_MS (30UL * 60UL * 1000UL)        // NVS-Zeitstempel nur alle 30 min (schont den Flash)
+
+// Prüft einmal pro Minute, ob der letzte NTP-Sync noch frisch ist (< 24 h), und sichert
+// alle 30 Minuten die aktuelle Zeit in NVS. clockSynced wird sonst nur im NTP-Callback-Zweig gesetzt.
 void updateTelemetryWiFiStatus() {
     static unsigned long lastRunMs = 0;
+    static unsigned long lastSaveMs = 0;
     if(!isTimeForAction(&lastRunMs, 1 * 60 * 1000))
         return;
 
-    bool wasSynced = g_wifiTracker->clockSynced;
-    g_wifiTracker->clockSynced = isTimeSyncedWithNTP();
     g_wifiTracker->lastTestTime = millis();
     if(g_wifiTracker->clockSynced) {
-        g_wifiTracker->lastSucceededTestTime = millis();
-        saveLastKnownTime(time(NULL)); // Zeitstempel für Neustart-Restore sichern
-        if(!wasSynced) logEvent("NTP sync successful");
-    } else {
-        if(wasSynced) logEvent("NTP sync lost");
+        if(millis() - s_lastNtpSyncMs >= NTP_STALE_AFTER_MS) {
+            // Kein Sync seit 24 h: NTP-Status zurücknehmen (TSF-/RDS-Fallback darf wieder greifen)
+            g_wifiTracker->clockSynced = false;
+            logEvent("NTP veraltet");
+        } else if(isTimeForAction(&lastSaveMs, NTP_SAVE_INTERVAL_MS)) {
+            saveLastKnownTime(time(NULL)); // Zeitstempel für Neustart-Restore sichern
+        }
     }
     serialPrint("Updated telemetry " + String(g_wifiTracker->clockSynced ? "synced" : "not synced"));
 }
@@ -250,13 +324,7 @@ void startWifi(bool withAP) {
         if(withAP && WiFi.getMode() == WIFI_MODE_STA) {
             serialPrint("Upgrading STA → APSTA");
             WiFi.mode(WIFI_MODE_APSTA);
-            esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
-            WiFi.setTxPower(WIFI_AP_TX_POWER);
-            delay(100);
-            serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
-            WiFi.softAPConfig(localIP, localIP, subnetMask);
-            bool ok = WiFi.softAP(s->internalSSID, s->internalPW, s_wifiChannel, 0, MAX_CLIENTS);
-            serialPrint(String("softAP(upgrade)=") + (ok ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel) + " IP=" + WiFi.softAPIP().toString());
+            startAccessPoint("upgrade");
             dnsServer.start(53, "*", localIP);
             s_wifiStopTimerMs = millis();
             logEvent("AP activated (upgrade)");
@@ -264,34 +332,21 @@ void startWifi(bool withAP) {
         return;
     }
 
+    bool hasExternal = strlen(s->externalSSID) > 0;
+    // Kein externes WLAN und kein AP gewünscht → es gibt nichts zu starten
+    if(!hasExternal && !withAP)
+        return;
+
     logEvent(withAP ? "WiFi started (AP+STA)" : "WiFi started (STA sync)");
 
-    if(strlen(s->externalSSID) > 0) {
-        if(withAP) {
-            WiFi.mode(WIFI_MODE_APSTA);
-            esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
-            WiFi.setTxPower(WIFI_AP_TX_POWER);
-            delay(100);
-            serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
-            WiFi.softAPConfig(localIP, localIP, subnetMask);
-            bool apOkApsta = WiFi.softAP(s->internalSSID, s->internalPW, s_wifiChannel, 0, MAX_CLIENTS);
-            serialPrint(String("softAP(APSTA)=") + (apOkApsta ? "OK" : "FAIL") + " ch=" + String(s_wifiChannel) + " IP=" + WiFi.softAPIP().toString());
-        } else {
-            WiFi.mode(WIFI_MODE_STA);
-        }
-        beginSta(0);
+    if(withAP) {
+        WiFi.mode(hasExternal ? WIFI_MODE_APSTA : WIFI_MODE_AP);
+        startAccessPoint(hasExternal ? "APSTA" : "AP");
     } else {
-        // Kein externes WLAN konfiguriert → nur AP oder gar nicht
-        if(!withAP) return;
-        WiFi.mode(WIFI_MODE_AP);
-        esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
-        WiFi.setTxPower(WIFI_AP_TX_POWER);
-        delay(100);
-        serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
-        WiFi.softAPConfig(localIP, localIP, subnetMask);
-        bool apOk = WiFi.softAP(s->internalSSID, strlen(s->internalPW) > 0 ? s->internalPW : nullptr, s_wifiChannel, 0, MAX_CLIENTS);
-        serialPrint(String("softAP(AP)=") + (apOk ? "OK" : "FAIL") + "  SSID='" + s->internalSSID + "'  PW-len=" + String(strlen(s->internalPW)) + "  ch=" + String(s_wifiChannel) + "  IP=" + WiFi.softAPIP().toString());
+        WiFi.mode(WIFI_MODE_STA);
     }
+    if(hasExternal)
+        beginSta(0);
 
     // server.begin() nur beim ersten Mal aufrufen — AsyncWebServer unterstützt kein Neustart
     if(!serverStarted) {
@@ -333,74 +388,122 @@ bool hasWifiClients() {
     return WiFi.softAPgetStationNum() > 0;
 }
 
-// Speichert aktuelle RTC-Zeit und startet SNTP-Sync neu (Drift wird im Callback berechnet)
+// Merkt sich die aktuelle RTC-Zeit und startet SNTP-Sync neu (Drift wird im Callback berechnet)
 void syncTimeWithNTP() {
-    gettimeofday(&s_preSyncTime, nullptr);
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    s_preSyncMonoUs = esp_timer_get_time();
+    // Nur eine plausible Uhrzeit taugt als Referenz für die Drift-Messung
+    s_preSyncEpochUs = (tv.tv_sec >= MIN_VALID_EPOCH) ? ((int64_t)tv.tv_sec * 1000000LL + tv.tv_usec) : 0;
     sntp_restart();
 }
 
+// Gibt true zurück wenn die Uhrzeit per NTP synchronisiert und der Sync nicht älter als 24 h ist
 bool isTimeSyncedWithNTP() {
-    return (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
+    return g_wifiTracker != nullptr && g_wifiTracker->clockSynced;
 }
 
-// WiFi-Event-Handler: reagiert auf Verbindungsaufbau, IP-Erhalt und Verbindungsabbrüche
+// Verbindung verloren (läuft im Hauptthread): Wiederholungen, Fallback-WLAN, dann STA aufgeben
+static void handleStaDisconnected() {
+    // Kein Telemetrie-Update nötig: der NTP-Status hängt nicht mehr an der Verbindung
+    logEvent("STA disconnected");
+
+    wifi_mode_t curMode = WiFi.getMode();
+    if(curMode != WIFI_MODE_APSTA && curMode != WIFI_MODE_STA)
+        return;
+
+    g_wifiTracker->staConfigValid = false;
+    if(s_retryCount < 3) {
+        // Bis zu 3 direkte Wiederholungsversuche (der WiFi-Stack verbindet selbst neu)
+        serialPrint("Retrying STA connection, attempt " + String(s_retryCount + 1));
+        s_retryCount++;
+        return;
+    }
+    s_retryCount = 0;
+
+    // Nach 3 Fehlversuchen auf Fallback-WLAN wechseln (falls konfiguriert)
+    if(s_staIdx == 0 && strlen(g_systemSettings->externalSSID2) > 0) {
+        serialPrint("Primary failed, trying fallback WiFi.");
+        beginSta(1);
+        return;
+    }
+
+    s_staIdx = 0;
+    if(curMode == WIFI_MODE_APSTA) {
+        // AP weiter lassen, STA aufgeben
+        WiFi.mode(WIFI_MODE_AP);
+        serialPrint("Max retries. Keeping AP, dropping STA.");
+    } else {
+        // Kein AP aktiv → alles stoppen
+        WiFi.mode(WIFI_MODE_NULL);
+        serialPrint("Max retries. Stopping STA-only WiFi.");
+    }
+}
+
+// Arbeitet die Nachrichten aus den Event-Handlern im Hauptthread ab
+static void processWifiEvents() {
+    WifiMsg m;
+    while(s_msgQueue != nullptr && xQueueReceive(s_msgQueue, &m, 0) == pdTRUE) {
+        switch(m.type) {
+        case MSG_STA_START:
+            s_retryCount = 0;
+            break;
+        case MSG_GOT_IP:
+            // Verbindung erfolgreich → NTP-Sync sofort starten
+            s_retryCount = 0;
+            logEvent("STA connected, NTP sync");
+            g_wifiTracker->staConfigValid = true;
+            g_wifiTracker->lastStaConnectionTime = millis();
+            syncTimeWithNTP();
+            break;
+        case MSG_DISCONNECTED:
+            handleStaDisconnected();
+            break;
+        case MSG_NTP_SYNCED:
+            if(m.hasDrift) {
+                char buf[52];
+                snprintf(buf, sizeof(buf), "NTP sync: Abweichung %+ldms", (long)m.driftMs);
+                logEvent(buf);
+                serialPrint(buf);
+            } else {
+                logEvent("NTP sync: ohne Referenzzeit");
+            }
+            // NTP-Status hier setzen (nicht per Polling): Zeitpunkt merken, Tracker aktualisieren, Zeit sichern
+            s_lastNtpSyncMs = millis();
+            if(!g_wifiTracker->clockSynced)
+                logEvent("NTP sync successful");
+            g_wifiTracker->clockSynced = true;
+            g_wifiTracker->lastSucceededTestTime = millis();
+            saveLastKnownTime(time(NULL));
+            onNtpSynced();
+            break;
+        }
+    }
+}
+
+// WiFi-Event-Handler (läuft im Event-Task!): nur ausgeben und Nachricht einreihen,
+// keine WiFi-Aufrufe, kein Logging, keine Flash-Zugriffe
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
-    static int retryCount = 0;
     switch(event) {
     case ARDUINO_EVENT_WIFI_STA_STOP:
         serialPrint("STA Stop");
         break;
     case ARDUINO_EVENT_WIFI_STA_START:
         serialPrint("STA Start");
-        retryCount = 0;
+        postMsg(MSG_STA_START);
         break;
     case ARDUINO_EVENT_WIFI_STA_CONNECTED:
         serialPrint("STA Connected");
         break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-        // Verbindung erfolgreich → NTP-Sync sofort starten
         serialPrint("STA Got IP");
-        logEvent("STA connected, NTP sync");
-        g_wifiTracker->staConfigValid = true;
-        g_wifiTracker->lastStaConnectionTime = millis();
-        syncTimeWithNTP();
-        updateTelemetryWiFiStatus();
+        postMsg(MSG_GOT_IP);
         break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
-        updateTelemetryWiFiStatus();
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
         serialPrint("STA Disconnected");
-        logEvent("STA disconnected");
-
-        {
-            wifi_mode_t curMode = WiFi.getMode();
-            if(curMode == WIFI_MODE_APSTA || curMode == WIFI_MODE_STA) {
-                g_wifiTracker->staConfigValid = false;
-                if(retryCount < 3) {
-                    // Bis zu 3 direkte Wiederholungsversuche
-                    serialPrint("Retrying STA connection, attempt " + String(retryCount + 1));
-                    retryCount++;
-                    return;
-                }
-                retryCount = 0;
-                // Nach 3 Fehlversuchen auf Fallback-WLAN wechseln (falls konfiguriert)
-                if(s_staIdx == 0 && strlen(g_systemSettings->externalSSID2) > 0) {
-                    serialPrint("Primary failed, trying fallback WiFi.");
-                    beginSta(1);
-                } else {
-                    s_staIdx = 0;
-                    if(curMode == WIFI_MODE_APSTA) {
-                        // AP weiter lassen, STA aufgeben
-                        WiFi.mode(WIFI_MODE_AP);
-                        serialPrint("Max retries. Keeping AP, dropping STA.");
-                    } else {
-                        // Kein AP aktiv → alles stoppen
-                        WiFi.mode(WIFI_MODE_NULL);
-                        serialPrint("Max retries. Stopping STA-only WiFi.");
-                    }
-                }
-            }
-        }
+        postMsg(MSG_DISCONNECTED);
         break;
-    }
+    default:
+        break;
     }
 }

@@ -37,13 +37,10 @@ void ledInit() {
     ws2812fx.setColor(0xFFC896);
 }
 
-
 // Muss in der Hauptschleife aufgerufen werden: stellt nach einem Flash den alten Zustand wieder her
 void ledUpdate() {
     if(s_flashEndMs > 0 && millis() >= s_flashEndMs) {
-        // Flash-Zeit abgelaufen → gespeicherten Zustand zurückschreiben
         s_flashEndMs = 0;
-        ws2812fx.resetSegments();
         ws2812fx.setMode(s_preFlashState.mode);
         ws2812fx.setColor(s_preFlashState.color);
         ws2812fx.setSpeed(s_preFlashState.speed);
@@ -61,7 +58,6 @@ void flashLeds(uint32_t color, unsigned long durationMs) {
     s_preFlashState.mode       = ws2812fx.getMode();
     s_preFlashState.speed      = ws2812fx.getSpeed();
 
-    ws2812fx.resetSegments();
     ws2812fx.setMode(FX_MODE_STATIC);
     ws2812fx.setColor(color);
     // Flash auch dann sichtbar machen wenn die Lampe gerade dunkel ist
@@ -72,18 +68,13 @@ void flashLeds(uint32_t color, unsigned long durationMs) {
     s_flashEndMs = millis() + durationMs;
 }
 
-// Setzt die Farbe nur wenn sie sich geändert hat (vermeidet unnötige Schreibvorgänge)
 void setLedColor(uint32_t color) {
-    const uint32_t current = ws2812fx.getColor();
-    if(color == current)
-        return;
+    if(color == ws2812fx.getColor()) return;
     ws2812fx.setColor(color);
 }
 
 void setAnimationMode(uint8_t mode) {
-    if(mode == 0) {
-        ws2812fx.setMode(FX_MODE_STATIC);
-    } else if(mode == 1) {
+    if(mode == 1) {
         ws2812fx.setMode(FX_MODE_BREATH);
     } else {
         ws2812fx.setMode(FX_MODE_STATIC);
@@ -96,7 +87,8 @@ void setAnimationSpeed(uint16_t speed) {
 }
 
 // Setzt Helligkeit über Stufe 0–7 und zeigt das Ergebnis sofort an.
-// 0 = aus (stop → strip_off), 1–7 = an (start falls nötig + trigger + service).
+// 0 = aus (Strip wird explizit mit 0 beschrieben, damit WS2812 nicht im letzten Zustand bleiben),
+// 1–7 = an (start falls nötig + trigger + service).
 void setBrightnessLevel(uint8_t level) {
     // Stufe → PWM-Wert: 0→0, 1→32, 2→64, 3→96, 4→128, 5→160, 6→200, 7→255
     static const uint8_t brightnessMap[8] = {0, 32, 64, 96, 128, 160, 200, 255};
@@ -106,12 +98,13 @@ void setBrightnessLevel(uint8_t level) {
 
     if(level == 0) {
         applyBrightness(0);
-        if(ws2812fx.isRunning()) ws2812fx.stop(); // stop() ruft strip_off() → sofort dunkel
+        if(ws2812fx.isRunning()) ws2812fx.stop(); // stop() löscht den Strip bereits ...
+        ws2812fx.strip_off();                     // ... und hier sicherheitshalber immer: clear() + show()
     } else {
         if(!ws2812fx.isRunning()) ws2812fx.start();
         applyBrightness(bv);
         ws2812fx.trigger();
-        ws2812fx.service(); // sofortiger Animation-Frame mit neuer Helligkeit
+        ws2812fx.service();
     }
 }
 
@@ -120,20 +113,6 @@ void startCelebrationEffect() {
     ws2812fx.setMode(FX_MODE_RAINBOW);
     ws2812fx.setSpeed(1000);
     setBrightnessLevel(7);
-}
-
-// Lässt WARNING_PIXEL in blinkColor blinken; restliche Pixel bleiben statisch in der aktuellen Farbe
-void startSinglePixelBlink(uint32_t blinkColor) {
-    uint32_t normalColor = ws2812fx.getColor();
-    ws2812fx.setSegment(0, WARNING_PIXEL, WARNING_PIXEL, FX_MODE_BLINK, blinkColor, 500);
-    if (WARNING_PIXEL + 1 <= LED_COUNT - 1) {
-        ws2812fx.setSegment(1, WARNING_PIXEL + 1, LED_COUNT - 1, FX_MODE_STATIC, normalColor, 1000);
-    }
-}
-
-// Beendet den Einzelpixel-Blink und setzt alle Pixel auf ein einheitliches Segment zurück
-void stopSinglePixelBlink() {
-    ws2812fx.resetSegments();
 }
 
 void statusLedInit() {
@@ -150,13 +129,13 @@ void statusLedOff() {
     digitalWrite(STATUS_LED_PIN, HIGH);
 }
 
-// Blinkt die Status-LED immer: langsam (800ms an / 1200ms aus) wenn kein WLAN aktiv,
+// Blinkt die Status-LED immer: langsam (2000ms an / 4000ms aus) wenn kein WLAN aktiv,
 // schnell (200ms an / 300ms aus) wenn WLAN aktiv. Muss aus loop() aufgerufen werden.
 void statusLedTick(bool wifiActive) {
     static unsigned long lastToggleMs = 0;
     static bool ledState = false;
-    unsigned long onTime  = wifiActive ? 200UL :  800UL;
-    unsigned long offTime = wifiActive ? 300UL : 1200UL;
+    unsigned long onTime  = wifiActive ? 200UL : 2000UL;
+    unsigned long offTime = wifiActive ? 300UL : 4000UL;
     unsigned long interval = ledState ? onTime : offTime;
     unsigned long now = millis();
     if(now - lastToggleMs >= interval) {

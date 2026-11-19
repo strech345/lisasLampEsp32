@@ -11,6 +11,9 @@
 
 static Preferences preferences;
 
+// Standard-Passwort des eigenen Hotspots nach Erstinstallation/Werksreset
+static const char* DEFAULT_AP_PASSWORD = "Erdmaennchen";
+
 const char* PREF_NAMESPACE = "lisas_lamp_cfg";
 const char* CONFIG_KEY = "fullConfig";
 
@@ -54,6 +57,15 @@ void checkToSave() {
             saveFullConfig(pendingConfig, false);
         }
     }
+}
+
+// Schreibt eine per Debounce ausstehende FullConfig sofort (no-op wenn nichts aussteht).
+// Muss vor Deep Sleep und vor ESP.restart() aufgerufen werden, sonst geht die Änderung verloren.
+void flushPendingSave() {
+    if(lastSaveRequestTime == 0)
+        return; // nichts ausstehend
+    serialPrint("Flush: Saving pending FullConfig immediately");
+    saveFullConfig(pendingConfig, false); // setzt lastSaveRequestTime wieder auf 0
 }
 
 // Lädt die gespeicherte Konfiguration aus dem Flash-Speicher
@@ -135,7 +147,8 @@ const char* SYSTEM_SETTINGS_KEY = "systemSettings";
 SystemSettings getDefaultSystemSettings() {
     SystemSettings defaultSettings;
     strcpy(defaultSettings.internalSSID, "Lizas-Lamp");
-    strcpy(defaultSettings.internalPW, "");
+    // Standard-Hotspot-Passwort (in README.md dokumentiert). Nur ASCII: WPA2 erlaubt keine Umlaute.
+    strcpy(defaultSettings.internalPW, DEFAULT_AP_PASSWORD);
     strcpy(defaultSettings.externalSSID, "");
     strcpy(defaultSettings.externalPW, "");
     strcpy(defaultSettings.externalSSID2, "");
@@ -150,6 +163,7 @@ SystemSettings getDefaultSystemSettings() {
     return defaultSettings;
 }
 
+// Speichert die Systemeinstellungen sofort in den Flash-Speicher
 bool saveSystemSettings(const SystemSettings& settings) {
     return saveStruct(SYSTEM_SETTINGS_KEY, settings);
 }
@@ -174,6 +188,7 @@ bool loadSystemSettings(SystemSettings& settings) {
     }
 }
 
+// Überschreibt die gespeicherten Systemeinstellungen mit den Standardwerten
 bool resetSystemSettings() {
     serialPrint("Resetting SystemSettings to defaults...");
     SystemSettings defaultSettings = getDefaultSystemSettings();
@@ -187,6 +202,7 @@ bool resetSystemSettings() {
 
 static const char* TSF_DATA_KEY = "tsfData";
 
+// Speichert die TSF-Zeitstempel-Einträge (count Stück) in den Flash-Speicher
 bool saveTsfEntries(const TsfEntry* entries, uint8_t count) {
     if (!preferences.begin(PREF_NAMESPACE, false)) return false;
     size_t written = preferences.putBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
@@ -194,19 +210,23 @@ bool saveTsfEntries(const TsfEntry* entries, uint8_t count) {
     return written == count * sizeof(TsfEntry);
 }
 
+// Lädt bis zu maxCount TSF-Einträge; gibt die Anzahl tatsächlich geladener Einträge zurück
 uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount) {
+    // Preferences nur einmal öffnen: Länge und Daten in derselben Sitzung lesen
     if (!preferences.begin(PREF_NAMESPACE, true)) return 0;
     size_t storedSize = preferences.getBytesLength(TSF_DATA_KEY);
-    preferences.end();
-    if (storedSize == 0 || storedSize % sizeof(TsfEntry) != 0) return 0;
+    if (storedSize == 0 || storedSize % sizeof(TsfEntry) != 0) {
+        preferences.end();
+        return 0;
+    }
     uint8_t count = storedSize / sizeof(TsfEntry);
     if (count > maxCount) count = maxCount;
-    if (!preferences.begin(PREF_NAMESPACE, true)) return 0;
     preferences.getBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
     preferences.end();
     return count;
 }
 
+// Stellt sicher dass gültige SystemSettings im Flash vorhanden sind
 bool ensureSystemSettingsExistsAndResetIfNot() {
     serialPrint("Checking if SystemSettings exists...");
     return ensureStructExists(SYSTEM_SETTINGS_KEY, sizeof(SystemSettings), resetSystemSettings);

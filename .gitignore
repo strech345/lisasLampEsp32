@@ -5,3 +5,5 @@
 .vscode/ipch
 svelte-ui/dist
 svelte-ui/node_modules
+data/app.js.gzip
+data/index.html.gzip

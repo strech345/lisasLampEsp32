@@ -10,10 +10,20 @@
 #include "celebration.h"
 #include "debug_utils.h"
 #include "system_utils.h"
+#include "store.h"
+#include "rtc_crystal.h"
 
-// Genauigkeit des internen RTC-Oszillators in ppm (parts per million)
-// Der ESP32-C3 Super Mini hat keinen externen 32-kHz-Quarz → Drift ~1–2%/Tag
-static const uint32_t RTC_ACCURACY_PPM = 20;
+// Genauigkeit des RTC-Takts in ppm (parts per million), relativ zur Schlafdauer.
+// Interner RC-Oszillator (Super Mini hat standardmäßig keinen Quarz): ca. 5 % Toleranz laut
+// Datenblatt, kalibriert in der Praxis ca. 1–2 % → 15000 ppm = 1,5 % (5 h Schlaf ≈ 4,5 min Drift).
+// Mit externem 32-kHz-Quarz: 100 ppm.
+static const uint32_t RTC_ACCURACY_PPM_RC = 15000;
+static const uint32_t RTC_ACCURACY_PPM_XTAL = 100;
+
+// Liefert die zum aktuell aktiven RTC-Takt passende Genauigkeit in ppm
+static uint32_t rtcAccuracyPpm() {
+    return isRtcCrystalActive() ? RTC_ACCURACY_PPM_XTAL : RTC_ACCURACY_PPM_RC;
+}
 
 // Vorlaufzeit vor Alarmen/Feiertagen: Sleep endet früher damit kein Ereignis verpasst wird
 static const unsigned long EVENT_LEAD_TIME_MS = 5UL * 60 * 1000;
@@ -24,14 +34,21 @@ static FullConfig* s_appConfig = nullptr;
 
 // Initialisiert das Modul mit Zeigern auf den globalen Zustand
 void initSleepManager(bool* pDeepSleepEnabled, LampState* pLampState, FullConfig* pAppConfig) {
+    // Nach dem Aufwachen aus Deep Sleep Pad-Hold der Encoder-Pins lösen (wurde vor dem Schlaf
+    // gesetzt, damit der Pullup im Schlaf erhalten bleibt). Sonst würde pinMode() ignoriert.
+    gpio_hold_dis(GPIO_NUM_3);
+    gpio_hold_dis(GPIO_NUM_4);
+    gpio_deep_sleep_hold_dis();
+
     s_deepSleepEnabled = pDeepSleepEnabled;
     s_lampState = pLampState;
     s_appConfig = pAppConfig;
 }
 
 // Berechnet den maximalen RTC-Drift über eine gegebene Schlafdauer
+// (z. B. 5 h bei 15000 ppm → 4,5 min; zusätzlich zur festen Vorlaufzeit von 5 min)
 static unsigned long calcDriftMs(unsigned long sleepMs) {
-    return (unsigned long)((uint64_t)sleepMs * RTC_ACCURACY_PPM / 1000000ULL);
+    return (unsigned long)((uint64_t)sleepMs * rtcAccuracyPpm() / 1000000ULL);
 }
 
 // Prüft alle 10 Sekunden ob Deep Sleep eingeleitet werden kann
@@ -105,22 +122,41 @@ void checkToGoSleep() {
     enterDeepSleep(sleepTimeMs);
 }
 
-// Versetzt den ESP32 in Deep Sleep mit Timer-Wakeup und GPIO-Wakeup für Encoder-Taster
+// Versetzt den ESP32 in Deep Sleep mit Timer-Wakeup und GPIO-Wakeup für Encoder-Taster/-Drehung
 void enterDeepSleep(uint64_t sleepTimeMs) {
     serialPrint("Auto-entering deep sleep (idle) for " + String((unsigned long)(sleepTimeMs / 1000)) + "s");
+
+    // Ausstehende (debounced) Config sofort schreiben, sonst geht die letzte Änderung verloren
+    flushPendingSave();
+
+    // WS2812 halten ihre Farbe ohne Datenleitung → vor dem Schlaf explizit dunkel schalten
+    setBrightnessLevel(0);
+    ledUpdate();
 
     // Timer-Wakeup
     esp_sleep_enable_timer_wakeup(sleepTimeMs * 1000ULL);
 
-    // GPIO 3 (Encoder-Taster SW): Pulldown, weckt bei LOW→Druck
+    // GPIO 3 (Encoder-Taster SW): wird im Betrieb mit INPUT_PULLUP gelesen, gedrückt = LOW.
+    // Im Schlaf daher ebenfalls Pullup (kein Pulldown, sonst Pin dauerhaft LOW → Dauer-Wakeup)
+    // und Wake bei LOW (= Tastendruck).
+    gpio_pulldown_dis(GPIO_NUM_3);
+    gpio_pullup_en(GPIO_NUM_3);
+    gpio_hold_en(GPIO_NUM_3); // Pad-Konfiguration (Pullup) im Deep Sleep einfrieren
     esp_deep_sleep_enable_gpio_wakeup(1ULL << 3, ESP_GPIO_WAKEUP_GPIO_LOW);
-    gpio_pulldown_en(GPIO_NUM_3);
-    gpio_pullup_dis(GPIO_NUM_3);
 
-    // GPIO 4 (Encoder CLK): Pullup, weckt bei LOW→Drehbewegung
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << 4, ESP_GPIO_WAKEUP_GPIO_LOW);
-    gpio_pullup_en(GPIO_NUM_4);
+    // GPIO 4 (Encoder CLK): ebenfalls Pullup, Wake bei LOW = Drehbewegung.
+    // Liegt CLK in der Rastposition bereits auf LOW, würde der Wakeup sofort auslösen →
+    // dann diesen Wakeup-Pin weglassen (Taster und Timer bleiben aktiv).
     gpio_pulldown_dis(GPIO_NUM_4);
+    gpio_pullup_en(GPIO_NUM_4);
+    gpio_hold_en(GPIO_NUM_4);
+    if(digitalRead(4) == HIGH) {
+        esp_deep_sleep_enable_gpio_wakeup(1ULL << 4, ESP_GPIO_WAKEUP_GPIO_LOW);
+    } else {
+        serialPrint("GPIO4 (CLK) liegt auf LOW – Drehen weckt nicht aus dem Deep Sleep");
+    }
+
+    gpio_deep_sleep_hold_en(); // Hold gilt im Deep Sleep global; wird in initSleepManager() gelöst
 
     Serial.flush();
     statusLedOff();

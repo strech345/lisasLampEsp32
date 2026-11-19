@@ -23,9 +23,11 @@ export const mockConfig = {
 
 export const mockSystemSettings = {
   internalSSID: "Lisa_Lamp_Mock",
-  internalPW: "mock_password",
+  internalPW: "******",
   externalSSID: "Home_WiFi_Mock",
-  externalPW: "home_password_123",
+  externalPW: "******",
+  externalSSID2: "",
+  externalPW2: "",
 };
 
 // Check if mocking is enabled via URL parameter
@@ -53,14 +55,17 @@ export const mockFetch = (url, options) => {
           ok: true,
           json: () => Promise.resolve(mockSystemSettings),
         });
-      } else if (
-        url.includes("/set_config") ||
-        url.includes("/set_system_config")
-      ) {
+      } else if (options && options.method === "POST") {
         resolve({
           ok: true,
           text: () => Promise.resolve("Mock save successful"),
         });
+      } else if (url.includes("/get_status")) {
+        resolve({ ok: true, json: () => Promise.resolve({ clockSynced: true, staConfigValid: false, timeSinceLastSucceededTestMs: 120000, systemTime: Math.floor(Date.now() / 1000) }) });
+      } else if (url.includes("/get_event_log")) {
+        resolve({ ok: true, json: () => Promise.resolve({ uptimeMs: 60000, unixTime: 0, events: [] }) });
+      } else if (/\/get_(warnings|deep_sleep|tsf_fallback|rds_clock|rtc_crystal)/.test(url)) {
+        resolve({ ok: true, json: () => Promise.resolve({ enabled: false }) });
       } else {
         resolve({
           ok: false,

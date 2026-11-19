@@ -1,5 +1,6 @@
+// Store für die Lampen-Konfiguration (Farbe, Alarme, Dauer) inkl. Laden/Speichern über lib/api.js.
 import { get, writable } from "svelte/store";
-import { isMockEnabled, mockFetch } from "../lib/mockData.js";
+import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
 
 const MAX_ALARMS = 10;
@@ -30,59 +31,29 @@ function createConfigStore() {
   return {
     subscribe,
 
+    // Lädt die Konfiguration vom Gerät
     async load() {
       try {
-        const fetchFn = isMockEnabled() ? mockFetch : fetch;
-        const response = await fetchFn("/get_config");
-        if (response.ok) {
-          const config = await response.json();
-          console.log("Fetched config:", config);
-          originalConfig = JSON.parse(JSON.stringify(config));
-          set(config);
-        } else {
-          messageStore.show(
-            "error",
-            `Error fetching configuration: ${response.statusText}`
-          );
-        }
+        const config = await getJson("/get_config");
+        originalConfig = JSON.parse(JSON.stringify(config));
+        set(config);
       } catch (error) {
-        console.error("Network error fetching configuration:", error);
-        messageStore.show(
-          "error",
-          `Network error fetching configuration: ${error.message}`
-        );
+        messageStore.show("error", `Konfiguration konnte nicht geladen werden: ${error.message}`);
       }
     },
 
+    // Sendet die Konfiguration (ohne brightnessMode – der Drehknopf ist Master) und lädt danach neu
     async post() {
+      const currentConfig = get(configStoreData);
+      const { brightnessMode, ...payload } = currentConfig;
       try {
-        const currentConfig = get(configStoreData);
-
-        const fetchFn = isMockEnabled() ? mockFetch : fetch;
-        const response = await fetchFn("/set_config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(currentConfig),
-        });
-
-        if (response.ok) {
-          originalConfig = JSON.parse(JSON.stringify(currentConfig));
-          // Reload configuration from ESP32
-          this.load();
-        } else {
-          const errorText = await response.text();
-          messageStore.show(
-            "error",
-            `Error saving configuration: ${errorText}`
-          );
-          // Reload configuration from ESP32 even on error
-          this.load();
-        }
+        await postJson("/set_config", payload);
+        originalConfig = JSON.parse(JSON.stringify(currentConfig));
       } catch (error) {
-        messageStore.show("error", `Network error: ${error.message}`);
-        // Reload configuration from ESP32 even on error
-        this.load();
+        messageStore.show("error", `Speichern fehlgeschlagen: ${error.message}`);
       }
+      // Auch bei Fehler neu laden, damit die UI den Gerätezustand zeigt
+      this.load();
     },
 
     updateColor(r, g, b) {
@@ -142,7 +113,7 @@ function createConfigStore() {
             return { ...config, alarms };
           }
         }
-        messageStore.show("error", "Maximum alarms reached");
+        messageStore.show("error", "Maximale Anzahl Alarme erreicht");
         return config;
       });
       this.post();

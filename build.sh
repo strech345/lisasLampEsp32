@@ -1,6 +1,12 @@
 #!/bin/bash
 
-# Build script for Lisa's Lamp ESP32 project with Svelte UI
+# Build-Skript für Lisas Lampe (ESP32) mit Svelte-UI: ui | firmware | upload | all | dev | clean
+
+# PlatformIO-Binary: bevorzugt die Standard-Installation, sonst `pio` aus dem PATH
+PIO="${HOME}/.platformio/penv/bin/pio"
+if [ ! -x "$PIO" ]; then
+    PIO="$(command -v pio || true)"
+fi
 
 set -e # Exit on error
 
@@ -17,6 +23,14 @@ fi
 check_npm() {
     if ! command -v npm &> /dev/null; then
         echo "❌ Error: npm is not installed. Please install Node.js and npm first."
+        exit 1
+    fi
+}
+
+# Bricht ab, wenn PlatformIO nicht gefunden wurde
+require_pio() {
+    if [ -z "$PIO" ] || [ ! -x "$PIO" ]; then
+        echo "❌ Error: PlatformIO binary not found. Please install PlatformIO."
         exit 1
     fi
 }
@@ -48,14 +62,10 @@ build_ui() {
 build_firmware() {
     echo "⚡ Building ESP32 firmware..."
     
-    # Check if PlatformIO is installed
-    if ! command -v pio &> /dev/null; then
-        echo "❌ Error: PlatformIO is not installed. Please install it first."
-        exit 1
-    fi
+    require_pio
     
     # Build the firmware
-    pio run -e esp32
+    "$PIO" run -e esp32c3
     
     echo "✅ ESP32 firmware build complete!"
 }
@@ -63,8 +73,9 @@ build_firmware() {
 # Function to upload firmware
 upload_firmware() {
     echo "📤 Uploading firmware to ESP32..."
+    require_pio
     
-    pio run -e esp32 -t upload
+    "$PIO" run -e esp32c3 -t upload
     
     echo "✅ Firmware upload complete!"
 }
@@ -76,7 +87,7 @@ show_data_files() {
         ls -la data/
         echo ""
         echo "📊 Compressed file sizes:"
-        for file in data/*.gz; do
+        for file in data/*.gzip; do
             if [ -f "$file" ]; then
                 size=$(wc -c < "$file")
                 echo "   $(basename "$file"): ${size} bytes"
@@ -118,8 +129,10 @@ case "${1:-all}" in
     "clean")
         echo "🧹 Cleaning build artifacts..."
         rm -rf svelte-ui/dist svelte-ui/node_modules
-        rm -f data/*.gz
-        pio run -t clean
+        # Nur erzeugte Dateien löschen; pico.min.css.gzip und meerkat.avif sind eingecheckt
+        rm -f data/app.js.gzip data/index.html.gzip
+        require_pio
+        "$PIO" run -t clean
         echo "✅ Clean complete!"
         ;;
     *)

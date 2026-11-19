@@ -1,6 +1,6 @@
 #ifndef STORE_H
 #define STORE_H
-// Persistenzschicht: liest und schreibt FullConfig, SystemSettings, TSF-Daten und Auth-Tokens
+// Persistenzschicht: liest und schreibt FullConfig, SystemSettings, TSF-Daten und den letzten bekannten Zeitstempel
 // in den Flash-Speicher des ESP32 über die Preferences-Bibliothek (NVS).
 
 #include "types.h" // For FullConfig definition
@@ -9,6 +9,9 @@
 bool saveFullConfig(const FullConfig& config, bool debounce = false);
 // Führt den verzögerten Schreibvorgang aus (aus der Hauptschleife aufrufen)
 void checkToSave();
+// Schreibt eine ausstehende (debounced) FullConfig sofort; no-op wenn nichts aussteht.
+// Vor Deep Sleep und vor ESP.restart() aufrufen.
+void flushPendingSave();
 
 // Lädt FullConfig aus NVS; gibt false zurück wenn kein gültiger Eintrag vorhanden
 bool loadFullConfig(FullConfig& config);

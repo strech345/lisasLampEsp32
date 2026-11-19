@@ -1,7 +1,7 @@
 #ifndef ROUTE_HANDLERS_H
 #define ROUTE_HANDLERS_H
-// HTTP-Routen-Handler: registriert alle API-Endpunkte und den OTA-Endpunkt,
-// nimmt Anfragen entgegen und leitet Zustandsänderungen über Callback an main.cpp weiter.
+// HTTP-Routen-Handler: registriert alle API-Endpunkte, validiert Anfragen und leitet
+// Zustandsänderungen als Aufträge über den Callback an main.cpp (Ausführung in loop()) weiter.
 
 #include <ESPAsyncWebServer.h>
 #include <functional>
@@ -13,7 +13,6 @@ void handlePing(AsyncWebServerRequest* request, const String& body);
 void handleRoot(AsyncWebServerRequest* request, const String& body);
 void handlePicoCSS(AsyncWebServerRequest* request, const String& body);
 void handleAppJS(AsyncWebServerRequest* request, const String& body);
-void handleAppCSS(AsyncWebServerRequest* request, const String& body);
 void handleGetConfig(AsyncWebServerRequest* request, const String& body);
 void handleSetConfig(AsyncWebServerRequest* request, const String& body);
 void handleGetSystemConfig(AsyncWebServerRequest* request, const String& body);
@@ -34,12 +33,5 @@ void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body);
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback);
-
-// Registriert den Callback der bei Zustandsänderungen über die Web-API aufgerufen wird
-void setOnStateChangedCallback(GenericStateUpdateCallback cb);
-
-// Registriert den OTA-Endpunkt — muss vor server.begin() aufgerufen werden
-// damit /ota nicht vom Captive-Portal-Catch-all abgefangen wird
-void registerOtaRoute(AsyncWebServer& server);
 
 #endif // ROUTE_HANDLERS_H

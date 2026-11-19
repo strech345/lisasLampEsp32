@@ -8,6 +8,7 @@
 #include "alerts.h"
 #include "lamp_state.h"
 #include "led.h"
+#include "good_night.h"
 #include "store.h"
 #include "event_log.h"
 #include "debug_utils.h"
@@ -19,18 +20,28 @@ static WiFiTestTracker* s_wifiTracker = nullptr;
 
 // Pin-Belegung des KY-040 Encoders
 #define ROTARY_ENCODER_CLK_PIN 4
-#define ROTARY_ENCODER_DT_PIN  2
-#define ROTARY_ENCODER_SW_PIN  3
-#define ROTARY_ENCODER_STEPS   4
-#define BOOT_BUTTON_PIN        9
+#define ROTARY_ENCODER_DT_PIN 2
+#define ROTARY_ENCODER_SW_PIN 3
+// Flanken pro Rastung des KY-040 (voller Quadratur-Zyklus). Die Bibliothek zählt mit Schrittweite 1
+// (Rohflanken); das Umrechnen auf Rastungen passiert in handleRotation().
+#define ROTARY_ENCODER_STEPS 4
+#define BOOT_BUTTON_PIN 9
 
 const unsigned long shortPressAfterMiliseconds = 50;
-const unsigned long longPressAfterMiliseconds  = 1000;
+const unsigned long longPressAfterMiliseconds = 1000;
 
 static RotaryEncoderCallback _rotaryEncoderCallback;
 
+// Schrittweite 1 = Rohflanken; letzter Parameter false = interne Pullups statt Pulldowns
+// (das KY-040-Modul hat eigene Pullups, interne Pulldowns würden dagegen arbeiten)
 AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_DT_PIN, ROTARY_ENCODER_CLK_PIN,
-                                                          ROTARY_ENCODER_SW_PIN, -1, ROTARY_ENCODER_STEPS);
+                                                          ROTARY_ENCODER_SW_PIN, -1, 1, false);
+
+// Rastungs-Erkennung: Ruhepegel der beiden Encoder-Pins (beim Start gelernt) und Rohzählerstand
+// der zuletzt ausgewerteten Rastung
+static int s_restDt = HIGH;
+static int s_restClk = HIGH;
+static long s_lastDetentPos = 0;
 
 // Speichert Zeiger auf den globalen Zustand für die Callback-Funktionen
 void initButtonCallbacks(FullConfig* pAppConfig, LampState* pLampState, WiFiTestTracker* pWifiTracker) {
@@ -50,22 +61,43 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         // Langer Druck: WiFi einschalten mit gelbem Warnsignal als visuelles Feedback
         serialPrint("LongClick Event!");
         logEvent("WiFi started (long press)");
-        startAlert(ALERT_WARNING, 5000);
+        startAlert(ALERT_WARNING, 200);
         startWifi();
         break;
     case RotaryEncoderEventType::Rotate: {
-        // Helligkeit ändern (0–7), sofort speichern und anwenden
-        int v = value;
-        if(v < 0) { v = 0; rotaryEncoder.setEncoderValue(0); } // Snap-back: verhindert Phantomschritt unter 0
-        if(v > 7) { v = 7; rotaryEncoder.setEncoderValue(7); } // Snap-back: verhindert Phantomschritt über 7
-        s_appConfig->brightnessMode = (byte)v;
-        serialPrint("Brightness mode set to: " + String(s_appConfig->brightnessMode) + String(" (from ")
-                    + String(value) + String(")"));
+        // Helligkeit ändern (0–7) mit relativer Steuerung, sofort speichern und anwenden
+        int currentBrightness = s_appConfig->brightnessMode;
+        int newBrightness = currentBrightness + value;
+        serialPrint("Rotary encoder rotated by " + String(value) + ", changing brightness from "
+                    + String(currentBrightness) + " to " + String(newBrightness));
+
+        // Begrenzungen intern prüfen (0-7)
+        if(newBrightness < 0)
+            newBrightness = 0;
+        if(newBrightness > 7)
+            newBrightness = 7;
+
+        if(newBrightness == currentBrightness)
+            break; // Keine Änderung
+
+        s_appConfig->brightnessMode = (byte)newBrightness;
+        serialPrint("Brightness mode changed by " + String(value) + " to: " + String(newBrightness));
         setBrightnessLevel(s_appConfig->brightnessMode); // setzt Helligkeit und zeigt sofort an
         saveFullConfig(*s_appConfig, true);
-        // Drehen beendet Good-Night-Modus (Nutzer will aktiv die Helligkeit steuern)
-        if(*s_lampState == LAMP_STATE_GOOD_NIGHT) {
+        // Drehen heißt "Lampe benutzen": Gute-Nacht wirklich beenden, Sleep/Systemwarnung → Default,
+        // damit Zustand und LEDs konsistent sind. Alarm und Alerts bleiben unverändert.
+        switch(*s_lampState) {
+        case LAMP_STATE_GOOD_NIGHT:
+            stopGoodNightMode();
             *s_lampState = LAMP_STATE_DEFAULT;
+            break;
+        case LAMP_STATE_SLEEP:
+        case LAMP_STATE_SYS_WARNING:
+        case LAMP_STATE_SYS_ERROR:
+            *s_lampState = LAMP_STATE_DEFAULT;
+            break;
+        default:
+            break;
         }
         break;
     }
@@ -87,22 +119,32 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
     }
 }
 
-
 // Interrupt-Handler: wird vom Encoder-Chip aufgerufen bei jeder Pegelwechsel
 void IRAM_ATTR readEncoderISR() {
     rotaryEncoder.readEncoder_ISR();
 }
 
-// Initialisiert Encoder-Pins, Grenzen und Startwert
+// Initialisiert Encoder-Pins
 void initRotaryEncoder(byte value, RotaryEncoderCallback callback) {
     pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
     _rotaryEncoderCallback = callback;
     rotaryEncoder.begin();
     rotaryEncoder.setup(readEncoderISR);
-    bool circleValues = false;
-    serialPrint("Initializing rotary encoder with value: " + String(value));
-    rotaryEncoder.setBoundaries(-1000, 1000, circleValues); // Grenzen selbst verwalten im Callback
-    rotaryEncoder.setEncoderValue(value);
+    // Beschleunigung aus: sie addiert bei schnellem Drehen Extra-Flanken, danach passt die Zählung
+    // nicht mehr zu den Rastungen und einzelne Rastungen gehen verloren
+    rotaryEncoder.setAcceleration(0);
+    pinMode(ROTARY_ENCODER_DT_PIN, INPUT_PULLUP);
+    pinMode(ROTARY_ENCODER_CLK_PIN, INPUT_PULLUP);
+    delay(2); // Pullups einschwingen lassen
+    // Ruhepegel lernen: beim Start steht der Knopf in einer Rastung
+    s_restDt = digitalRead(ROTARY_ENCODER_DT_PIN);
+    s_restClk = digitalRead(ROTARY_ENCODER_CLK_PIN);
+    if(s_restDt != s_restClk) { // unplausibel (gerade zwischen zwei Rastungen) → KY-040-Standard
+        s_restDt = HIGH;
+        s_restClk = HIGH;
+    }
+    s_lastDetentPos = rotaryEncoder.readEncoder();
+    serialPrint("Encoder: Ruhepegel DT=" + String(s_restDt) + " CLK=" + String(s_restClk));
 }
 
 // Zustand für die Drucktaster-Erkennung
@@ -154,13 +196,28 @@ void handle_boot_button(unsigned long currentMillis) {
                    RotaryEncoderEventType::LongBootClick, currentMillis);
 }
 
-// Prüft ob der Encoder gedreht wurde und löst den Callback aus
+// Wertet Drehungen rastungsgenau aus: Erst wenn der Knopf wieder in einer Rastung steht (beide Pins
+// auf Ruhepegel), wird die seit der letzten Rastung gezählte Flankenzahl auf ganze Rastungen gerundet
+// und gemeldet. Danach wird der Bezugspunkt neu gesetzt → verlorene oder doppelte Flanken (Prellen)
+// verschieben die Zählung nicht dauerhaft, und keine Rastung wird verschluckt.
 void handleRotation() {
-    int16_t encoderDelta = rotaryEncoder.encoderChanged();
-    if(encoderDelta != 0 && _rotaryEncoderCallback) {
-        int16_t encoderValue = rotaryEncoder.readEncoder();
-        _rotaryEncoderCallback(RotaryEncoderEventType::Rotate, encoderValue);
-    }
+    if(!_rotaryEncoderCallback)
+        return;
+    if(digitalRead(ROTARY_ENCODER_DT_PIN) != s_restDt || digitalRead(ROTARY_ENCODER_CLK_PIN) != s_restClk)
+        return; // Knopf steht zwischen zwei Rastungen → abwarten
+    long pos = rotaryEncoder.readEncoder();
+    long delta = pos - s_lastDetentPos;
+    s_lastDetentPos = pos;
+    // |delta| < 2: nur Prellen in der Rastung → ignorieren
+    if(delta > -2 && delta < 2)
+        return;
+    // Auf ganze Rastungen runden; mindestens eine (bei 2–3 Flanken fehlten Flanken, gedreht wurde trotzdem)
+    long detents = (delta + (delta > 0 ? ROTARY_ENCODER_STEPS / 2 : -ROTARY_ENCODER_STEPS / 2)) / ROTARY_ENCODER_STEPS;
+    if(detents == 0)
+        detents = delta > 0 ? 1 : -1;
+    if(detents > 7) detents = 7;   // Wertebereich der Helligkeit, schützt vor int16-Überlauf
+    if(detents < -7) detents = -7;
+    _rotaryEncoderCallback(RotaryEncoderEventType::Rotate, (int16_t)detents);
 }
 
 // Läuft in der Hauptschleife: Drehbewegung sofort, Taster alle 20ms (Debounce)

@@ -70,20 +70,41 @@ void checkAndApplyColorMode(const FullConfig& config) {
     serialPrint("LED color set to " + modeName + " (Hex: " + String(colorHex, HEX) + ")");
 }
 
+// Prüft ob der Zustand ein Kurzzeit-Alert-Zustand ist
+static bool isAlertState(LampState s) {
+    return s == LAMP_STATE_ERROR || s == LAMP_STATE_WARNING || s == LAMP_STATE_SUCCESS;
+}
+
 // Bestimmt den aktuellen Lampenzustand anhand der aktiven Modi — Priorität von oben nach unten:
 // Alert > Alarm > Good Night > Celebration > Sleep > Systemwarnung > Default
 void checkLampState() {
     // --- Kurzzeit-Alerts (höchste Priorität) ---
+    LampState alertState = LAMP_STATE_DEFAULT;
     switch(getActiveAlertType()) {
     case ALERT_ERROR:
-        *s_lampState = LAMP_STATE_ERROR;
-        return;
+        alertState = LAMP_STATE_ERROR;
+        break;
     case ALERT_WARNING:
-        *s_lampState = LAMP_STATE_WARNING;
-        return;
+        alertState = LAMP_STATE_WARNING;
+        break;
     case ALERT_OK:
-        *s_lampState = LAMP_STATE_SUCCESS;
+        alertState = LAMP_STATE_SUCCESS;
+        break;
+    default:
+        break;
+    }
+    if(alertState != LAMP_STATE_DEFAULT) {
+        // Beim Alert-Beginn den Zustand davor merken (nicht bei Alert → Alert)
+        if(!isAlertState(*s_lampState)) {
+            *s_lastNormalState = *s_lampState;
+        }
+        *s_lampState = alertState;
         return;
+    }
+    if(isAlertState(*s_lampState)) {
+        // Alert gerade beendet → Zustand von vor dem Alert wiederherstellen und normal weiter prüfen;
+        // updateLed() setzt die LEDs beim Zustandswechsel passend neu
+        *s_lampState = *s_lastNormalState;
     }
 
     // --- Alarm ---
@@ -120,8 +141,9 @@ void checkLampState() {
         return;
     }
 
-    // --- Dauerhafte Systemwarnungen (nur wenn Warnungen aktiviert sind) ---
-    if(*s_warningsEnabled) {
+    // --- Dauerhafte Systemwarnungen (nur wenn Warnungen aktiviert sind und die Lampe an ist;
+    //     eine ausgeschaltete Lampe (Helligkeit 0) wird nie durch Warnungen eingeschaltet) ---
+    if(*s_warningsEnabled && s_appConfig->brightnessMode != 0) {
         time_t now = time(nullptr);
         if(now < 1577836800L) {
             // Systemzeit vor 2020 → nie synchronisiert (Epoch 0)
@@ -175,14 +197,15 @@ void updateLed() {
         logEvent(buf);
     }
     if(*s_lampState == LAMP_STATE_DEFAULT && lastLampState != LAMP_STATE_DEFAULT) {
-        if(lastLampState == LAMP_STATE_SYS_ERROR || lastLampState == LAMP_STATE_SYS_WARNING) {
-            stopSinglePixelBlink();
-        }
         setBrightnessLevel(s_appConfig->brightnessMode);
         checkAndApplyColorMode(*s_appConfig);
     }
     if(*s_lampState == LAMP_STATE_CELEBRATION && lastLampState != LAMP_STATE_CELEBRATION) {
         startCelebrationEffect();
+    }
+    if(*s_lampState == LAMP_STATE_SUCCESS && lastLampState != LAMP_STATE_SUCCESS) {
+        setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
+        setLedColor(0x0000FF00); // grün
     }
     if(*s_lampState == LAMP_STATE_ERROR && lastLampState != LAMP_STATE_ERROR) {
         setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
@@ -193,18 +216,21 @@ void updateLed() {
         setLedColor(0x00FFFF00); // gelb
     }
     if(*s_lampState == LAMP_STATE_SYS_ERROR && lastLampState != LAMP_STATE_SYS_ERROR) {
-        setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        startSinglePixelBlink(0x00FF0000); // einzelner Pixel blinkt rot
+        setBrightnessLevel(s_appConfig->brightnessMode); // Nutzer-Helligkeit (Zustand tritt nur bei Lampe an auf)
+        setLedColor(0x00FF0000); // rot
     }
     if(*s_lampState == LAMP_STATE_SYS_WARNING && lastLampState != LAMP_STATE_SYS_WARNING) {
-        setBrightnessLevel(s_appConfig->brightnessMode ? s_appConfig->brightnessMode : 7);
-        startSinglePixelBlink(0x00FFFF00); // einzelner Pixel blinkt gelb
+        setBrightnessLevel(s_appConfig->brightnessMode); // Nutzer-Helligkeit (Zustand tritt nur bei Lampe an auf)
+        setLedColor(0x00FFFF00); // gelb
     }
     if(*s_lampState == LAMP_STATE_ALARM && lastLampState != LAMP_STATE_ALARM) {
-        if(lastLampState == LAMP_STATE_SYS_ERROR || lastLampState == LAMP_STATE_SYS_WARNING) {
-            stopSinglePixelBlink();
-        }
         checkAndApplyColorMode(*s_appConfig);
+        setBrightnessLevel(getAlarmBrightness(s_appConfig->alarmDuration)); // sofort, nicht erst nach 5 s
+    }
+    if(*s_lampState == LAMP_STATE_GOOD_NIGHT && lastLampState != LAMP_STATE_GOOD_NIGHT) {
+        // Farbe neu setzen (z.B. nach einem Alert) und Helligkeit sofort anwenden
+        checkAndApplyColorMode(*s_appConfig);
+        setBrightnessLevel(getGoodNightBrightness(s_appConfig->brightnessMode, s_appConfig->goodNightDuration));
     }
     if(*s_lampState == LAMP_STATE_SLEEP && lastLampState != LAMP_STATE_SLEEP) {
         setBrightnessLevel(0); // Lampe ausschalten
@@ -237,7 +263,11 @@ void onShortPress() {
     if(getActiveAlertType() != ALERT_NONE) {
         serialPrint("Clearing alert via button");
         stopAlert();
-        *s_lampState = *s_lastNormalState;
+        // Zustand von vor dem Alert wiederherstellen (falls der Alert-Zustand schon aktiv war);
+        // updateLed() setzt die LEDs beim Zustandswechsel passend neu
+        if(isAlertState(*s_lampState)) {
+            *s_lampState = *s_lastNormalState;
+        }
         return;
     }
     if(*s_lampState == LAMP_STATE_SLEEP) {

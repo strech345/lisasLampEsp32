@@ -1,6 +1,8 @@
 // HTTP-Routen-Handler — Implementierung
-// Jeder Handler liest den Request (und ggf. Body), wandelt JSON um und
-// ruft den Zustandsänderungs-Callback auf, damit main.cpp den neuen Zustand übernimmt.
+// Jeder Handler liest den Request (und ggf. Body), validiert das JSON und legt über den
+// Zustandsänderungs-Callback nur einen AUFTRAG für loop() ab (K7). Handler laufen im async_tcp-Task
+// und führen selbst keine Seiteneffekte aus (keine LEDs, kein WLAN-Neustart, kein Flash, kein Restart).
+// POST-Header-Prüfung (Content-Type/Origin) und Body-Limit liegen in captive_portal.cpp.
 #include "route_handlers.h"
 #include <LittleFS.h>
 #include <ESPAsyncWebServer.h>
@@ -9,20 +11,39 @@
 #include "types.h"
 #include "store.h"
 #include "event_log.h"
-#include "tsf_clock.h"
+#include "tsf_clock.h" // getTsfStatusJson
 #include "rds_clock.h"
 #include "rtc_crystal.h"
 #include "wifi_controller.h"
 #include <vector>
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <Update.h>
 
 // Zeiger auf globalen Zustand — werden in initRouteHandlers gesetzt
 static const FullConfig* g_config = nullptr;
 static const SystemSettings* g_systemSettings = nullptr;
 static const WiFiTestTracker* g_wifiTracker = nullptr;
 static GenericStateUpdateCallback g_stateCallback = nullptr;
+
+// Sendet eine Fehlerantwort als JSON mit deutscher Meldung (Meldungen enthalten keine Anführungszeichen)
+static void sendError(AsyncWebServerRequest* request, int code, const char* message) {
+    request->send(code, "application/json", String("{\"status\":\"error\",\"message\":\"") + message + "\"}");
+}
+
+// Parst {"enabled": bool}; sendet bei Fehler 400 und gibt false zurück
+static bool parseEnabledBody(AsyncWebServerRequest* request, const String& body, bool& enabled) {
+    if(g_stateCallback == nullptr) {
+        sendError(request, 500, "Kein Callback registriert.");
+        return false;
+    }
+    JsonDocument doc;
+    if(body.isEmpty() || deserializeJson(doc, body) || !doc["enabled"].is<bool>()) {
+        sendError(request, 400, "Ungültiges JSON: Feld enabled (true/false) fehlt.");
+        return false;
+    }
+    enabled = doc["enabled"].as<bool>();
+    return true;
+}
 
 // Sendet eine gzip-komprimierte Datei aus LittleFS mit korrekten Cache-Headern
 static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const char* mimeType) {
@@ -75,11 +96,6 @@ void handleAppJS(AsyncWebServerRequest* request, const String&) {
     sendGzipFile(request, "/app.js.gzip", "application/javascript");
 }
 
-void handleAppCSS(AsyncWebServerRequest* request, const String&) {
-    serialPrint("handleAppCSS: " + request->url());
-    sendGzipFile(request, "/app.css.gzip", "text/css");
-}
-
 void handleGetConfig(AsyncWebServerRequest* request, const String&) {
 
     serialPrint(String("handleGetConfig: ") + request->url());
@@ -89,34 +105,32 @@ void handleGetConfig(AsyncWebServerRequest* request, const String&) {
     }
     String jsonResponse = createConfigJson(*g_config);
     request->send(200, "application/json", jsonResponse);
-    serialPrint("Sent /get_config response: " + jsonResponse);
 }
 
+// Validiert die neue Lampenkonfiguration und legt sie als Auftrag ab (Helligkeit bleibt unverändert)
 void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
 
     serialPrint(String("handleSetConfig: ") + request->url());
     if(g_stateCallback == nullptr) {
-        request->send(500, "text/plain", "No callback registered for state changes");
+        sendError(request, 500, "Kein Callback registriert.");
         return;
     }
 
     if(body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request: Missing JSON body.");
+        sendError(request, 400, "JSON-Body fehlt.");
         return;
     }
-    serialPrint("Received /set_config body: " + body);
 
     FullConfig newConfig = *g_config;
-
-    if(!parseConfigJson(body, newConfig)) {
-        request->send(400, "text/plain", "Invalid JSON or parsing failed.");
-        serialPrint("Failed to parse /set_config JSON.");
+    String error;
+    if(!parseConfigJson(body, newConfig, &error)) {
+        sendError(request, 400, error.c_str());
+        serialPrint("Failed to parse /set_config JSON: " + error);
         return;
     }
 
-    g_stateCallback(STATE_CHANGE_CONFIG, static_cast<void*>(&newConfig));
+    g_stateCallback(STATE_CHANGE_CONFIG, static_cast<void*>(&newConfig)); // Callback kopiert die Daten
     request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"Configuration updated\"}");
-    serialPrint("Configuration updated via WiFi. Notifying main application.");
 }
 
 void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
@@ -128,35 +142,33 @@ void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
     }
     String jsonResponse = createSystemConfigJson(*g_systemSettings);
     request->send(200, "application/json", jsonResponse);
-    serialPrint("Sent /get_system_config response: " + jsonResponse);
 }
 
+// Validiert die Netzwerkeinstellungen (SSID/Passwort-Längen) und legt sie als Auftrag ab.
+// Der Body wird bewusst nicht geloggt (enthält Passwörter).
 void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
 
     serialPrint(String("handleSetSystemConfig: ") + request->url());
     if(g_stateCallback == nullptr) {
-        request->send(500, "text/plain", "No callback registered for state changes");
+        sendError(request, 500, "Kein Callback registriert.");
         return;
     }
     if(body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request: Missing JSON body.");
+        sendError(request, 400, "JSON-Body fehlt.");
         return;
     }
-    serialPrint("Received /set_system_config body: " + body);
 
     SystemSettings newSystemSettings = *g_systemSettings;
-
-    if(!parseSystemConfigJson(body, newSystemSettings)) {
-        request->send(400, "text/plain", "Invalid JSON or parsing failed.");
-        serialPrint("Failed to parse /set_system_config JSON.");
+    String error;
+    if(!parseSystemConfigJson(body, newSystemSettings, &error)) {
+        sendError(request, 400, error.c_str());
+        serialPrint("Failed to parse /set_system_config JSON: " + error);
         return;
     }
 
-    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSystemSettings));
+    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSystemSettings)); // Callback kopiert
     request->send(200, "application/json",
-                  "{\"status\":\"success\",\"message\":\"System configuration "
-                  "updated\"}");
-    serialPrint("System configuration updated via WiFi. Notifying main application.");
+                  "{\"status\":\"success\",\"message\":\"System configuration updated\"}");
 }
 
 void handleGetStatus(AsyncWebServerRequest* request, const String&) {
@@ -167,7 +179,6 @@ void handleGetStatus(AsyncWebServerRequest* request, const String&) {
     }
 
     WiFiStatus status;
-    status.lastTestResult = g_wifiTracker->lastDateResult;
     status.timeSinceLastTestMs = millis() - g_wifiTracker->lastTestTime;
     status.timeSinceLastSucceededTestMs = millis() - g_wifiTracker->lastSucceededTestTime;
     status.clockSynced = g_wifiTracker->clockSynced;
@@ -198,46 +209,6 @@ void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
     request->send(LittleFS, imagePath, "image/avif");
 }
 
-// Registriert den OTA-Endpunkt für Firmware-Updates per HTTP-Upload
-void registerOtaRoute(AsyncWebServer& server) {
-    server.on(
-        "/ota", HTTP_POST,
-        // Wird aufgerufen wenn der Upload vollständig ist — Antwort senden, dann Neustart
-        [](AsyncWebServerRequest* request) {
-            bool ok = !Update.hasError();
-            request->send(200, "application/json",
-                          ok ? "{\"status\":\"ok\"}" : "{\"status\":\"error\",\"message\":\"Update failed\"}");
-            if(ok) {
-                // Kurze Pause damit die HTTP-Antwort noch gesendet werden kann
-                delay(300);
-                ESP.restart();
-            }
-        },
-        // Wird für jeden Datenblock der Firmware-Binary aufgerufen
-        [](AsyncWebServerRequest* request, String filename, size_t index, uint8_t* data, size_t len, bool final) {
-            if(index == 0) {
-                serialPrint("OTA start: " + filename);
-                // UPDATE_SIZE_UNKNOWN: gesamte OTA-Partition verwenden
-                if(!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-                    serialPrint("OTA begin failed: " + String(Update.errorString()));
-                    return;
-                }
-            }
-            if(Update.write(data, len) != len) {
-                Update.abort();
-                serialPrint("OTA write failed: " + String(Update.errorString()));
-                return;
-            }
-            if(final) {
-                if(!Update.end(true)) {
-                    serialPrint("OTA end failed: " + String(Update.errorString()));
-                } else {
-                    serialPrint("OTA complete: " + String(index + len) + " bytes");
-                }
-            }
-        });
-}
-
 void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
 
     bool enabled = g_systemSettings ? g_systemSettings->warningsEnabled : true;
@@ -257,67 +228,43 @@ void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getEventLogJson());
 }
 
+// Neustart: Auftrag ablegen, loop() startet nach kurzer Verzögerung neu
 void handleRestart(AsyncWebServerRequest* request, const String&) {
 
-    logEvent("Restart via web");
+    g_stateCallback(STATE_CHANGE_RESTART, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
-    delay(200);
-    ESP.restart();
 }
 
+// Werksreset: Auftrag ablegen, loop() setzt nach kurzer Verzögerung zurück und startet neu
 void handleFactoryReset(AsyncWebServerRequest* request, const String&) {
 
-    logEvent("Factory reset via web");
-    resetFullConfig();
-    resetSystemSettings();
+    g_stateCallback(STATE_CHANGE_FACTORY_RESET, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
-    delay(200);
-    ESP.restart();
 }
 
+// NTP-Resync als Auftrag (wird in loop() ausgeführt)
 void handleTriggerNtpSync(AsyncWebServerRequest* request, const String&) {
 
-    logEvent("NTP sync triggered via web");
-    syncTimeWithNTP();
+    g_stateCallback(STATE_CHANGE_NTP_RESYNC, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// Setzt das Warnungs-Flag (Auftrag)
 void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
 
-    if(g_stateCallback == nullptr) {
-        request->send(500, "text/plain", "No callback registered");
+    bool enabled;
+    if(!parseEnabledBody(request, body, enabled))
         return;
-    }
-    if(body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request: Missing JSON body.");
-        return;
-    }
-    JsonDocument doc;
-    if(deserializeJson(doc, body) || !doc.containsKey("enabled")) {
-        request->send(400, "text/plain", "Invalid JSON.");
-        return;
-    }
-    bool enabled = doc["enabled"].as<bool>();
     g_stateCallback(STATE_CHANGE_WARNINGS, static_cast<void*>(&enabled));
     request->send(200, "application/json", "{\"status\":\"success\"}");
 }
 
+// Setzt das Deep-Sleep-Flag (Auftrag)
 void handleSetDeepSleep(AsyncWebServerRequest* request, const String& body) {
 
-    if(g_stateCallback == nullptr) {
-        request->send(500, "text/plain", "No callback registered");
+    bool enabled;
+    if(!parseEnabledBody(request, body, enabled))
         return;
-    }
-    if(body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request: Missing JSON body.");
-        return;
-    }
-    JsonDocument doc;
-    if(deserializeJson(doc, body) || !doc.containsKey("enabled")) {
-        request->send(400, "text/plain", "Invalid JSON.");
-        return;
-    }
-    bool enabled = doc["enabled"].as<bool>();
     g_stateCallback(STATE_CHANGE_DEEP_SLEEP, static_cast<void*>(&enabled));
     request->send(200, "application/json", "{\"status\":\"success\"}");
 }
@@ -334,7 +281,6 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
     return {{"/", HTTP_GET, handleRoot},
             {"/pico.min.css", HTTP_GET, handlePicoCSS},
             {"/app.js", HTTP_GET, handleAppJS},
-            {"/app.css", HTTP_GET, handleAppCSS},
             {"/get_config", HTTP_GET, handleGetConfig},
             {"/set_config", HTTP_POST, handleSetConfig},
             {"/get_system_config", HTTP_GET, handleGetSystemConfig},
@@ -364,26 +310,20 @@ void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getTsfStatusJson());
 }
 
+// Setzt den TSF-Fallback (Auftrag, kein WLAN-Neustart)
 void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body) {
 
-    if(g_stateCallback == nullptr || body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request");
+    bool enabled;
+    if(!parseEnabledBody(request, body, enabled))
         return;
-    }
-    JsonDocument doc;
-    if(deserializeJson(doc, body)) {
-        request->send(400, "text/plain", "Invalid JSON");
-        return;
-    }
-    SystemSettings newSettings = *g_systemSettings;
-    newSettings.tsfFallbackEnabled = doc["enabled"] | true;
-    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
+    g_stateCallback(STATE_CHANGE_TSF_FALLBACK, static_cast<void*>(&enabled));
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// TSF-Snapshot als Auftrag (wird in loop() ausgeführt)
 void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String&) {
 
-    triggerTsfSnapshot();
+    g_stateCallback(STATE_CHANGE_TSF_SNAPSHOT, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
@@ -392,20 +332,13 @@ void handleGetRdsClock(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getRdsStatusJson());
 }
 
+// Setzt die RDS-Uhrzeit (Auftrag, kein WLAN-Neustart)
 void handleSetRdsClock(AsyncWebServerRequest* request, const String& body) {
 
-    if(g_stateCallback == nullptr || body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request");
+    bool enabled;
+    if(!parseEnabledBody(request, body, enabled))
         return;
-    }
-    JsonDocument doc;
-    if(deserializeJson(doc, body)) {
-        request->send(400, "text/plain", "Invalid JSON");
-        return;
-    }
-    SystemSettings newSettings = *g_systemSettings;
-    newSettings.rdsClockEnabled = doc["enabled"] | false;
-    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
+    g_stateCallback(STATE_CHANGE_RDS_CLOCK, static_cast<void*>(&enabled));
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
@@ -414,23 +347,13 @@ void handleGetRtcCrystal(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getRtcCrystalStatusJson());
 }
 
-// Einstellung speichern und Neustart auslösen (RTC-Taktquelle nur beim Boot umschaltbar)
+// Setzt den RTC-Quarz (Auftrag); loop() speichert und startet danach verzögert neu
+// (RTC-Taktquelle nur beim Boot umschaltbar)
 void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body) {
 
-    if(g_stateCallback == nullptr || body.isEmpty()) {
-        request->send(400, "text/plain", "Bad Request");
+    bool enabled;
+    if(!parseEnabledBody(request, body, enabled))
         return;
-    }
-    JsonDocument doc;
-    if(deserializeJson(doc, body)) {
-        request->send(400, "text/plain", "Invalid JSON");
-        return;
-    }
-    SystemSettings newSettings = *g_systemSettings;
-    newSettings.rtcCrystalEnabled = doc["enabled"] | false;
-    g_stateCallback(STATE_CHANGE_SYSTEM_CONFIG, static_cast<void*>(&newSettings));
-    logEvent("RTC: Einstellung geändert, Neustart");
+    g_stateCallback(STATE_CHANGE_RTC_CRYSTAL, static_cast<void*>(&enabled));
     request->send(200, "application/json", "{\"status\":\"restarting\"}");
-    delay(200);
-    ESP.restart();
 }

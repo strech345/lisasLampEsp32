@@ -6,7 +6,6 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite dev --host",
-    "preview": "vite preview",
     "build:esp32": "npm run build && node build-esp32.js"
   },
   "devDependencies": {

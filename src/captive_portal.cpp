@@ -1,9 +1,42 @@
 // Captive-Portal-Setup — Implementierung
 // POST-Bodies werden über _tempObject gepuffert weil ESPAsyncWebServer sie stückweise liefert.
+// Alle POST-Routen: nur Content-Type application/json (sonst 415), Origin muss zum Host passen
+// (sonst 403, CSRF-Schutz), Body maximal 4096 Bytes (sonst 413).
 #include "captive_portal.h"
 #include <Arduino.h>
 #include "route_handlers.h"
 #include "debug_utils.h"
+
+// Maximale Größe eines POST-Bodys in Bytes
+static const size_t MAX_BODY_SIZE = 4096;
+
+// Prüft Content-Type und Origin eines POST-Requests. Sendet bei Fehler die Antwort (415/403)
+// und gibt false zurück.
+static bool checkPostHeaders(AsyncWebServerRequest* request) {
+    // Content-Type: nur JSON (ein Zusatz wie "; charset=utf-8" ist erlaubt)
+    String ct = request->contentType();
+    ct.toLowerCase();
+    if(!ct.startsWith("application/json")) {
+        request->send(415, "application/json",
+                      "{\"status\":\"error\",\"message\":\"Nur Content-Type application/json erlaubt.\"}");
+        return false;
+    }
+    // Origin (falls vorhanden) muss dem Host-Header entsprechen -> Schutz vor Cross-Site-Requests
+    if(request->hasHeader("Origin")) {
+        String origin = request->header("Origin");
+        int schemeEnd = origin.indexOf("://");
+        String originHost = (schemeEnd >= 0) ? origin.substring(schemeEnd + 3) : origin;
+        originHost.toLowerCase();
+        String host = request->host();
+        host.toLowerCase();
+        if(originHost != host) {
+            request->send(403, "application/json",
+                          "{\"status\":\"error\",\"message\":\"Origin passt nicht zum Host.\"}");
+            return false;
+        }
+    }
+    return true;
+}
 
 void setUpDNSServer(DNSServer& dnsServer, const IPAddress& localIP) {
     dnsServer.setTTL(3600);
@@ -50,39 +83,56 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
     for(const auto& r : routes) {
         if(r.method == HTTP_POST) {
             // POST: Body wird in _tempObject gepuffert, weil ESPAsyncWebServer ihn
-            // stückweise liefert; erst am Ende wird der Handler aufgerufen
+            // stückweise liefert; bei leerem Body (Content‑Length == 0) muss der
+            // Handler bereits im Request‑Callback aufgerufen werden, sonst bekommt
+            // der Client nie eine Antwort.
             server.on(
                 r.uri, r.method,
-                [](AsyncWebServerRequest* request) {},
+                // Request‑Callback – wird sofort ausgeführt, wenn kein Body kommt
+                [r](AsyncWebServerRequest* request) {
+                    if(request->contentLength() == 0 && checkPostHeaders(request)) {
+                        r.handler(request, String(""));
+                    }
+                },
                 NULL,
+                // Body‑Callback – wird nur bei vorhandenem Body aufgerufen
                 [r](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
                     if(index == 0) {
-                        request->_tempObject = new String("");
+                        // Header- und Größenprüfung einmalig beim ersten Datenblock
+                        if(total > MAX_BODY_SIZE) {
+                            request->send(413, "application/json",
+                                          "{\"status\":\"error\",\"message\":\"Anfrage zu groß (max. 4096 Bytes).\"}");
+                            return;
+                        }
+                        if(!checkPostHeaders(request)) {
+                            return;
+                        }
+                        // malloc statt new: die Bibliothek gibt _tempObject mit free() frei
+                        request->_tempObject = malloc(total + 1);
                         if(request->_tempObject == nullptr) {
                             request->send(500, "text/plain", "Buffer Allocation Failed");
                             return;
                         }
                     }
 
-                    String* body = (String*)request->_tempObject;
-                    if(body) {
-                        body->concat((const char*)data, len);
+                    uint8_t* buf = (uint8_t*)request->_tempObject;
+                    if(buf == nullptr) {
+                        return; // Anfrage wurde bereits abgelehnt → restliche Datenblöcke ignorieren
                     }
+                    if(index + len > total) { // defensiv: niemals über den Puffer hinaus schreiben
+                        free(buf);
+                        request->_tempObject = nullptr;
+                        return;
+                    }
+                    memcpy(buf + index, data, len);
 
                     if(index + len == total) {
-                        if(body) {
-                            r.handler(request, *body);
-                            delete body;
-                            request->_tempObject = nullptr;
-                        } else {
-                            request->send(400, "text/plain", "Bad Request: Body lost");
-                        }
-                    } else if(request->client() && !request->client()->connected()) {
-                        // Verbindung abgebrochen → Puffer freigeben
-                        if(body) {
-                            delete body;
-                            request->_tempObject = nullptr;
-                        }
+                        buf[total] = '\0';
+                        String body;
+                        body.concat((const char*)buf, total);
+                        free(buf);
+                        request->_tempObject = nullptr;
+                        r.handler(request, body);
                     }
                 });
         } else {

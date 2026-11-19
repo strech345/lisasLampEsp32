@@ -3,7 +3,6 @@
 #include "alarm.h"
 #include <string.h>
 #include <time.h>
-#include "rgb_effects.h"
 #include "debug_utils.h"
 
 // Hilfsstruct: aktuelle Uhrzeit und Wochentag
@@ -15,6 +14,14 @@ struct TimeInfo {
 };
 
 TimeInfo getCurrentTimeInfo();
+
+// Zeitfenster (Minuten), in dem ein verpasster Alarm noch nachträglich auslöst
+#define ALARM_GRACE_MINUTES 10
+
+// Prüft ob die Systemzeit plausibel ist (>= 2020-01-01)
+static bool isSystemTimeValid() {
+    return time(nullptr) >= 1577836800L;
+}
 
 Alarm alarms[MAX_ALARMS];
 
@@ -29,14 +36,23 @@ static unsigned long alarm_start_millis = 0; // millis()-Wert beim Alarmstart
 
 long msToNextAlarm = -1;
 
-// Gibt Zeiger auf das globale Alarm-Array zurück
-Alarm* getAlarms() {
-    return alarms;
-}
-
-// Ersetzt alle Alarme durch neue Werte und berechnet den nächsten Auslösezeitpunkt
+// Ersetzt die Alarmliste und berechnet den nächsten Auslösezeitpunkt.
+// Ein laufender Alarm und die "heute schon ausgelöst"-Tage bleiben erhalten; nur für geänderte
+// Einträge (Tag/Stunde/Minute/aktiv) wird der Auslösetag zurückgesetzt, ein geänderter oder
+// deaktivierter aktiver Alarm wird gestoppt.
 void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
-    resetAlarms();
+    for(int i = 0; i < MAX_ALARMS; i++) {
+        bool timeChanged = alarms[i].day != newAlarms[i].day || alarms[i].hour != newAlarms[i].hour
+            || alarms[i].minute != newAlarms[i].minute;
+        bool changed = timeChanged || alarms[i].active != newAlarms[i].active;
+        if(changed) {
+            last_triggered_day_for_alarm[i] = -1; // Eintrag geändert → darf heute wieder auslösen
+        }
+        // Aktiver Alarm wurde deaktiviert oder zeitlich geändert → stoppen
+        if(i == activeAlarmId && (timeChanged || !newAlarms[i].active)) {
+            stopActiveAlarm();
+        }
+    }
     memcpy(alarms, newAlarms, sizeof(alarms));
     calculateMillisToNextAlarm();
 }
@@ -93,13 +109,21 @@ void checkAlarmStates(uint16_t durationMinutes) {
         stopActiveAlarm();
     }
 
-    // --- Alarm starten wenn Wochentag, Stunde und Minute passen ---
+    // --- Alarm starten wenn heute der Wochentag passt, die Alarmzeit in den letzten 10 Minuten lag
+    //     und der Alarm heute noch nicht ausgelöst wurde (robust gegen verspätetes Aufwachen/Zeitsprünge) ---
+    if(!isSystemTimeValid()) {
+        calculateMillisToNextAlarm();
+        return; // Ohne gültige Uhrzeit nie auslösen
+    }
+    int nowMinutes = currentTimeInfo.hour * 60 + currentTimeInfo.minute;
     for(int i = 0; i < MAX_ALARMS; i++) {
-        // Überspringen wenn: anderer Alarm aktiv, Alarm deaktiviert,
-        // heute schon ausgelöst, oder Zeit stimmt nicht
-        if(i != activeAlarmId && alarms[i].active && currentTimeInfo.day != last_triggered_day_for_alarm[i]
-           && alarms[i].day == currentTimeInfo.dayOfWeek && alarms[i].hour == currentTimeInfo.hour
-           && alarms[i].minute == currentTimeInfo.minute) {
+        // Überspringen wenn: anderer Alarm aktiv, Alarm deaktiviert, heute schon ausgelöst oder falscher Wochentag
+        if(i == activeAlarmId || !alarms[i].active || alarms[i].day != currentTimeInfo.dayOfWeek
+           || currentTimeInfo.day == last_triggered_day_for_alarm[i]) {
+            continue;
+        }
+        int sinceAlarmMin = nowMinutes - (alarms[i].hour * 60 + alarms[i].minute); // Minuten seit Alarmzeit (heute)
+        if(sinceAlarmMin >= 0 && sinceAlarmMin <= ALARM_GRACE_MINUTES && activeAlarmId == -1) {
             serialPrint("Alarm[" + String(i) + "]: day=" + String(alarms[i].day) + ", hour=" + String(alarms[i].hour)
                         + ", minute=" + String(alarms[i].minute)
                         + ", last_triggered=" + String(last_triggered_day_for_alarm[i]));
@@ -110,27 +134,6 @@ void checkAlarmStates(uint16_t durationMinutes) {
     }
 
     calculateMillisToNextAlarm();
-}
-
-// Gibt die aktuelle Alarm-Farbe zurück basierend auf dem Animations-Fortschritt (Sonnenaufgang)
-bool getAlarmColor(unsigned long currentMillis, RGB& color, uint16_t durationMinutes) {
-    if(activeAlarmId == -1) {
-        return false;
-    }
-
-    unsigned long elapsed_millis = currentMillis - alarm_start_millis;
-    const unsigned long wakeup_duration_millis = (unsigned long)durationMinutes * 60 * 1000;
-
-    if(elapsed_millis > wakeup_duration_millis) {
-        // Dauer überschritten → Endfarbe zeigen
-        color = sunriseFade(1.0);
-        return true;
-    }
-
-    // Fortschritt 0.0–1.0 berechnen
-    float progress = (float)elapsed_millis / wakeup_duration_millis;
-    color = sunriseFade(progress);
-    return true;
 }
 
 // Gibt die interpolierte Helligkeit zurück: startet bei 1, steigt auf 7 in den ersten 70% der Alarm-Dauer
@@ -227,14 +230,4 @@ void calculateMillisToNextAlarm() {
 // Gibt den berechneten Wert zurück (-1 = kein Alarm gesetzt, 0 = Alarm läuft gerade)
 long getMillisToNextAlarm() {
     return msToNextAlarm;
-}
-
-// Prüft ob mindestens ein Alarm aktiv und mit Wochentag gesetzt ist
-bool hasActiveAlarms() {
-    for(int i = 0; i < MAX_ALARMS; i++) {
-        if(alarms[i].active && alarms[i].day != 0) {
-            return true;
-        }
-    }
-    return false;
 }

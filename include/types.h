@@ -63,12 +63,21 @@ struct TsfEntry {
     int8_t   rssi;     // Empfangsstärke bei der Messung (dBm)
 };
 
-// Art der Zustandsänderung — wird im Callback onStateUpdatedFromWifi verwendet
+// Art der Zustandsänderung / des Auftrags vom Webserver an die loop().
+// Der Callback onStateUpdatedFromWifi (main.cpp) läuft im async_tcp-Task und legt nur einen Auftrag
+// ab; ausgeführt wird er in loop(). Datentyp von `data` je Eintrag in Klammern.
 enum StateChangeType {
-    STATE_CHANGE_CONFIG,
-    STATE_CHANGE_SYSTEM_CONFIG,
-    STATE_CHANGE_WARNINGS,
-    STATE_CHANGE_DEEP_SLEEP
+    STATE_CHANGE_CONFIG,        // (const FullConfig*) neue Lampenkonfiguration
+    STATE_CHANGE_SYSTEM_CONFIG, // (const SystemSettings*) Netzwerk-Einstellungen -> WLAN-Neustart
+    STATE_CHANGE_WARNINGS,      // (bool*) Systemwarnungen an/aus
+    STATE_CHANGE_DEEP_SLEEP,    // (bool*) Deep Sleep an/aus
+    STATE_CHANGE_TSF_FALLBACK,  // (bool*) TSF-Uhrzeit-Fallback an/aus (kein WLAN-Neustart)
+    STATE_CHANGE_RDS_CLOCK,     // (bool*) RDS-Uhrzeit an/aus (kein WLAN-Neustart)
+    STATE_CHANGE_RTC_CRYSTAL,   // (bool*) RTC-Quarz an/aus, danach verzögerter Neustart
+    STATE_CHANGE_NTP_RESYNC,    // (nullptr) NTP-Resync auslösen
+    STATE_CHANGE_TSF_SNAPSHOT,  // (nullptr) TSF-Snapshot auslösen
+    STATE_CHANGE_RESTART,       // (nullptr) verzögerter Neustart
+    STATE_CHANGE_FACTORY_RESET  // (nullptr) verzögerter Werksreset + Neustart
 };
 
 // Aktueller Betriebszustand der Lampe — bestimmt welcher LED-Effekt aktiv ist
@@ -85,19 +94,9 @@ enum LampState {
     LAMP_STATE_SYS_WARNING = 9  // Dauerhaft: NTP veraltet (> 24h) — einzelner Pixel blinkt gelb
 };
 
-// Ergebnis eines WiFi/NTP-Tests
-enum WiFiTestResult {
-    WIFI_TEST_SUCCESS,
-    WIFI_TEST_CONNECTION_FAILED,
-    WIFI_TEST_NTP_FAILED,
-    WIFI_TEST_SKIPPED_AP_ACTIVE,
-    WIFI_TEST_IN_PROGRESS
-};
-
 // Status-Snapshot für die Web-API
 struct WiFiStatus {
     String currentTime;
-    WiFiTestResult lastTestResult;
     unsigned long timeSinceLastTestMs;
     unsigned long timeSinceLastSucceededTestMs;
     unsigned long lastStaConnectionTime;
@@ -108,7 +107,6 @@ struct WiFiStatus {
 
 // Interner Tracker für WiFi/NTP-Zustand (läuft im Hintergrund)
 struct WiFiTestTracker {
-    WiFiTestResult lastDateResult = WIFI_TEST_CONNECTION_FAILED;
     unsigned long lastTestTime = 0;
     unsigned long lastSucceededTestTime = 0;
     unsigned long lastStaConnectionTime = 0;

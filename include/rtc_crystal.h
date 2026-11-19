@@ -10,6 +10,9 @@
 // Initialisiert: falls enabled, Quarz einschalten und testen; speichert Ergebnis in SystemSettings
 void initRtcCrystal(SystemSettings* settings);
 
+// Liefert true, wenn der externe Quarz erkannt wurde und als RTC-Takt aktiv ist
+bool isRtcCrystalActive();
+
 // Liefert Status-JSON für das Frontend
 String getRtcCrystalStatusJson();
 

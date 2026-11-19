@@ -24,11 +24,16 @@ static uint32_t calcFreqFromCal(uint32_t cal) {
     return (uint32_t)(1000000ULL * (1ULL << 19) / cal);
 }
 
+// Initialisiert den RTC-Takt: testet den externen Quarz und stellt die Taktquelle entsprechend ein.
+// Schreibt in den Flash nur, wenn sich rtcCrystalAvailable gegenüber dem gespeicherten Stand geändert hat.
 void initRtcCrystal(SystemSettings* settings) {
     g_settings = settings;
+    const bool previousAvailable = settings->rtcCrystalAvailable; // Stand vor diesem Boot
 
     if(!settings->rtcCrystalEnabled) {
         settings->rtcCrystalAvailable = false;
+        if(previousAvailable)
+            saveSystemSettings(*settings); // Status hat sich geändert → einmalig speichern
         serialPrint("RTC: Quarz deaktiviert, bleibe auf RC-Oszi");
         return;
     }
@@ -69,9 +74,17 @@ void initRtcCrystal(SystemSettings* settings) {
         serialPrint("RTC: Quarz nicht erkannt (cal=" + String(cal) + "), bleibe auf RC-Oszi");
     }
 
-    saveSystemSettings(*settings);
+    // Nur bei geändertem Status speichern (schont den Flash, kein Schreiben bei jedem Boot)
+    if(settings->rtcCrystalAvailable != previousAvailable)
+        saveSystemSettings(*settings);
 }
 
+// Liefert true, wenn der externe 32-kHz-Quarz beim Boot erkannt und als RTC-Takt aktiviert wurde
+bool isRtcCrystalActive() {
+    return g_settings != nullptr && g_settings->rtcCrystalAvailable;
+}
+
+// Liefert den Quarz-Status als JSON für das Frontend
 String getRtcCrystalStatusJson() {
     JsonDocument doc;
     doc["enabled"]   = g_settings != nullptr && g_settings->rtcCrystalEnabled;
