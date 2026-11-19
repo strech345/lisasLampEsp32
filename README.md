@@ -47,7 +47,7 @@ Ohne diese Datei sucht PlatformIO den Port selbst.
 ./deploy.sh         # UI + Firmware bauen und beides (LittleFS + Firmware) auf das Gerät laden
 ```
 
-Weitere Details: [svelte-ui/DEPLOYMENT.md](svelte-ui/DEPLOYMENT.md), Architektur: [doc/architektur.md](doc/architektur.md).
+Weitere Details, Mock-Modus und UI-Entwicklung: [doc/build-und-deploy.md](doc/build-und-deploy.md).
 
 ## TODO
 
