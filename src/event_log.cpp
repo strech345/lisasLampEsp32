@@ -74,14 +74,18 @@ String getEventLogJson() {
     json += String(nowUnixL);
     json += ",\"events\":[";
 
+    String entry; // wiederverwendeter Puffer für einen Eintrag
     for(size_t i = 0; i < n; i++) {
         if(i > 0)
             json += ",";
-        JsonDocument doc; // pro Eintrag: kleines Dokument, serializeJson hängt an den String an
+        JsonDocument doc; // pro Eintrag ein kleines Dokument → geringe RAM-Spitze
         doc["uptimeMs"] = copy[i].uptimeMs;
         doc["unixTime"] = copy[i].unixTime;
         doc["msg"] = (const char*)copy[i].msg; // wird von ArduinoJson beim Serialisieren escaped
-        serializeJson(doc, json);
+        // Achtung: serializeJson() in einen String LEERT diesen vorher (ArduinoJson 7) — daher erst
+        // in `entry` serialisieren und dann anhängen, nicht direkt in `json`
+        serializeJson(doc, entry);
+        json += entry;
     }
     free(copy);
 
