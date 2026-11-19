@@ -52,14 +52,25 @@ static uint16_t      g_currentCh   = 0;
 static uint16_t      g_scanStartCh = 0;
 static unsigned long g_stateMs     = 0;
 static unsigned long g_lastSyncMs  = 0;
+static unsigned long g_idleSinceMs = 0; // Zeitpunkt des Wechsels nach DONE/NO_SIGNAL
+
+#define RDS_RETRY_NO_SIGNAL_MS (60UL * 60UL * 1000UL)       // nach "kein Signal": in 1 h erneut versuchen
+#define RDS_RESYNC_AFTER_DONE_MS (24UL * 60UL * 60UL * 1000UL) // nach Erfolg: nach 24 h neu abgleichen
+
+// Wechselt in einen Ruhezustand (DONE/NO_SIGNAL): Modul aus, Zeitpunkt für den nächsten Versuch merken
+static void enterIdle(RdsState state) {
+    digitalWrite(PIN_RDS_POWER, LOW);
+    g_state = state;
+    g_idleSinceMs = millis();
+}
 
 // Schreibt ein 16-Bit-Register des RDA5807M per I2C (Big-Endian)
-static void writeReg(uint8_t reg, uint16_t val) {
+static bool writeReg(uint8_t reg, uint16_t val) {
     Wire.beginTransmission(RDA5807M_ADDR);
     Wire.write(reg);
     Wire.write((uint8_t)(val >> 8));
     Wire.write((uint8_t)(val & 0xFF));
-    Wire.endTransmission();
+    return Wire.endTransmission() == 0; // 0 = ACK vom Chip
 }
 
 // Liest ein 16-Bit-Register des RDA5807M per I2C (Big-Endian, Repeated-Start)
@@ -74,10 +85,13 @@ static uint16_t readReg(uint8_t reg) {
     return val;
 }
 
-// Initialisiert den RDA5807M: Soft-Reset, RDS aktivieren, 50-kHz-Suchlaufschritt
-static void chipInit() {
-    writeReg(REG_CONFIG, 0xD001 | (1 << 3) | (1 << 2));
+// Initialisiert den RDA5807M (REG 0x02): DHIZ|DMUTE|BASS|ENABLE (=0xD001) + RDS_EN (Bit 3) +
+// NEW_METHOD (Bit 2, bessere Empfangsqualität). Kanalraster bleibt 100 kHz (REG 0x03).
+// Gibt false zurück wenn der Chip nicht antwortet (Modul fehlt / I2C-Fehler).
+static bool chipInit() {
+    bool ok = writeReg(REG_CONFIG, 0xD001 | (1 << 3) | (1 << 2));
     delay(50);
+    return ok;
 }
 
 // Stimmt den Chip auf die angegebene Frequenz (in 10kHz-Einheiten) ab
@@ -239,7 +253,11 @@ void rdsClockLoop() {
 
     case RDS_STATE_POWERING:
         if (millis() - g_stateMs < POWER_UP_MS) break;
-        chipInit();
+        if (!chipInit()) {
+            logEvent("RDS: Modul antwortet nicht (I2C)");
+            enterIdle(RDS_STATE_NO_SIGNAL);
+            break;
+        }
         g_currentCh = (g_settings->rdsLastChannel > 0)
                       ? g_settings->rdsLastChannel
                       : FM_START_10KHZ;
@@ -263,8 +281,7 @@ void rdsClockLoop() {
         } else {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
-                digitalWrite(PIN_RDS_POWER, LOW);
-                g_state = RDS_STATE_NO_SIGNAL;
+                enterIdle(RDS_STATE_NO_SIGNAL);
                 logEvent("RDS: kein Signal gefunden");
             } else {
                 g_currentCh = next;
@@ -285,8 +302,7 @@ void rdsClockLoop() {
             snprintf(msg, sizeof(msg), "RDS: Zeit gesetzt %.1fMHz", g_currentCh / 10.0f);
             logEvent(msg);
             g_lastSyncMs = millis();
-            digitalWrite(PIN_RDS_POWER, LOW);
-            g_state = RDS_STATE_DONE;
+            enterIdle(RDS_STATE_DONE);
             logEvent("RDS: Modul aus");
             break;
         }
@@ -294,8 +310,7 @@ void rdsClockLoop() {
         if (millis() - g_stateMs >= (g_haveLastCt ? CT_WAIT_PAIR_MS : CT_WAIT_MS)) {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
-                digitalWrite(PIN_RDS_POWER, LOW);
-                g_state = RDS_STATE_NO_SIGNAL;
+                enterIdle(RDS_STATE_NO_SIGNAL);
                 logEvent("RDS: kein Signal gefunden");
             } else {
                 g_currentCh = next;
@@ -309,7 +324,12 @@ void rdsClockLoop() {
     }
 
     case RDS_STATE_DONE:
+        // Erneut abgleichen, damit die Uhr bei dauerhaft wacher Lampe ohne WLAN nicht wegdriftet
+        if (millis() - g_idleSinceMs >= RDS_RESYNC_AFTER_DONE_MS) g_state = RDS_STATE_OFF;
+        break;
     case RDS_STATE_NO_SIGNAL:
+        // Später erneut versuchen (Empfang kann sich ändern)
+        if (millis() - g_idleSinceMs >= RDS_RETRY_NO_SIGNAL_MS) g_state = RDS_STATE_OFF;
         break;
     }
 }

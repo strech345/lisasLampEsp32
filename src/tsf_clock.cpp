@@ -14,6 +14,7 @@
 #include <esp_timer.h>
 #include <sys/time.h>
 #include <algorithm>
+#include <atomic>
 #include <ArduinoJson.h>
 
 #define MIN_VALID_EPOCH_US (1577836800ULL * 1000000ULL) // 2020-01-01: alles davor gilt als "Uhrzeit unbekannt"
@@ -86,6 +87,9 @@ static void IRAM_ATTR beaconRxCallback(void* buf, wifi_promiscuous_pkt_type_t ty
     g_capturedBeacons[idx].tsf_us = tsf;
     g_capturedBeacons[idx].monoUs = esp_timer_get_time();
     g_capturedBeacons[idx].rssi = pkt->rx_ctrl.rssi;
+    // Barriere: der Eintrag muss vollständig geschrieben sein, bevor der Zähler ihn sichtbar macht
+    // (der Hauptthread liest nur Einträge < g_capturedBeaconCount)
+    std::atomic_thread_fence(std::memory_order_release);
     g_capturedBeaconCount = idx + 1; // kein ++ auf volatile (C++20 deprecated)
 }
 
@@ -140,6 +144,7 @@ static int calcScore(int8_t rssi, uint64_t tsf_us) {
 static void processSnapshot() {
     g_snapshotScheduled = false;
     uint8_t count = g_capturedBeaconCount;
+    std::atomic_thread_fence(std::memory_order_acquire); // Gegenstück zur Barriere im Callback
 
     if(count == 0) {
         serialPrint("TSF: Snapshot: keine APs");
@@ -232,6 +237,7 @@ static void processFallback() {
     g_fallbackScheduled = false;
     g_fallbackAttempted = true;
     const uint8_t newCount = g_capturedBeaconCount;
+    std::atomic_thread_fence(std::memory_order_acquire); // Gegenstück zur Barriere im Callback
 
     if(newCount == 0 || g_storedCount == 0) {
         g_lastCalcResult = "insufficient";
