@@ -145,7 +145,6 @@ byte getAlarmBrightness(uint16_t durationMinutes) {
     }
     float progress = (float)elapsed_millis / brightness_duration_millis;
     byte brightness = 1 + (byte)(progress * (7 - 1));
-    serialPrint("Alarm brightness calculated: " + String(brightness) + " (progress: " + String(progress) + ")");
     return brightness;
 }
 

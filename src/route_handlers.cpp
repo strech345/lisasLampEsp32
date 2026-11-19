@@ -194,7 +194,6 @@ void handleGetStatus(AsyncWebServerRequest* request, const String&) {
             status.currentTime = String(buf);
         }
     }
-    serialPrint(String("send status clockSynced=") + (status.clockSynced ? "true" : "false"));
 
     request->send(200, "application/json", createWiFiStatusJson(status));
 }

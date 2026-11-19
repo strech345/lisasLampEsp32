@@ -22,9 +22,8 @@ static LedState      s_preFlashState;  // Gespeicherter Zustand vor dem Flash
 
 WS2812FX ws2812fx = WS2812FX(LED_COUNT, PIN_LED_STRIP, NEO_GRBW + NEO_KHZ800);
 
-// Interne Hilfsfunktion — setzt Helligkeit mit Log
+// Interne Hilfsfunktion — setzt den PWM-Helligkeitswert (0–255)
 static void applyBrightness(uint8_t brightness) {
-    serialPrint("Setting brightness to " + String(brightness));
     ws2812fx.setBrightness(brightness);
 }
 

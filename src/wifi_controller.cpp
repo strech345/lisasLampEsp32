@@ -193,8 +193,9 @@ void wifiLoop() {
     updateTelemetryWiFiStatus();
     tryReconnectSta();
 
+    // WLAN-Status jede Minute auf Serial (Debug)
     static unsigned long lastStatusMs = 0;
-    if(isTimeForAction(&lastStatusMs, 10000)) {
+    if(isTimeForAction(&lastStatusMs, 60000)) {
         if(!isWiFiActive()) {
             serialPrint("WiFi: aus");
         } else {
@@ -277,7 +278,6 @@ void updateTelemetryWiFiStatus() {
             saveLastKnownTime(time(NULL)); // Zeitstempel für Neustart-Restore sichern
         }
     }
-    serialPrint("Updated telemetry " + String(g_wifiTracker->clockSynced ? "synced" : "not synced"));
 }
 
 // Versucht alle 5 Minuten eine neue STA-Verbindung wenn die letzte fehlgeschlagen ist

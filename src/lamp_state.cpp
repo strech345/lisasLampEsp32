@@ -266,7 +266,6 @@ void updateLed() {
         return;
     }
     lastCheck = currentTime;
-    serialPrint("Lamp state check: " + String(*s_lampState));
 
     if(*s_lampState == LAMP_STATE_ALARM) {
         setBrightnessLevel(getAlarmBrightness(s_appConfig->alarmDuration));
