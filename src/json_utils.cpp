@@ -136,6 +136,9 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     doc["externalPW2"]      = strlen(systemSettings.externalPW2) > 0 ? PASSWORD_MASK : "";
     doc["warningsEnabled"]  = systemSettings.warningsEnabled;
     doc["deepSleepEnabled"] = systemSettings.deepSleepEnabled;
+    doc["tsfFallbackEnabled"] = systemSettings.tsfFallbackEnabled;
+    doc["rdsClockEnabled"]  = systemSettings.rdsClockEnabled;
+    doc["rtcCrystalEnabled"] = systemSettings.rtcCrystalEnabled;
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     return jsonResponse;

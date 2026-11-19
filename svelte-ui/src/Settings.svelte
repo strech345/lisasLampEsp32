@@ -44,8 +44,7 @@
   onMount(() => {
     systemStore.load();
     loadStatusInfo();
-    loadWarnings();
-    loadDeepSleep();
+    loadSwitches();
     loadTsfStatus();
     loadRdsStatus();
     loadRtcCrystalStatus();
@@ -67,41 +66,39 @@
     }
   }
 
-  // Lädt den Zustand des Warnungs-Schalters
-  async function loadWarnings() {
+  // Setzt einen Schalter der Lampe (warnings, deepSleep, tsfFallback, rdsClock, rtcCrystal)
+  function setOption(option, enabled) {
+    return postJson("/set_option", { option, enabled });
+  }
+
+  // Lädt die Schalter Warnungen und Deep Sleep (stehen in den Systemeinstellungen)
+  async function loadSwitches() {
     try {
-      warningsEnabled = (await getJson("/get_warnings")).enabled;
+      const s = await getJson("/get_system_config");
+      warningsEnabled = s.warningsEnabled;
+      deepSleepEnabled = s.deepSleepEnabled;
     } catch (e) {
-      showError("Warnungs-Einstellung konnte nicht geladen werden", e);
+      showError("Einstellungen konnten nicht geladen werden", e);
     }
   }
 
   // Speichert den Warnungs-Schalter
   async function handleWarningsToggle() {
     try {
-      await postJson("/set_warnings", { enabled: warningsEnabled });
+      await setOption("warnings", warningsEnabled);
     } catch (e) {
       showError("Speichern fehlgeschlagen", e);
-      loadWarnings();
-    }
-  }
-
-  // Lädt den Zustand des Deep-Sleep-Schalters
-  async function loadDeepSleep() {
-    try {
-      deepSleepEnabled = (await getJson("/get_deep_sleep")).enabled;
-    } catch (e) {
-      showError("Deep-Sleep-Einstellung konnte nicht geladen werden", e);
+      loadSwitches();
     }
   }
 
   // Speichert den Deep-Sleep-Schalter
   async function handleDeepSleepToggle() {
     try {
-      await postJson("/set_deep_sleep", { enabled: deepSleepEnabled });
+      await setOption("deepSleep", deepSleepEnabled);
     } catch (e) {
       showError("Speichern fehlgeschlagen", e);
-      loadDeepSleep();
+      loadSwitches();
     }
   }
 
@@ -119,7 +116,7 @@
   // Speichert den TSF-Schalter
   async function handleTsfToggle() {
     try {
-      await postJson("/set_tsf_fallback", { enabled: tsfFallbackEnabled });
+      await setOption("tsfFallback", tsfFallbackEnabled);
     } catch (e) {
       showError("Speichern fehlgeschlagen", e);
       loadTsfStatus();
@@ -155,7 +152,7 @@
   // Speichert die Quarz-Einstellung; das Gerät startet neu
   async function applyRtcCrystal() {
     try {
-      await postJson("/set_rtc_crystal", { enabled: rtcCrystalEnabled });
+      await setOption("rtcCrystal", rtcCrystalEnabled);
       messageStore.show("success", "RTC-Quarz-Einstellung gespeichert. ESP32 startet neu…");
       setTimeout(() => location.reload(), 6000);
     } catch (e) {
@@ -180,7 +177,7 @@
   // Schaltet RDS ein/aus und startet bzw. stoppt das Polling
   async function handleRdsToggle() {
     try {
-      await postJson("/set_rds_clock", { enabled: rdsClockEnabled });
+      await setOption("rdsClock", rdsClockEnabled);
       if (rdsClockEnabled) startRdsPolling();
       else stopRdsPolling();
     } catch (e) {

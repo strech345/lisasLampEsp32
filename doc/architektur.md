@@ -107,6 +107,20 @@ Genauigkeit auf ~20 ppm (~1,7 s/Tag) verbessern.
 | Endpunkt | Methode | Beschreibung |
 |---|---|---|
 | `/get_rtc_crystal` | GET | JSON: `{"enabled": bool, "available": bool, "freqHz": uint32}` |
-| `/set_rtc_crystal` | POST | `{"enabled": bool}` → speichert Einstellung und löst Neustart aus |
+| `/set_option` | POST | `{"option": "rtcCrystal", "enabled": bool}` → speichert Einstellung und löst Neustart aus |
 
-Da die RTC-Taktquelle nur beim Boot umgeschaltet werden kann, löst `/set_rtc_crystal` immer einen Neustart aus.
+Da die RTC-Taktquelle nur beim Boot umgeschaltet werden kann, löst `rtcCrystal` über `/set_option` immer einen Neustart aus.
+
+## Schalter-API (`/set_option`)
+
+Alle An/Aus-Schalter laufen über einen Endpunkt (POST, `Content-Type: application/json`):
+
+```json
+{"option": "warnings | deepSleep | tsfFallback | rdsClock | rtcCrystal", "enabled": true}
+```
+
+- Antwort `{"status":"ok"}`, bei `rtcCrystal` `{"status":"restarting"}`; Fehler → 400 mit `{"status":"error","message":"…"}`.
+- Ausführung als Auftrag in `loop()`, kein WLAN-Neustart.
+- Aktuelle Werte: Felder `warningsEnabled`, `deepSleepEnabled`, `tsfFallbackEnabled`, `rdsClockEnabled`,
+  `rtcCrystalEnabled` in `GET /get_system_config`. Ausführliche Status-Infos weiterhin über
+  `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal`.

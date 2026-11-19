@@ -28,6 +28,11 @@ export const mockSystemSettings = {
   externalPW: "******",
   externalSSID2: "",
   externalPW2: "",
+  warningsEnabled: true,
+  deepSleepEnabled: true,
+  tsfFallbackEnabled: true,
+  rdsClockEnabled: false,
+  rtcCrystalEnabled: false,
 };
 
 // Check if mocking is enabled via URL parameter
@@ -64,7 +69,7 @@ export const mockFetch = (url, options) => {
         resolve({ ok: true, json: () => Promise.resolve({ clockSynced: true, staConfigValid: false, timeSinceLastSucceededTestMs: 120000, systemTime: Math.floor(Date.now() / 1000) }) });
       } else if (url.includes("/get_event_log")) {
         resolve({ ok: true, json: () => Promise.resolve({ uptimeMs: 60000, unixTime: 0, events: [] }) });
-      } else if (/\/get_(warnings|deep_sleep|tsf_fallback|rds_clock|rtc_crystal)/.test(url)) {
+      } else if (/\/get_(tsf_fallback|rds_clock|rtc_crystal)/.test(url)) {
         resolve({ ok: true, json: () => Promise.resolve({ enabled: false }) });
       } else {
         resolve({

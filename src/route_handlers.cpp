@@ -30,19 +30,44 @@ static void sendError(AsyncWebServerRequest* request, int code, const char* mess
     request->send(code, "application/json", String("{\"status\":\"error\",\"message\":\"") + message + "\"}");
 }
 
-// Parst {"enabled": bool}; sendet bei Fehler 400 und gibt false zurück
-static bool parseEnabledBody(AsyncWebServerRequest* request, const String& body, bool& enabled) {
+// Schalter, die über POST /set_option gesetzt werden: JSON-Name → Auftragstyp
+struct OptionDef {
+    const char* name;
+    StateChangeType type;
+};
+static const OptionDef OPTIONS[] = {
+    {"warnings", STATE_CHANGE_WARNINGS},
+    {"deepSleep", STATE_CHANGE_DEEP_SLEEP},
+    {"tsfFallback", STATE_CHANGE_TSF_FALLBACK},
+    {"rdsClock", STATE_CHANGE_RDS_CLOCK},
+    {"rtcCrystal", STATE_CHANGE_RTC_CRYSTAL}, // löst danach einen Neustart aus
+};
+
+// POST /set_option {"option": "warnings|deepSleep|tsfFallback|rdsClock|rtcCrystal", "enabled": bool}
+// Legt einen Auftrag ab (Ausführung in loop(), kein WLAN-Neustart). Antwort bei rtcCrystal:
+// {"status":"restarting"}, sonst {"status":"ok"}. Aktuelle Werte liefert /get_system_config.
+static void handleSetOption(AsyncWebServerRequest* request, const String& body) {
     if(g_stateCallback == nullptr) {
         sendError(request, 500, "Kein Callback registriert.");
-        return false;
+        return;
     }
     JsonDocument doc;
-    if(body.isEmpty() || deserializeJson(doc, body) || !doc["enabled"].is<bool>()) {
-        sendError(request, 400, "Ungültiges JSON: Feld enabled (true/false) fehlt.");
-        return false;
+    if(body.isEmpty() || deserializeJson(doc, body) || !doc["option"].is<const char*>()
+       || !doc["enabled"].is<bool>()) {
+        sendError(request, 400, "Ungültiges JSON: option (Text) und enabled (true/false) erforderlich.");
+        return;
     }
-    enabled = doc["enabled"].as<bool>();
-    return true;
+    const char* name = doc["option"];
+    bool enabled = doc["enabled"];
+    for(const OptionDef& opt : OPTIONS) {
+        if(strcmp(opt.name, name) == 0) {
+            g_stateCallback(opt.type, static_cast<void*>(&enabled)); // Callback kopiert den Wert
+            bool restart = opt.type == STATE_CHANGE_RTC_CRYSTAL;
+            request->send(200, "application/json", restart ? "{\"status\":\"restarting\"}" : "{\"status\":\"ok\"}");
+            return;
+        }
+    }
+    sendError(request, 400, "Unbekannte Option.");
 }
 
 // Sendet eine gzip-komprimierte Datei aus LittleFS mit korrekten Cache-Headern
@@ -61,11 +86,11 @@ static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const
     }
 }
 
-void handlePing(AsyncWebServerRequest* request, const String&) {
+static void handlePing(AsyncWebServerRequest* request, const String&) {
     request->send(200, "text/plain", "pong");
 }
 
-void handleRoot(AsyncWebServerRequest* request, const String&) {
+static void handleRoot(AsyncWebServerRequest* request, const String&) {
     serialPrint("handleRoot: " + request->url());
 
     const char* indexPath = "/index.html.gzip";
@@ -86,17 +111,17 @@ void handleRoot(AsyncWebServerRequest* request, const String&) {
     }
 }
 
-void handlePicoCSS(AsyncWebServerRequest* request, const String&) {
+static void handlePicoCSS(AsyncWebServerRequest* request, const String&) {
     serialPrint("handlePicoCSS: " + request->url());
     sendGzipFile(request, "/pico.min.css.gzip", "text/css");
 }
 
-void handleAppJS(AsyncWebServerRequest* request, const String&) {
+static void handleAppJS(AsyncWebServerRequest* request, const String&) {
     serialPrint("handleAppJS: " + request->url());
     sendGzipFile(request, "/app.js.gzip", "application/javascript");
 }
 
-void handleGetConfig(AsyncWebServerRequest* request, const String&) {
+static void handleGetConfig(AsyncWebServerRequest* request, const String&) {
 
     serialPrint(String("handleGetConfig: ") + request->url());
     if(g_config == nullptr) {
@@ -108,7 +133,7 @@ void handleGetConfig(AsyncWebServerRequest* request, const String&) {
 }
 
 // Validiert die neue Lampenkonfiguration und legt sie als Auftrag ab (Helligkeit bleibt unverändert)
-void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
+static void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
 
     serialPrint(String("handleSetConfig: ") + request->url());
     if(g_stateCallback == nullptr) {
@@ -133,7 +158,7 @@ void handleSetConfig(AsyncWebServerRequest* request, const String& body) {
     request->send(200, "application/json", "{\"status\":\"success\",\"message\":\"Configuration updated\"}");
 }
 
-void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
+static void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
 
     serialPrint(String("handleGetSystemConfig: ") + request->url());
     if(g_systemSettings == nullptr) {
@@ -146,7 +171,7 @@ void handleGetSystemConfig(AsyncWebServerRequest* request, const String&) {
 
 // Validiert die Netzwerkeinstellungen (SSID/Passwort-Längen) und legt sie als Auftrag ab.
 // Der Body wird bewusst nicht geloggt (enthält Passwörter).
-void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
+static void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
 
     serialPrint(String("handleSetSystemConfig: ") + request->url());
     if(g_stateCallback == nullptr) {
@@ -171,7 +196,7 @@ void handleSetSystemConfig(AsyncWebServerRequest* request, const String& body) {
                   "{\"status\":\"success\",\"message\":\"System configuration updated\"}");
 }
 
-void handleGetStatus(AsyncWebServerRequest* request, const String&) {
+static void handleGetStatus(AsyncWebServerRequest* request, const String&) {
 
     if(g_wifiTracker == nullptr) {
         request->send(500, "text/plain", "WiFi tracker not initialized");
@@ -198,7 +223,7 @@ void handleGetStatus(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", createWiFiStatusJson(status));
 }
 
-void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
+static void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
     const char* imagePath = "/meerkat.avif";
     if(!LittleFS.exists(imagePath)) {
         serialPrint("meerkat.avif not found");
@@ -208,64 +233,52 @@ void handleMeerkatImage(AsyncWebServerRequest* request, const String&) {
     request->send(LittleFS, imagePath, "image/avif");
 }
 
-void handleGetWarnings(AsyncWebServerRequest* request, const String&) {
-
-    bool enabled = g_systemSettings ? g_systemSettings->warningsEnabled : true;
-    String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
-    request->send(200, "application/json", json);
-}
-
-void handleGetDeepSleep(AsyncWebServerRequest* request, const String&) {
-
-    bool enabled = g_systemSettings ? g_systemSettings->deepSleepEnabled : true;
-    String json = String("{\"enabled\":") + (enabled ? "true" : "false") + "}";
-    request->send(200, "application/json", json);
-}
-
-void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
+static void handleGetEventLog(AsyncWebServerRequest* request, const String&) {
 
     request->send(200, "application/json", getEventLogJson());
 }
 
 // Neustart: Auftrag ablegen, loop() startet nach kurzer Verzögerung neu
-void handleRestart(AsyncWebServerRequest* request, const String&) {
+static void handleRestart(AsyncWebServerRequest* request, const String&) {
 
     g_stateCallback(STATE_CHANGE_RESTART, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 // Werksreset: Auftrag ablegen, loop() setzt nach kurzer Verzögerung zurück und startet neu
-void handleFactoryReset(AsyncWebServerRequest* request, const String&) {
+static void handleFactoryReset(AsyncWebServerRequest* request, const String&) {
 
     g_stateCallback(STATE_CHANGE_FACTORY_RESET, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 // NTP-Resync als Auftrag (wird in loop() ausgeführt)
-void handleTriggerNtpSync(AsyncWebServerRequest* request, const String&) {
+static void handleTriggerNtpSync(AsyncWebServerRequest* request, const String&) {
 
     g_stateCallback(STATE_CHANGE_NTP_RESYNC, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-// Setzt das Warnungs-Flag (Auftrag)
-void handleSetWarnings(AsyncWebServerRequest* request, const String& body) {
+static void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {
 
-    bool enabled;
-    if(!parseEnabledBody(request, body, enabled))
-        return;
-    g_stateCallback(STATE_CHANGE_WARNINGS, static_cast<void*>(&enabled));
-    request->send(200, "application/json", "{\"status\":\"success\"}");
+    request->send(200, "application/json", getTsfStatusJson());
 }
 
-// Setzt das Deep-Sleep-Flag (Auftrag)
-void handleSetDeepSleep(AsyncWebServerRequest* request, const String& body) {
+// TSF-Snapshot als Auftrag (wird in loop() ausgeführt)
+static void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String&) {
 
-    bool enabled;
-    if(!parseEnabledBody(request, body, enabled))
-        return;
-    g_stateCallback(STATE_CHANGE_DEEP_SLEEP, static_cast<void*>(&enabled));
-    request->send(200, "application/json", "{\"status\":\"success\"}");
+    g_stateCallback(STATE_CHANGE_TSF_SNAPSHOT, nullptr);
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+static void handleGetRdsClock(AsyncWebServerRequest* request, const String&) {
+
+    request->send(200, "application/json", getRdsStatusJson());
+}
+
+static void handleGetRtcCrystal(AsyncWebServerRequest* request, const String&) {
+
+    request->send(200, "application/json", getRtcCrystalStatusJson());
 }
 
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
@@ -286,73 +299,14 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/set_system_config", HTTP_POST, handleSetSystemConfig},
             {"/get_status", HTTP_GET, handleGetStatus},
             {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
-            {"/get_warnings", HTTP_GET, handleGetWarnings},
-            {"/set_warnings", HTTP_POST, handleSetWarnings},
-            {"/get_deep_sleep", HTTP_GET, handleGetDeepSleep},
-            {"/set_deep_sleep", HTTP_POST, handleSetDeepSleep},
+            {"/set_option", HTTP_POST, handleSetOption},
             {"/get_event_log", HTTP_GET, handleGetEventLog},
             {"/restart", HTTP_POST, handleRestart},
             {"/ping", HTTP_GET, handlePing},
             {"/get_tsf_fallback", HTTP_GET, handleGetTsfFallback},
-            {"/set_tsf_fallback", HTTP_POST, handleSetTsfFallback},
             {"/trigger_tsf_snapshot", HTTP_POST, handleTriggerTsfSnapshot},
             {"/get_rds_clock", HTTP_GET, handleGetRdsClock},
-            {"/set_rds_clock", HTTP_POST, handleSetRdsClock},
             {"/get_rtc_crystal", HTTP_GET, handleGetRtcCrystal},
-            {"/set_rtc_crystal", HTTP_POST, handleSetRtcCrystal},
             {"/trigger_ntp_sync", HTTP_POST, handleTriggerNtpSync},
             {"/factory_reset", HTTP_POST, handleFactoryReset}};
-}
-
-void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) {
-
-    request->send(200, "application/json", getTsfStatusJson());
-}
-
-// Setzt den TSF-Fallback (Auftrag, kein WLAN-Neustart)
-void handleSetTsfFallback(AsyncWebServerRequest* request, const String& body) {
-
-    bool enabled;
-    if(!parseEnabledBody(request, body, enabled))
-        return;
-    g_stateCallback(STATE_CHANGE_TSF_FALLBACK, static_cast<void*>(&enabled));
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-// TSF-Snapshot als Auftrag (wird in loop() ausgeführt)
-void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String&) {
-
-    g_stateCallback(STATE_CHANGE_TSF_SNAPSHOT, nullptr);
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-void handleGetRdsClock(AsyncWebServerRequest* request, const String&) {
-
-    request->send(200, "application/json", getRdsStatusJson());
-}
-
-// Setzt die RDS-Uhrzeit (Auftrag, kein WLAN-Neustart)
-void handleSetRdsClock(AsyncWebServerRequest* request, const String& body) {
-
-    bool enabled;
-    if(!parseEnabledBody(request, body, enabled))
-        return;
-    g_stateCallback(STATE_CHANGE_RDS_CLOCK, static_cast<void*>(&enabled));
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-void handleGetRtcCrystal(AsyncWebServerRequest* request, const String&) {
-
-    request->send(200, "application/json", getRtcCrystalStatusJson());
-}
-
-// Setzt den RTC-Quarz (Auftrag); loop() speichert und startet danach verzögert neu
-// (RTC-Taktquelle nur beim Boot umschaltbar)
-void handleSetRtcCrystal(AsyncWebServerRequest* request, const String& body) {
-
-    bool enabled;
-    if(!parseEnabledBody(request, body, enabled))
-        return;
-    g_stateCallback(STATE_CHANGE_RTC_CRYSTAL, static_cast<void*>(&enabled));
-    request->send(200, "application/json", "{\"status\":\"restarting\"}");
 }
