@@ -9,10 +9,26 @@
 #include "types.h"
 #include <Arduino.h>
 
-static Preferences preferences;
+// Zugangsdaten-Standardwerte: eigene Werte aus include/secrets.h (gitignored), sonst die Vorlage
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#include "secrets.example.h"
+#endif
 
-// Standard-Passwort des eigenen Hotspots nach Erstinstallation/Werksreset
-static const char* DEFAULT_AP_PASSWORD = "Erdmaennchen";
+// Compile-Zeit-Prüfung der Standardwerte (sizeof eines String-Literals = Länge + 1).
+// Verhindert eine Firmware, deren Hotspot nach einem Werksreset nicht starten könnte.
+#define SECRET_LEN(s) (sizeof(s) - 1)
+#define SECRET_PW_OK(s) (SECRET_LEN(s) == 0 || (SECRET_LEN(s) >= 8 && SECRET_LEN(s) <= 63))
+static_assert(SECRET_LEN(SECRET_AP_SSID) >= 1 && SECRET_LEN(SECRET_AP_SSID) <= SSID_MAX_LEN,
+              "secrets.h: SECRET_AP_SSID muss 1-32 Zeichen lang sein");
+static_assert(SECRET_LEN(SECRET_EXT_SSID) <= SSID_MAX_LEN && SECRET_LEN(SECRET_EXT_SSID2) <= SSID_MAX_LEN,
+              "secrets.h: externe SSIDs duerfen hoechstens 32 Zeichen lang sein");
+static_assert(SECRET_PW_OK(SECRET_AP_PASSWORD) && SECRET_PW_OK(SECRET_EXT_PASSWORD)
+                  && SECRET_PW_OK(SECRET_EXT_PASSWORD2),
+              "secrets.h: Passwoerter muessen leer oder 8-63 Zeichen lang sein");
+
+static Preferences preferences;
 
 const char* PREF_NAMESPACE = "lisas_lamp_cfg";
 const char* CONFIG_KEY = "fullConfig";
@@ -143,16 +159,15 @@ bool ensureConfigExistsAndResetIfNot() {
 
 const char* SYSTEM_SETTINGS_KEY = "systemSettings";
 
-// Gibt Systemeinstellungen mit Standardwerten zurück (eigener AP, kein externes WLAN)
+// Gibt Systemeinstellungen mit Standardwerten zurück; Zugangsdaten aus secrets.h (siehe oben)
 SystemSettings getDefaultSystemSettings() {
     SystemSettings defaultSettings;
-    strcpy(defaultSettings.internalSSID, "Lizas-Lamp");
-    // Standard-Hotspot-Passwort (in README.md dokumentiert). Nur ASCII: WPA2 erlaubt keine Umlaute.
-    strcpy(defaultSettings.internalPW, DEFAULT_AP_PASSWORD);
-    strcpy(defaultSettings.externalSSID, "");
-    strcpy(defaultSettings.externalPW, "");
-    strcpy(defaultSettings.externalSSID2, "");
-    strcpy(defaultSettings.externalPW2, "");
+    strlcpy(defaultSettings.internalSSID, SECRET_AP_SSID, sizeof(defaultSettings.internalSSID));
+    strlcpy(defaultSettings.internalPW, SECRET_AP_PASSWORD, sizeof(defaultSettings.internalPW));
+    strlcpy(defaultSettings.externalSSID, SECRET_EXT_SSID, sizeof(defaultSettings.externalSSID));
+    strlcpy(defaultSettings.externalPW, SECRET_EXT_PASSWORD, sizeof(defaultSettings.externalPW));
+    strlcpy(defaultSettings.externalSSID2, SECRET_EXT_SSID2, sizeof(defaultSettings.externalSSID2));
+    strlcpy(defaultSettings.externalPW2, SECRET_EXT_PASSWORD2, sizeof(defaultSettings.externalPW2));
     defaultSettings.warningsEnabled = true;
     defaultSettings.deepSleepEnabled = true;
     defaultSettings.tsfFallbackEnabled = true;

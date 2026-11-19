@@ -7,3 +7,6 @@ svelte-ui/dist
 svelte-ui/node_modules
 data/app.js.gzip
 data/index.html.gzip
+# Zugangsdaten und rechnerspezifische Einstellungen (Vorlagen *.example.* sind eingecheckt)
+include/secrets.h
+platformio_override.ini

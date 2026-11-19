@@ -16,7 +16,31 @@ Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über ein
 - Der Standardwert gilt nach der Erstinstallation und nach einem **Werksreset**. Geräte, die schon vorher eingerichtet waren, behalten ihre gespeicherten Einstellungen (bisher: offener Hotspot ohne Passwort).
 - Passwort vergessen → Werksreset: In der Weboberfläche unter **Einstellungen → System** oder per **Boot-Taste** (siehe [doc/controls.md](doc/controls.md)).
 
+### Eigene Standard-Zugangsdaten (`include/secrets.h`)
+
+Die oben genannten Standardwerte stammen aus [include/secrets.example.h](include/secrets.example.h).
+Für eigene Werte, z. B. das Heim-WLAN, damit die Lampe es nach einem Werksreset sofort wieder kennt:
+
+```bash
+cp include/secrets.example.h include/secrets.h
+```
+
+Dann `include/secrets.h` bearbeiten. Die Datei steht in `.gitignore` und wird nie eingecheckt. Fehlt sie,
+wird automatisch die Vorlage verwendet. Ungültige Werte (Passwort nicht leer und kürzer als 8 Zeichen,
+SSID länger als 32 Zeichen) brechen den Build mit einer Fehlermeldung ab.
+
+> Wer `SECRET_AP_PASSWORD` ändert, sollte die Tabelle oben für sich nicht mehr als gültig ansehen. Sie
+> beschreibt die Werte der Vorlage.
+
 ## Bauen und Aufspielen
+
+Einmalig die rechnerspezifischen Ports eintragen (gitignored):
+
+```bash
+cp platformio_override.example.ini platformio_override.ini   # dann upload_port/monitor_port anpassen
+```
+
+Ohne diese Datei sucht PlatformIO den Port selbst.
 
 ```bash
 ./build.sh all      # UI bauen + Firmware kompilieren
