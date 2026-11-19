@@ -314,6 +314,12 @@ void tryReconnectSta() {
     }
 }
 
+// Startet den DNS-Server fürs Captive-Portal und den 1-min-Abschalttimer (nach dem AP-Start aufrufen)
+static void startCaptivePortal() {
+    dnsServer.start(53, "*", localIP);
+    s_wifiStopTimerMs = millis();
+}
+
 // Startet WiFi: withAP=true → APSTA (Nutzer-sichtbar, Weboberfläche erreichbar),
 // withAP=false → nur STA für automatischen NTP-Sync ohne sichtbaren Hotspot
 void startWifi(bool withAP) {
@@ -325,8 +331,7 @@ void startWifi(bool withAP) {
             serialPrint("Upgrading STA → APSTA");
             WiFi.mode(WIFI_MODE_APSTA);
             startAccessPoint("upgrade");
-            dnsServer.start(53, "*", localIP);
-            s_wifiStopTimerMs = millis();
+            startCaptivePortal();
             logEvent("AP activated (upgrade)");
         }
         return;
@@ -354,8 +359,7 @@ void startWifi(bool withAP) {
         serverStarted = true;
     }
     if(withAP) {
-        dnsServer.start(53, "*", localIP);
-        s_wifiStopTimerMs = millis();
+        startCaptivePortal();
         wifi_mode_t actualMode = WiFi.getMode();
         serialPrint("AP aktiv — SSID: '" + String(s->internalSSID) + "'  IP: " + WiFi.softAPIP().toString()
                     + "  mode=" + String(actualMode) + "  ch=" + String(s_wifiChannel));
