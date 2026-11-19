@@ -14,7 +14,7 @@ Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über ein
 - Das Passwort ist bewusst ohne Umlaut geschrieben („ae“ statt „ä“): WPA2 erlaubt nur ASCII-Zeichen, Umlaute funktionieren auf vielen Handys nicht.
 - Name und Passwort lassen sich in der Weboberfläche unter **Einstellungen → WLAN** ändern (Passwort 8–63 Zeichen oder per „Passwort entfernen“ offen).
 - Der Standardwert gilt nach der Erstinstallation und nach einem **Werksreset**. Geräte, die schon vorher eingerichtet waren, behalten ihre gespeicherten Einstellungen (bisher: offener Hotspot ohne Passwort).
-- Passwort vergessen → Werksreset: In der Weboberfläche unter **Einstellungen → System** oder per **Boot-Taste** (siehe [doc/controls.md](doc/controls.md)).
+- Passwort vergessen → Werksreset: In der Weboberfläche unter **Einstellungen → System** oder per **Boot-Taste** (siehe [doc/bedienung.md](doc/bedienung.md)).
 
 ### Eigene Standard-Zugangsdaten (`include/secrets.h`)
 
