@@ -2,6 +2,23 @@
 
 Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über einen eigenen WLAN-Hotspot.
 
+- **Drehknopf:** Helligkeit in 8 Stufen, kurzer Druck = Gute Nacht / Wecker aus, langer Druck = WLAN an
+- **Wecker:** bis zu 10 Wecker pro Wochentag, Licht wird langsam heller
+- **Uhrzeit:** NTP über das Heim-WLAN, ohne Internet per WLAN-Beacons (TSF) oder UKW-RDS
+- **Stromsparen:** Deep Sleep, wenn die Lampe aus ist; wacht rechtzeitig vor dem Wecker auf
+
+## Dokumentation
+
+| Thema | Datei |
+|---|---|
+| Bedienung (Drehknopf, Tasten, Status-LED) | [doc/bedienung.md](doc/bedienung.md) |
+| Lampenzustände und Übergänge | [doc/zustaende.md](doc/zustaende.md) |
+| Hardware und GPIO-Belegung | [doc/hardware.md](doc/hardware.md) |
+| WLAN, NTP, TSF- und RDS-Uhrzeit | [doc/wlan-und-zeit.md](doc/wlan-und-zeit.md) |
+| Architektur, Threads, HTTP-API | [doc/architektur.md](doc/architektur.md) |
+| Bauen, Aufspielen, UI-Entwicklung | [doc/build-und-deploy.md](doc/build-und-deploy.md) |
+| Änderungen | [CHANGELOG.md](CHANGELOG.md) |
+
 ## Hotspot und Zugangsdaten
 
 | | Standardwert |
@@ -51,7 +68,7 @@ Weitere Details, Mock-Modus und UI-Entwicklung: [doc/build-und-deploy.md](doc/bu
 
 ## TODO
 
-- **Einstellungen bei Firmware-Updates erhalten (S6):** Ändert sich durch ein Update die Größe von
+- **Einstellungen bei Firmware-Updates erhalten:** Ändert sich durch ein Update die Größe von
   `FullConfig` oder `SystemSettings` (`include/types.h`), werden beim nächsten Start **alle Einstellungen
   inkl. WLAN-Zugangsdaten und Hotspot-Passwort auf Standard zurückgesetzt** (`ensureStructExists` in
   `src/store.cpp`). Lösung: Versionsfeld in den gespeicherten Strukturen + Migration alter Versionen.
@@ -59,5 +76,9 @@ Weitere Details, Mock-Modus und UI-Entwicklung: [doc/build-und-deploy.md](doc/bu
 
 ## Entwicklung
 
-### Serieller Monitor
-- Probleme beim Wiederverbinden: diese Erweiterung verwenden: https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor
+- Serieller Monitor: `pio device monitor` (Log über UART0/TX = GPIO21, 115200 Baud).
+  Bei Problemen mit dem Wiederverbinden hilft die VS-Code-Erweiterung
+  [Serial Monitor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor).
+- Kommentare und Doku sind auf Deutsch. Pins nur in `include/pins.h`, Zugangsdaten nur in
+  `include/secrets.h`. Web-Handler führen nichts selbst aus, sondern legen Aufträge für `loop()` ab
+  (siehe [doc/architektur.md](doc/architektur.md)).

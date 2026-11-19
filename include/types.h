@@ -86,7 +86,7 @@ enum LampState {
     LAMP_STATE_ALARM       = 1,
     LAMP_STATE_GOOD_NIGHT  = 2,
     LAMP_STATE_ERROR       = 3, // Kurzer Hinweis: rot
-    LAMP_STATE_SUCCESS     = 4, // Temporärer Alert: grün
+    LAMP_STATE_SUCCESS     = 4, // Kurzer Hinweis: grün
     LAMP_STATE_WARNING     = 5, // Kurzer Hinweis: gelb
     LAMP_STATE_SLEEP       = 6, // Lampe aus, wartet auf Nutzer-Eingriff
     LAMP_STATE_CELEBRATION = 7,
