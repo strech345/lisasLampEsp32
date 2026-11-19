@@ -69,7 +69,7 @@ bool parseConfigJson(const String& jsonString, FullConfig& config, String* error
         tmp.color.b = v;
     }
 
-    if(!readIntRange(doc["colorMode"], tmp.colorMode, 0, 3, v)) return fail(error, "colorMode muss 0–3 sein.");
+    if(!readIntRange(doc["colorMode"], tmp.colorMode, 0, 4, v)) return fail(error, "colorMode muss 0–4 sein.");
     tmp.colorMode = v;
     if(!readIntRange(doc["animationMode"], tmp.animationMode, 0, 1, v)) return fail(error, "animationMode muss 0–1 sein.");
     tmp.animationMode = v;

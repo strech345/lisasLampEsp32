@@ -15,16 +15,18 @@
     return { r, g, b };
   }
 
+  // Reihenfolge = Anzeige; id = colorMode in der Firmware (3 bleibt "Eigene Farbe" für alte Configs)
   const colorModes = [
-    { id: 0, name: "Cool White", color: { r: 173, g: 216, b: 230 } },
-    { id: 1, name: "Neutral White", color: { r: 255, g: 255, b: 255 } },
-    { id: 2, name: "Warm White", color: { r: 255, g: 200, b: 150 } },
-    { id: 3, name: "Custom", color: null },
+    { id: 4, name: "Kerzenlicht", color: { r: 255, g: 140, b: 60 } },
+    { id: 2, name: "Warmweiß", color: { r: 255, g: 200, b: 150 } },
+    { id: 1, name: "Neutralweiß", color: { r: 255, g: 255, b: 255 } },
+    { id: 0, name: "Kaltweiß", color: { r: 173, g: 216, b: 230 } },
+    { id: 3, name: "Eigene Farbe", color: null },
   ];
 
   const animationModes = [
-    { id: 0, name: "Static" },
-    { id: 1, name: "Breathing" },
+    { id: 0, name: "Statisch" },
+    { id: 1, name: "Atmen" },
   ];
 
   $: colorHex = rgbToHex(
@@ -62,7 +64,7 @@
 
 <form>
   <div class="color-picker-container">
-    <label for="animationMode">Animation Mode:</label>
+    <label for="animationMode">Animation:</label>
     <select
       id="animationMode"
       value={selectedAnimationMode}
@@ -75,7 +77,7 @@
     </select>
     <!-- {#if selectedAnimationMode !== 0}
       <div class="speed-control">
-        <label for="animationSpeed">Speed:</label>
+        <label for="animationSpeed">Geschwindigkeit:</label>
         <input
           type="range"
           id="animationSpeed"
@@ -93,7 +95,7 @@
 
   <div class="color-picker-container">
     <div class="color-mode-group">
-      <label for="colorMode">Color Mode:</label>
+      <label for="colorMode">Lichtfarbe:</label>
       <select
         id="colorMode"
         value={selectedMode}

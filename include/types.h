@@ -25,7 +25,7 @@ struct Alarm {
 struct FullConfig {
     RGB color;
     byte brightnessMode;
-    byte colorMode;     // 0=Kaltweiß, 1=Neutralweiß, 2=Warmweiß, 3=Benutzerdefiniert
+    byte colorMode;     // 0=Kaltweiß, 1=Neutralweiß, 2=Warmweiß, 3=Benutzerdefiniert, 4=Kerzenlicht
     byte animationMode; // 0=Statisch, 1=Atmung
     Alarm alarms[MAX_ALARMS];
     uint16_t goodNightDuration; // Dauer Gute-Nacht-Modus in Minuten

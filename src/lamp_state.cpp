@@ -40,19 +40,26 @@ void checkAndApplyColorMode(const FullConfig& config) {
     RGB colorToApply;
     String modeName;
 
+    // Weißtöne für RGBW-LEDs, Format 0xWWRRGGBB (WW = zusätzliche weiße LED).
+    // Die weiße LED dominiert stark; deutliche Unterschiede entstehen nur, wenn sie für warme/kalte
+    // Töne zurückgenommen und Farbe zugemischt wird (statt nur etwas Farbe obendrauf).
     uint32_t colorHex = 0;
     switch(config.colorMode) {
-    case 0:                    // Kaltweiß
-        colorHex = 0xFF000080;
+    case 0: // Kaltweiß (~6000 K): weiße LED etwas reduziert, Blau dazu
+        colorHex = 0xC00000A0;
         modeName = "Cool White";
         break;
-    case 1:                    // Neutralweiß
-        colorHex = 0xFF503000;
+    case 1: // Neutralweiß (~4000 K): nur die weiße LED
+        colorHex = 0xFF000000;
         modeName = "Neutral White";
         break;
-    case 2:                    // Warmweiß
-        colorHex = 0xFF804000;
+    case 2: // Warmweiß (~2700 K): weiße LED stark reduziert, kräftig Bernstein (Rot + etwas Grün)
+        colorHex = 0x50FF6000;
         modeName = "Warm White";
+        break;
+    case 4: // Kerzenlicht (~2200 K): weiße LED fast aus, Rot mit wenig Grün
+        colorHex = 0x18FF3800;
+        modeName = "Candle";
         break;
     case 3: // Benutzerdefinierte Farbe
         colorToApply = config.color;
