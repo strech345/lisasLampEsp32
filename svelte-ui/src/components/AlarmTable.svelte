@@ -22,13 +22,17 @@
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
 
-  // Heutiges Datum laut Lampenuhr; ohne gültige Uhrzeit (z. B. ohne Internet) der 1.1.2026
-  async function lampToday() {
+  // Vorschlag für einen neuen Termin: Lampenuhr + 1 Stunde (Datum und Uhrzeit), damit er nicht
+  // sofort als "vorbei" gilt; ohne gültige Uhrzeit (z. B. ohne Internet) der 1.1.2026 um 8:00
+  async function lampNowPlusHour() {
     try {
       const status = await getJson("/get_status");
-      if (status.systemTime >= 1577836800) return isoDate(new Date(status.systemTime * 1000));
+      if (status.systemTime >= 1577836800) {
+        const d = new Date((status.systemTime + 3600) * 1000);
+        return { date: isoDate(d), hour: d.getHours(), minute: d.getMinutes() };
+      }
     } catch {}
-    return "2026-01-01";
+    return { date: "2026-01-01", hour: 8, minute: 0 };
   }
 
   // Wochentag gewählt — oder "Datum": dann wird der Eintrag dauerhaft ein einmaliger Termin
@@ -36,16 +40,20 @@
   async function handleDayChange(index, event) {
     const current = $configStore.alarms[index];
     if (event.target.value === "date") {
-      const date = await lampToday();
-      configStore.updateAlarm(index, { ...current, once: true, day: 0, date });
+      const when = await lampNowPlusHour();
+      configStore.updateAlarm(index, { ...current, once: true, day: 0, ...when });
     } else {
       configStore.updateAlarm(index, { ...current, day: parseInt(event.target.value) });
     }
   }
 
-  // Datum eines einmaligen Weckers geändert
+  // Datum eines einmaligen Weckers geändert; ein geleertes Feld wird auf den gespeicherten Wert
+  // zurückgesetzt (Datum ist Pflicht)
   function handleDateChange(index, event) {
-    if (!event.target.value) return;
+    if (!event.target.value) {
+      event.target.value = $configStore.alarms[index].date;
+      return;
+    }
     const alarm = { ...$configStore.alarms[index], date: event.target.value };
     configStore.updateAlarm(index, alarm);
   }
@@ -57,7 +65,13 @@
     return new Date(y, m - 1, d, alarm.hour, alarm.minute) < new Date();
   }
 
+  // Uhrzeit geändert; ein geleertes Feld wird auf den gespeicherten Wert zurückgesetzt (Pflicht)
   function handleTimeChange(index, event) {
+    const current = $configStore.alarms[index];
+    if (!/^\d{1,2}:\d{2}/.test(event.target.value)) {
+      event.target.value = `${pad2(current.hour)}:${pad2(current.minute)}`;
+      return;
+    }
     const [hour, minute] = event.target.value.split(':').map(x => parseInt(x) || 0);
     const alarm = { ...$configStore.alarms[index], hour, minute };
     configStore.updateAlarm(index, alarm);
@@ -94,9 +108,11 @@
       class:inactive={!alarm.active || isPast(alarm)}
       title={isPast(alarm) ? "Termin ist vorbei" : ""}
     >
+      <!-- Abgelaufene Termine: Felder gesperrt, nur noch löschbar -->
       <input
         type="checkbox"
         role="switch"
+        disabled={isPast(alarm)}
         aria-label="Wecker {alarm.index + 1} aktiv"
         checked={alarm.active}
         on:change={(e) => handleActiveChange(alarm.index, e)}
@@ -105,6 +121,8 @@
       {#if alarm.once}
         <input
           type="date"
+          required
+          disabled={isPast(alarm)}
           aria-label="Datum Wecker {alarm.index + 1}"
           value={alarm.date}
           on:change={(e) => handleDateChange(alarm.index, e)}
@@ -123,6 +141,8 @@
       {/if}
       <input
         type="time"
+        required
+        disabled={isPast(alarm)}
         aria-label="Uhrzeit Wecker {alarm.index + 1}"
         value="{pad2(alarm.hour)}:{pad2(alarm.minute)}"
         on:change={(e) => handleTimeChange(alarm.index, e)}
