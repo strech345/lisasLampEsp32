@@ -175,6 +175,7 @@ SystemSettings getDefaultSystemSettings() {
     defaultSettings.rdsLastChannel = 0;
     defaultSettings.rtcCrystalEnabled = false;
     defaultSettings.rtcCrystalAvailable = false;
+    defaultSettings.ledCount = DEFAULT_LED_COUNT;
     return defaultSettings;
 }
 
@@ -283,4 +284,7 @@ void loadSystemSettingsOrDefault(SystemSettings& settings) {
         serialPrint("Using default system settings");
         settings = getDefaultSystemSettings();
     }
+    // Plausibilisieren (z. B. nach Speicherfehler)
+    if(settings.ledCount < 1 || settings.ledCount > MAX_LED_COUNT)
+        settings.ledCount = DEFAULT_LED_COUNT;
 }

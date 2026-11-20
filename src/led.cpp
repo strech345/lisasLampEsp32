@@ -1,5 +1,5 @@
 // LED-Steuerung — Implementierung
-// WS2812FX auf PIN_LED_STRIP (5 RGBW-Pixel); Status-LED auf PIN_STATUS_LED (invertierte Logik).
+// WS2812FX auf PIN_LED_STRIP (RGBW, Anzahl aus SystemSettings); Status-LED auf PIN_STATUS_LED (invertierte Logik).
 // Pins siehe include/pins.h.
 #include <Arduino.h>
 #include <WS2812FX.h>
@@ -18,22 +18,40 @@ struct LedState {
 static unsigned long s_flashEndMs = 0; // Zeitpunkt wann der Flash-Effekt endet (0 = kein Flash)
 static LedState      s_preFlashState;  // Gespeicherter Zustand vor dem Flash
 
-#define LED_COUNT    5
-
-WS2812FX ws2812fx = WS2812FX(LED_COUNT, PIN_LED_STRIP, NEO_GRBW + NEO_KHZ800);
+// Startlänge = Maximum; die tatsächliche Anzahl setzt ledInit()/setLedCount() per setLength()
+WS2812FX ws2812fx = WS2812FX(MAX_LED_COUNT, PIN_LED_STRIP, NEO_GRBW + NEO_KHZ800);
+static uint8_t s_ledCount = DEFAULT_LED_COUNT; // aktuell angesteuerte Anzahl
 
 // Interne Hilfsfunktion — setzt den PWM-Helligkeitswert (0–255)
 static void applyBrightness(uint8_t brightness) {
     ws2812fx.setBrightness(brightness);
 }
 
-// Initialisiert LEDs mit Startfarbe und startet den Animationsmotor
-void ledInit() {
+// Initialisiert LEDs (ledCount Pixel) mit Startfarbe und startet den Animationsmotor
+void ledInit(uint8_t ledCount) {
     statusLedInit();
     ws2812fx.init();
+    // Erst alle möglichen Pixel löschen (falls vorher mehr LEDs aktiv waren), dann Länge setzen
+    ws2812fx.clear();
+    ws2812fx.show();
+    s_ledCount = ledCount;
+    ws2812fx.setLength(ledCount);
     ws2812fx.setSpeed(200);
     ws2812fx.start();
     ws2812fx.setColor(0xFFC896);
+}
+
+// Ändert die Anzahl der LEDs sofort (1–MAX_LED_COUNT). Vorher wird der ganze Streifen gelöscht,
+// sonst würden wegfallende Pixel mit der letzten Farbe weiterleuchten.
+void setLedCount(uint8_t count) {
+    if(count < 1 || count > MAX_LED_COUNT || count == s_ledCount)
+        return;
+    ws2812fx.setLength(MAX_LED_COUNT);
+    ws2812fx.clear();
+    ws2812fx.show();
+    ws2812fx.setLength(count);
+    s_ledCount = count;
+    ws2812fx.trigger(); // Effekt mit neuer Länge sofort neu zeichnen
 }
 
 // Muss in der Hauptschleife aufgerufen werden: stellt nach einem Flash den alten Zustand wieder her

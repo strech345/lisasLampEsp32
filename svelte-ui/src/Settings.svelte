@@ -21,6 +21,8 @@
 
   let warningsEnabled = true;
   let deepSleepEnabled = true;
+  let ledCount = 4;        // Anzahl der LEDs im Streifen
+  const MAX_LED_COUNT = 16; // muss zur Firmware passen (include/types.h)
   let tsfFallbackEnabled = true;
   let tsfStatus = null;
   let rdsClockEnabled = false;
@@ -77,8 +79,27 @@
       const s = await getJson("/get_system_config");
       warningsEnabled = s.warningsEnabled;
       deepSleepEnabled = s.deepSleepEnabled;
+      if (s.ledCount) ledCount = s.ledCount;
     } catch (e) {
       showError("Einstellungen konnten nicht geladen werden", e);
+    }
+  }
+
+  // Speichert die LED-Anzahl (wirkt sofort); ungültige Eingaben werden zurückgesetzt
+  async function handleLedCountChange(event) {
+    const value = parseInt(event.target.value, 10);
+    if (!Number.isInteger(value) || value < 1 || value > MAX_LED_COUNT) {
+      messageStore.show("error", `Anzahl LEDs muss zwischen 1 und ${MAX_LED_COUNT} liegen.`);
+      loadSwitches();
+      return;
+    }
+    try {
+      await postJson("/set_led_count", { count: value });
+      ledCount = value;
+      messageStore.show("success", `Anzahl LEDs: ${value}`);
+    } catch (e) {
+      showError("Speichern fehlgeschlagen", e);
+      loadSwitches();
     }
   }
 
@@ -532,6 +553,13 @@
           </div>
         {/if}
 
+        <div class="group led-count">
+          <label for="ledCount">Anzahl LEDs</label>
+          <input id="ledCount" type="number" min="1" max={MAX_LED_COUNT} value={ledCount}
+            on:change={handleLedCountChange} />
+          <small>Wirkt sofort.</small>
+        </div>
+
         <div class="acc-actions group">
           <button class="btn-small btn-danger" type="button" disabled={restarting} on:click={handleFactoryReset}>
             {restarting ? "Wird zurückgesetzt…" : "Werkseinstellungen"}
@@ -784,5 +812,8 @@
     margin-top: 0.5rem;
     font-size: 0.75rem;
     color: var(--pico-muted-color, #888);
+  }
+  .led-count input[type="number"] {
+    width: 80px;
   }
 </style>

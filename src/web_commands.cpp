@@ -11,6 +11,7 @@
 #include "debug_utils.h"
 #include "event_log.h"
 #include "lamp_state.h"
+#include "led.h"
 #include "store.h"
 #include "tsf_clock.h"
 #include "wifi_controller.h"
@@ -33,6 +34,8 @@ struct PendingCommands {
     bool hasTsf = false, tsf = false;
     bool hasRds = false, rds = false;
     bool hasRtc = false, rtc = false;
+    bool hasLedCount = false;
+    uint8_t ledCount = 0;
     bool ntpResync = false;
     bool tsfSnapshot = false;
     bool restart = false;
@@ -86,6 +89,10 @@ void queueWebCommand(StateChangeType type, void* data) {
         s_pending.rtc = *static_cast<bool*>(data);
         s_pending.hasRtc = true;
         break;
+    case STATE_CHANGE_LED_COUNT:
+        s_pending.ledCount = *static_cast<uint8_t*>(data);
+        s_pending.hasLedCount = true;
+        break;
     case STATE_CHANGE_NTP_RESYNC:
         s_pending.ntpResync = true;
         break;
@@ -109,7 +116,7 @@ void processWebCommands() {
     PendingCommands cmd;
     xSemaphoreTake(s_pendingMutex, portMAX_DELAY);
     bool any = s_pending.hasConfig || s_pending.hasSystem || s_pending.hasWarnings || s_pending.hasDeepSleep ||
-               s_pending.hasTsf || s_pending.hasRds || s_pending.hasRtc || s_pending.ntpResync ||
+               s_pending.hasTsf || s_pending.hasRds || s_pending.hasRtc || s_pending.hasLedCount || s_pending.ntpResync ||
                s_pending.tsfSnapshot || s_pending.restart || s_pending.factoryReset;
     if(any) {
         cmd = s_pending;
@@ -174,6 +181,15 @@ void processWebCommands() {
             s_systemSettings->rdsClockEnabled = cmd.rds;
             saveSystemSettings(*s_systemSettings);
             logEvent(cmd.rds ? "RDS clock enabled" : "RDS clock disabled");
+        }
+        if(cmd.hasLedCount) {
+            // LED-Anzahl sofort anwenden und speichern
+            setLedCount(cmd.ledCount);
+            s_systemSettings->ledCount = cmd.ledCount;
+            saveSystemSettings(*s_systemSettings);
+            char buf[40];
+            snprintf(buf, sizeof(buf), "LED-Anzahl: %u", cmd.ledCount);
+            logEvent(buf);
         }
         if(cmd.hasRtc) {
             // Taktquelle ist nur beim Boot umschaltbar → speichern und verzögert neu starten

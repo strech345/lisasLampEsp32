@@ -1,8 +1,10 @@
-// LED-Steuerung: WS2812FX-Wrapper für 5 RGBW-LEDs mit Helligkeitsstufen,
+// LED-Steuerung: WS2812FX-Wrapper für RGBW-LEDs (Anzahl einstellbar) mit Helligkeitsstufen,
 // Flash-Effekten und Status-LED.
 #include <Arduino.h>
+#include "types.h"
 
-void ledInit();
+void ledInit(uint8_t ledCount);     // ledCount = Anzahl der LEDs (SystemSettings::ledCount)
+void setLedCount(uint8_t count);    // Anzahl sofort ändern (1–MAX_LED_COUNT)
 void ledUpdate();           // Muss in loop() aufgerufen werden
 void setLedColor(uint32_t color);                             // eine Farbe für alle Stufen
 void setLedColors(uint32_t baseColor, uint32_t boostColor);    // Normal- und Boost-Farbe (Stufe 7)

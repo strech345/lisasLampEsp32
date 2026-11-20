@@ -49,6 +49,11 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 - **Abbrechen:** Kurzer Druck während der Animation schaltet Hotspot und Animation aus, sonst nichts.
   Drehen bricht ebenfalls ab und ändert zusätzlich die Helligkeit. Ein verbundenes Heimnetz bleibt.
 
+## Einstellungen in der Weboberfläche
+
+Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;
+die Änderung wirkt sofort. Weitere Einstellungen: WLAN, Energie & Uhr, Warnungen, Ereignisprotokoll.
+
 ## Boot-Taste
 
 | Druck | Wirkung |

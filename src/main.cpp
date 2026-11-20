@@ -62,15 +62,15 @@ void setup() {
     // --- Licht so früh wie möglich: Config laden, Aufwachgrund, LEDs setzen ---
     // (vor WLAN-Init — Kanal-Scan und AP-Start dauern Sekunden; Timer-Wakeup: LEDs bleiben aus)
     loadFullConfigOrDefault(appConfig);
+    loadSystemSettingsOrDefault(systemSettings); // enthält die LED-Anzahl
     bool timerWakeup = applyWakeupReason();
-    ledInit();
+    ledInit(systemSettings.ledCount);
     checkAndApplyColorMode(appConfig);
     setBrightnessLevel(timerWakeup ? 0 : appConfig.brightnessMode);
     serialPrint("Licht gesetzt nach " + String(millis()) + " ms");
 
-    // --- Uhr und Systemeinstellungen ---
+    // --- Uhr und RTC-Quarz ---
     initClock(); // Zeitzone + Uhrzeit aus NVS, vor den Weckern
-    loadSystemSettingsOrDefault(systemSettings);
     initRtcCrystal(&systemSettings); // Taktquelle nur beim Boot umschaltbar
 
     // --- Module mit Zeigern auf den globalen Zustand ---

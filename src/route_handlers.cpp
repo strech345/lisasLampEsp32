@@ -70,6 +70,27 @@ static void handleSetOption(AsyncWebServerRequest* request, const String& body) 
     sendError(request, 400, "Unbekannte Option.");
 }
 
+// POST /set_led_count {"count": 1–MAX_LED_COUNT}: Anzahl der LEDs (sofort wirksam, gespeichert)
+static void handleSetLedCount(AsyncWebServerRequest* request, const String& body) {
+    if(g_stateCallback == nullptr) {
+        sendError(request, 500, "Kein Callback registriert.");
+        return;
+    }
+    JsonDocument doc;
+    if(body.isEmpty() || deserializeJson(doc, body) || !doc["count"].is<int>()) {
+        sendError(request, 400, "Ungültiges JSON: count (Zahl) erforderlich.");
+        return;
+    }
+    int count = doc["count"];
+    if(count < 1 || count > MAX_LED_COUNT) {
+        sendError(request, 400, "LED-Anzahl muss 1–16 sein.");
+        return;
+    }
+    uint8_t value = (uint8_t)count;
+    g_stateCallback(STATE_CHANGE_LED_COUNT, static_cast<void*>(&value)); // Callback kopiert den Wert
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 // Sendet eine gzip-komprimierte Datei aus LittleFS mit korrekten Cache-Headern
 static void sendGzipFile(AsyncWebServerRequest* request, const char* path, const char* mimeType) {
     if(!LittleFS.exists(path)) {
@@ -300,6 +321,7 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/get_status", HTTP_GET, handleGetStatus},
             {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
             {"/set_option", HTTP_POST, handleSetOption},
+            {"/set_led_count", HTTP_POST, handleSetLedCount},
             {"/get_event_log", HTTP_GET, handleGetEventLog},
             {"/restart", HTTP_POST, handleRestart},
             {"/ping", HTTP_GET, handlePing},

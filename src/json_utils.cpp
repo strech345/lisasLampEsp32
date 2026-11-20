@@ -139,6 +139,7 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     doc["tsfFallbackEnabled"] = systemSettings.tsfFallbackEnabled;
     doc["rdsClockEnabled"]  = systemSettings.rdsClockEnabled;
     doc["rtcCrystalEnabled"] = systemSettings.rtcCrystalEnabled;
+    doc["ledCount"]         = systemSettings.ledCount;
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     return jsonResponse;

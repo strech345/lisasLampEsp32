@@ -21,6 +21,10 @@ struct Alarm {
 
 #define MAX_ALARMS 10
 
+// Anzahl der LEDs im Streifen (in der Weboberfläche einstellbar, gespeichert in SystemSettings)
+#define DEFAULT_LED_COUNT 4
+#define MAX_LED_COUNT 16 // Strombedarf: bis ca. 80 mA pro RGBW-LED bei voller Helligkeit
+
 // Vollständige Lampen-Konfiguration (wird im Flash gespeichert)
 struct FullConfig {
     RGB color;
@@ -52,6 +56,7 @@ struct SystemSettings {
     uint16_t rdsLastChannel; // Frequenz in 10kHz-Einheiten, z.B. 1011 = 101.1 MHz; 0 = nicht gesetzt
     bool rtcCrystalEnabled;  // Benutzer-Einstellung: externen 32-kHz-Quarz verwenden
     bool rtcCrystalAvailable; // Letzter Boot-Befund: Quarz war messbar (wird intern gesetzt)
+    uint8_t ledCount;         // Anzahl der LEDs im Streifen (1–MAX_LED_COUNT)
 };
 
 #define MAX_TSF_ENTRIES 16
@@ -77,7 +82,8 @@ enum StateChangeType {
     STATE_CHANGE_NTP_RESYNC,    // (nullptr) NTP-Resync auslösen
     STATE_CHANGE_TSF_SNAPSHOT,  // (nullptr) TSF-Snapshot auslösen
     STATE_CHANGE_RESTART,       // (nullptr) verzögerter Neustart
-    STATE_CHANGE_FACTORY_RESET  // (nullptr) verzögerter Werksreset + Neustart
+    STATE_CHANGE_FACTORY_RESET, // (nullptr) verzögerter Werksreset + Neustart
+    STATE_CHANGE_LED_COUNT      // (uint8_t*) Anzahl der LEDs, wird sofort angewendet und gespeichert
 };
 
 // Aktueller Betriebszustand der Lampe — bestimmt welcher LED-Effekt aktiv ist

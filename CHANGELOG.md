@@ -11,6 +11,8 @@
 - **Hotspot schaltet nach 10 min ohne Bedienung ab**, auch wenn ein Gerät verbunden bleibt.
 - **Hotspot-Animation:** blauer Komet, solange der Hotspot auf ein Gerät wartet; Vorrang vor dem
   Wecker; Drücken/Drehen bricht den Hotspot ab.
+- **LED-Anzahl** in der Weboberfläche einstellbar (1–16, Standard 4), gespeichert in `SystemSettings`.
+  Dieses Update setzt die Systemeinstellungen einmalig zurück (Strukturgröße geändert).
 - **Ereignisprotokoll** lieferte ungültiges JSON (ArduinoJson 7 leert den Ziel-String) — behoben.
 - **`main.cpp` aufgeräumt** (373 → 121 Zeilen, Auftragsablage in `web_commands.cpp`); Zeitzone und
   gespeicherte Uhrzeit werden jetzt vor den Weckern gesetzt.

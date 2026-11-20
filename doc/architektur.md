@@ -59,11 +59,12 @@ aus `loop()` angefasst.
 
 ## Boot (`setup()`)
 
-1. `debugInit()` (Serial über UART0), LittleFS, `loadFullConfigOrDefault()`
+1. `debugInit()` (Serial über UART0), LittleFS, `loadFullConfigOrDefault()`,
+   `loadSystemSettingsOrDefault()` (enthält die LED-Anzahl)
 2. **Aufwachgrund** (`applyWakeupReason()`): Taster → Normalbetrieb mit Helligkeit 1; Timer → Sleep
-3. **LEDs sofort** setzen (Farbe, Helligkeit; bei Timer-Wakeup aus) — vor allem Langsamen
+3. **LEDs sofort** setzen (Anzahl, Farbe, Helligkeit; bei Timer-Wakeup aus) — vor allem Langsamen
 4. `initClock()`: Zeitzone setzen, Uhrzeit aus NVS falls leer — vor den Weckern
-5. `loadSystemSettingsOrDefault()`, RTC-Quarz prüfen (Taktquelle nur beim Boot umschaltbar)
+5. RTC-Quarz prüfen (Taktquelle nur beim Boot umschaltbar)
 6. Module initialisieren (Zeiger auf den globalen Zustand), Wecker übernehmen
 7. Auftragsablage, Routen, WLAN-Controller (Kanal aus RTC-Speicher oder Scan), `startWifi(false)` —
    nur Heim-WLAN, kein Hotspot (der kommt nur per langem Tastendruck)
@@ -99,7 +100,7 @@ checkToGoSleep()           Deep Sleep prüfen (alle 10 s)
 | Schlüssel | Inhalt |
 |---|---|
 | `fullConfig` | `FullConfig`: Farbe, Modi, Helligkeit, 10 Wecker, Dauern |
-| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz |
+| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz, LED-Anzahl |
 | `tsfData` | bis zu 16 TSF-Referenzen |
 | `lastKnownTime` | letzte gültige Uhrzeit (alle 30 min bei gültigem NTP) |
 
@@ -120,8 +121,9 @@ POSTs ohne Nutzdaten senden `{}`.
 | `/ping` | GET | `pong` (Verbindungsprüfung der UI) |
 | `/get_config` | GET | `FullConfig` als JSON |
 | `/set_config` | POST | Teil-Update der `FullConfig`; fehlende Felder bleiben, `brightnessMode` wird ignoriert (Drehknopf ist Master), Wertebereiche geprüft |
-| `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`) und alle Schalter |
+| `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`), alle Schalter und `ledCount` |
 | `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32, Passwort leer (= unverändert) oder 8–63; `clearInternalPW`/`clearExternalPW`/`clearExternalPW2` entfernen ein Passwort |
+| `/set_led_count` | POST | `{"count": 1–16}` → Anzahl der LEDs, sofort wirksam (in `SystemSettings`) |
 | `/set_option` | POST | `{"option": "warnings\|deepSleep\|tsfFallback\|rdsClock\|rtcCrystal", "enabled": bool}`; `rtcCrystal` startet neu |
 | `/get_status` | GET | Uhrzeit, NTP-Status, externe WLAN-Verbindung |
 | `/get_event_log` | GET | Ereignisprotokoll (neueste zuerst) |

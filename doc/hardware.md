@@ -47,7 +47,7 @@ Stromversorgung der Peripherie:
 | 7 | `PIN_RDS_POWER` | Modul-Strom | RDA5807M | OUT | HIGH = an, LOW = stromlos |
 | 8 | `PIN_STATUS_LED` | Status-LED | Onboard (blau) | OUT | invertiert (LOW = an) |
 | 9 | `PIN_BOOT_BUTTON` | Boot-Taster | Onboard | IN | gedrückt = LOW; 1 s halten = Werksreset |
-| 10 | `PIN_LED_STRIP` | LED-Daten | WS2812B (5 × GRBW) | OUT | 300–500 Ω Serienwiderstand empfohlen |
+| 10 | `PIN_LED_STRIP` | LED-Daten | WS2812B GRBW (Anzahl einstellbar, Standard 4) | OUT | 300–500 Ω Serienwiderstand empfohlen |
 | 18–19 | — | USB D−/D+ | USB-JTAG | BIDIR | Aufspielen; im Deep Sleep abgeschaltet |
 | 20 | — | RX0 | UART0 | IN | frei |
 | 21 | — | TX0 | UART0 | OUT | serielles Log (115200 Baud, z. B. FTDI-Adapter) |

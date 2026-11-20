@@ -33,6 +33,7 @@ export const mockSystemSettings = {
   tsfFallbackEnabled: true,
   rdsClockEnabled: false,
   rtcCrystalEnabled: false,
+  ledCount: 4,
 };
 
 // Check if mocking is enabled via URL parameter
