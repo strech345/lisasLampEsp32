@@ -156,10 +156,10 @@
   /* Raster: Schalter | Tag/Datum | Uhrzeit | ×  — die beiden mittleren Spalten sind exakt gleich breit */
   .alarm-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: var(--row-cols);
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.4rem;
+    gap: var(--row-gap);
+    padding: var(--row-pad);
     border-radius: 6px;
     border: 1px solid transparent;
   }
@@ -170,7 +170,7 @@
   }
 
   input[type="checkbox"] {
-    flex: 0 0 auto;
+    justify-self: start;
     margin: 0 !important;
   }
 
@@ -198,10 +198,6 @@
 
 
   @media (max-width: 420px) {
-    .alarm-row {
-      gap: 0.25rem;
-      padding: 0.25rem 0.3rem;
-    }
     select,
     input[type="time"],
     input[type="date"] {

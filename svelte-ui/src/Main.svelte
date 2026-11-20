@@ -181,11 +181,22 @@
     justify-content: center !important;
   }
 
+  @media (max-width: 420px) {
+    :global(:root) {
+      --row-gap: 0.25rem;
+      --row-pad: 0.25rem 0.3rem;
+    }
+  }
+
   :global(:root) {
     --pico-form-element-spacing-vertical: 0.35rem;
     --pico-form-element-spacing-horizontal: 0.75rem;
     --pico-font-size: 1rem;
     --control-h: 2.4rem; /* einheitliche Feldhöhe in Licht-Sets, Weckern und Dauer */
+    /* Gemeinsames Zeilenraster (Sets, Wecker, Dauer): Vorspalte | Feld | Feld | Knopf/Einheit */
+    --row-cols: 2.5rem minmax(0, 1fr) minmax(0, 1fr) 2rem;
+    --row-gap: 0.35rem;
+    --row-pad: 0.3rem 0.4rem;
   }
 
   /* Quadratischer Icon-Knopf (z. B. Löschen) — gleiche Größe und Farbe wie der Einstellungs-Knopf */
@@ -278,14 +289,18 @@
     margin-bottom: 0.75rem;
   }
 
+  /* Gleiches Raster wie die Wecker-Zeilen: Bezeichnung über Vorspalte + 1. Feldspalte, das Eingabe-
+     feld steht genau unter der Uhrzeit der Wecker, "min" in der letzten Spalte */
   .duration-grid {
     display: grid;
-    grid-template-columns: max-content 5.5rem max-content;
+    grid-template-columns: var(--row-cols);
     align-items: center;
-    gap: 0.5rem 0.75rem;
+    gap: 0.5rem var(--row-gap);
+    padding: var(--row-pad);
   }
 
   .duration-grid label {
+    grid-column: 1 / 3;
     margin-bottom: 0;
     white-space: nowrap;
   }

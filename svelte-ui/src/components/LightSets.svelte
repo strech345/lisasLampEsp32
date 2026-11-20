@@ -49,6 +49,8 @@
         on:change={() => configStore.setActiveSet(i)}
       />
 
+      <!-- Lichtfarbe (+ Farbfeld bei "Eigene Farbe") in einer Spalte → Animation bleibt überall gleich breit -->
+      <div class="color-cell">
       <select
         aria-label="Lichtfarbe Set {i + 1}"
         value={set.colorMode}
@@ -68,6 +70,7 @@
           on:change={(e) => configStore.updateSet(i, { color: hexToRgb(e.target.value) })}
         />
       {/if}
+      </div>
 
       <select
         aria-label="Animation Set {i + 1}"
@@ -115,11 +118,11 @@
   /* Ein Set = immer genau eine Zeile, auch bei schmalen Bildschirmen: die beiden Auswahllisten
      teilen sich den Platz und dürfen schrumpfen, alles andere hat eine feste kleine Breite */
   .set-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--row-cols);
     align-items: center;
-    flex-wrap: nowrap;
-    gap: 0.35rem;
-    padding: 0.3rem 0.4rem;
+    gap: var(--row-gap);
+    padding: var(--row-pad);
     border-radius: 6px;
     border: 1px solid transparent;
   }
@@ -129,14 +132,21 @@
   }
 
   input[type="radio"] {
-    flex: 0 0 auto;
+    justify-self: start;
     margin: 0 !important;
+  }
+
+  .color-cell {
+    display: flex;
+    gap: var(--row-gap);
+    min-width: 0;
   }
 
   select {
     flex: 1 1 0;
     min-width: 0;
-    width: auto;
+    width: 100% !important;
+    box-sizing: border-box;
     margin: 0 !important;
     padding-left: 0.5rem !important;
     padding-right: 1.6rem !important;
@@ -164,10 +174,6 @@
 
   /* Schmale Bildschirme: kleinere Schrift und weniger Platz für den Pfeil → mehr Text sichtbar */
   @media (max-width: 420px) {
-    .set-row {
-      gap: 0.25rem;
-      padding: 0.25rem 0.3rem;
-    }
     select {
       font-size: 0.85rem;
       padding-left: 0.35rem !important;
