@@ -111,6 +111,18 @@ bedienbar); kommt die Verbindung zurück, wird die Konfiguration neu geladen.
 Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;
 die Änderung wirkt sofort. Weitere Einstellungen: WLAN, Energie & Uhr, Warnungen, Ereignisprotokoll.
 
+**WLAN:** `******` im Passwortfeld steht für das gespeicherte Passwort. Wer das Feld leert, löscht das
+Passwort beim Speichern (Hotspot dann offen). Hinter den Feldern für externes WLAN und Fallback:
+
+| Knopf | Wirkung |
+|---|---|
+| Lupe (hinter SSID) | Lampe sucht WLANs in der Nähe; Auswahlliste mit Signalstärke und 🔒, Auswahl übernimmt die SSID |
+| Haken (hinter Passwort) | Lampe verbindet sich testweise mit SSID + Passwort aus den Feldern (auch ungespeichert); Meldung: erfolgreich, Passwort falsch, Netz nicht gefunden oder Zeitüberschreitung |
+
+Suche und Test dauern einige Sekunden (Test höchstens 15 s). Danach stellt die Lampe ihre gespeicherte
+Verbindung wieder her. Während des Tests kann der Hotspot kurz den Kanal wechseln; das Handy verbindet
+sich dann meist von selbst neu.
+
 **Persönlich:** Name der Lampe (1–20 Zeichen, erscheint im Seitentitel, z. B. „Liza's Lampe“) und bis
 zu 8 **Party-Tage** (Tag + Monat). An diesen Tagen startet um 7:00 der Feier-Modus und die Hauptseite
 zeigt Ballons. Speichern über den eigenen Knopf; das WLAN wird dabei nicht neu gestartet. Standardwerte

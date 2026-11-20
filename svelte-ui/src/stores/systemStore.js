@@ -27,10 +27,6 @@ const defaultSystemSettings = {
   externalPW: "",
   externalSSID2: "",
   externalPW2: "",
-  // Optionale "Passwort entfernen"-Flags (werden nur beim Speichern gesendet)
-  clearInternalPW: false,
-  clearExternalPW: false,
-  clearExternalPW2: false,
 };
 
 function createSystemStore() {
@@ -56,7 +52,7 @@ function createSystemStore() {
       }
     },
 
-    // Sendet die Systemeinstellungen; true bei Erfolg. Maske/leer = unverändert (Firmware-Regel).
+    // Sendet die Systemeinstellungen; true bei Erfolg. Passwort-Maske = unverändert, leer = entfernen.
     async post() {
       try {
         const currentSettings = get(systemStoreData);
@@ -65,12 +61,10 @@ function createSystemStore() {
         const payload = {};
         for (const key of Object.keys(defaultSystemSettings)) payload[key] = currentSettings[key];
         await postJson("/set_system_config", payload);
-        // Nach dem Speichern: Clear-Flags zurücksetzen, Passwörter wie vom Gerät maskiert zeigen
+        // Nach dem Speichern Passwörter wie vom Gerät maskiert zeigen (leer = kein Passwort)
         const saved = { ...currentSettings };
-        for (const [pw, clear] of [["internalPW", "clearInternalPW"], ["externalPW", "clearExternalPW"], ["externalPW2", "clearExternalPW2"]]) {
-          if (saved[clear]) saved[pw] = "";
-          else if (saved[pw]) saved[pw] = "******";
-          saved[clear] = false;
+        for (const pw of ["internalPW", "externalPW", "externalPW2"]) {
+          if (saved[pw]) saved[pw] = "******";
         }
         systemStoreData.set(saved);
         originalSystemSettings = JSON.parse(JSON.stringify(saved));

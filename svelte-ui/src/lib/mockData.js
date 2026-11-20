@@ -78,6 +78,14 @@ export const mockFetch = (url, options) => {
           ok: true,
           json: () => Promise.resolve(mockSystemSettings),
         });
+      } else if (url.includes("/get_wifi_scan")) {
+        resolve({ ok: true, json: () => Promise.resolve({ status: "done", networks: [
+          { ssid: "Home_WiFi_Mock", rssi: -52, secure: true },
+          { ssid: "Nachbar", rssi: -71, secure: true },
+          { ssid: "Cafe offen", rssi: -84, secure: false },
+        ] }) });
+      } else if (url.includes("/get_wifi_test")) {
+        resolve({ ok: true, json: () => Promise.resolve({ status: "done", result: "wrong_password", slot: 1 }) });
       } else if (options && options.method === "POST") {
         resolve({
           ok: true,

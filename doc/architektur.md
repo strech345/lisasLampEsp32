@@ -122,13 +122,17 @@ POSTs ohne Nutzdaten senden `{}`.
 | `/get_config` | GET | `FullConfig` als JSON |
 | `/set_config` | POST | Teil-Update der `FullConfig`; fehlende Felder bleiben, `brightnessMode` wird ignoriert (Drehknopf ist Master), Wertebereiche geprüft |
 | `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`), alle Schalter, `ledCount`, `lampName`, `celebrations` (`[{month, day}]`), Debug-Schalter (`statusLedEnabled`, `serialLogEnabled`, `eventLogEnabled`, `logToUsb`) |
-| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32, Passwort leer (= unverändert) oder 8–63; `clearInternalPW`/`clearExternalPW`/`clearExternalPW2` entfernen ein Passwort; `lampName` (1–20 Zeichen) und `celebrations` (0–8, ersetzt die Liste) optional, WLAN-Neustart nur bei geänderten Netzwerkdaten |
+| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32; Passwort `******` (= unverändert), leer (= entfernen) oder 8–63; `lampName` (1–20 Zeichen) und `celebrations` (0–8, ersetzt die Liste) optional, WLAN-Neustart nur bei geänderten Netzwerkdaten |
 | `/set_led_count` | POST | `{"count": 1–16}` → Anzahl der LEDs, sofort wirksam (in `SystemSettings`) |
 | `/set_option` | POST | `{"option": "warnings\|deepSleep\|tsfFallback\|rdsClock\|rtcCrystal\|statusLed\|serialLog\|eventLog\|logUsb", "enabled": bool}`; `rtcCrystal` startet neu, Debug-Optionen wirken sofort |
 | `/get_status` | GET | Uhrzeit, NTP-Status, externe WLAN-Verbindung |
 | `/get_event_log` | GET | Ereignisprotokoll (neueste zuerst) |
 | `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal` | GET | Detailstatus der Zeitquellen |
 | `/trigger_ntp_sync`, `/trigger_tsf_snapshot` | POST | Aktion auslösen |
+| `/trigger_wifi_scan` | POST | WLAN-Suche starten (409 wenn Suche/Test läuft) |
+| `/get_wifi_scan` | GET | `{"status":"idle\|running\|done\|failed","networks":[{ssid,rssi,secure}]}`, stärkstes zuerst, max. 20 |
+| `/test_wifi` | POST | `{"slot":1\|2,"ssid":…,"password":…}` Verbindungstest; `******` = gespeichertes Passwort des Feldes |
+| `/get_wifi_test` | GET | `{"status":"idle\|running\|done","result":"ok\|wrong_password\|not_found\|timeout\|failed"}` |
 | `/restart`, `/factory_reset` | POST | Neustart bzw. Werksreset (verzögert) |
 
 Der Webserver ist ohne Login erreichbar; Schutz bietet das Hotspot-Passwort.

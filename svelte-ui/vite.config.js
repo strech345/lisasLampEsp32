@@ -30,7 +30,7 @@ export default defineConfig({
     // pico.min.css bewusst NICHT proxyen: ist die Lampe nicht erreichbar, würde das Stylesheet hängen
     // und die ganze Seite blockieren (auch im Mock-Modus).
     proxy: {
-      '^/(get_|set_|trigger_|ping$|restart$|factory_reset$|meerkat\\.avif$)': {
+      '^/(get_|set_|trigger_|test_wifi$|ping$|restart$|factory_reset$|meerkat\\.avif$)': {
         target: 'http://4.3.2.1',
         changeOrigin: true
       }

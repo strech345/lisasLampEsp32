@@ -32,7 +32,7 @@ Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über ein
 - Der Hotspot startet **nur per langem Druck auf den Drehknopf** (2 s halten, ohne zu drehen) und geht wieder aus, sobald 1 Minute kein Gerät verbunden ist **oder** 10 Minuten lang niemand die Weboberfläche bedient hat (auch wenn ein Handy noch verbunden ist). Beim Einschalten verbindet sich die Lampe nur mit dem Heim-WLAN (falls eingetragen), ohne Hotspot.
 - **Ersteinrichtung:** Lampe einschalten, Drehknopf 2 s gedrückt halten, mit `Lizas-Lamp` verbinden, unter **Einstellungen → WLAN** das Heim-WLAN eintragen.
 - Das Passwort ist bewusst ohne Umlaut geschrieben („ae“ statt „ä“): WPA2 erlaubt nur ASCII-Zeichen, Umlaute funktionieren auf vielen Handys nicht.
-- Name und Passwort lassen sich in der Weboberfläche unter **Einstellungen → WLAN** ändern (Passwort 8–63 Zeichen oder per „Passwort entfernen“ offen).
+- Name und Passwort lassen sich in der Weboberfläche unter **Einstellungen → WLAN** ändern (Passwort 8–63 Zeichen; Feld leeren = offener Hotspot).
 - Der Standardwert gilt nach der Erstinstallation und nach einem **Werksreset**. Geräte, die schon vorher eingerichtet waren, behalten ihre gespeicherten Einstellungen (bisher: offener Hotspot ohne Passwort).
 - Passwort vergessen → Werksreset: In der Weboberfläche unter **Einstellungen → System** oder per **Boot-Taste** (siehe [doc/bedienung.md](doc/bedienung.md)).
 
