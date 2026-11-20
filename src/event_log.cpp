@@ -22,7 +22,16 @@ static uint8_t s_count = 0;
 static StaticSemaphore_t s_logMutexBuf;
 static SemaphoreHandle_t s_logMutex = xSemaphoreCreateMutexStatic(&s_logMutexBuf);
 
+static volatile bool s_enabled = true; // Ereignisprotokoll aufzeichnen (Einstellung Debug)
+
+// Ereignisprotokoll an/aus (bestehende Einträge bleiben)
+void setEventLogEnabled(bool enabled) {
+    s_enabled = enabled;
+}
+
 void logEvent(const char* message) {
+    if(!s_enabled)
+        return;
     // Zeit zuerst holen, außerhalb jeder Sperre
     unsigned long nowMs = millis();
     time_t t = time(nullptr);

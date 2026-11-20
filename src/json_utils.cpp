@@ -187,6 +187,19 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     doc["rdsClockEnabled"]  = systemSettings.rdsClockEnabled;
     doc["rtcCrystalEnabled"] = systemSettings.rtcCrystalEnabled;
     doc["ledCount"]         = systemSettings.ledCount;
+    // Persönliches
+    doc["lampName"] = systemSettings.lampName;
+    JsonArray cel = doc["celebrations"].to<JsonArray>();
+    for(uint8_t i = 0; i < systemSettings.celebrationCount && i < MAX_CELEBRATIONS; i++) {
+        JsonObject c = cel.add<JsonObject>();
+        c["month"] = systemSettings.celebrations[i].month;
+        c["day"] = systemSettings.celebrations[i].day;
+    }
+    // Debug
+    doc["statusLedEnabled"] = systemSettings.statusLedEnabled;
+    doc["serialLogEnabled"] = systemSettings.serialLogEnabled;
+    doc["eventLogEnabled"]  = systemSettings.eventLogEnabled;
+    doc["logToUsb"]         = systemSettings.logToUsb;
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     return jsonResponse;
@@ -250,6 +263,35 @@ bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSetti
 
     tmp.warningsEnabled  = doc["warningsEnabled"]  | tmp.warningsEnabled;
     tmp.deepSleepEnabled = doc["deepSleepEnabled"] | tmp.deepSleepEnabled;
+
+    // Name der Lampe: fehlt das Feld, bleibt er; sonst 1–20 Zeichen
+    if(doc["lampName"].is<const char*>()) {
+        const char* name = doc["lampName"];
+        size_t len = strlen(name);
+        if(len < 1 || len > LAMP_NAME_MAX_LEN)
+            return fail(error, "Name der Lampe muss 1–20 Zeichen lang sein.");
+        strlcpy(tmp.lampName, name, sizeof(tmp.lampName));
+    }
+
+    // Party-Tage: fehlt das Feld, bleiben sie; sonst Liste komplett ersetzen (0–8, Monat 1–12, Tag 1–31)
+    JsonArrayConst cel = doc["celebrations"].as<JsonArrayConst>();
+    if(!cel.isNull()) {
+        if(cel.size() > MAX_CELEBRATIONS)
+            return fail(error, "Höchstens 8 Party-Tage.");
+        CelebrationDay days[MAX_CELEBRATIONS];
+        memset(days, 0, sizeof(days));
+        uint8_t n = 0;
+        for(JsonObjectConst c : cel) {
+            long m, d;
+            if(!readIntRange(c["month"], 0, 1, 12, m) || !readIntRange(c["day"], 0, 1, 31, d))
+                return fail(error, "Party-Tag ungültig (Monat 1–12, Tag 1–31).");
+            days[n].month = m;
+            days[n].day = d;
+            n++;
+        }
+        memcpy(tmp.celebrations, days, sizeof(tmp.celebrations));
+        tmp.celebrationCount = n;
+    }
 
     systemSettings = tmp;
     return true;

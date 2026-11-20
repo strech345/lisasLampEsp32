@@ -55,7 +55,17 @@ struct FullConfig {
 constexpr size_t SSID_MAX_LEN = 32;
 constexpr size_t PWD_MAX_LEN = 64;
 
-// Netzwerk-Einstellungen: eigener Hotspot (AP) und zwei externe WLANs (mit Fallback)
+// Ein Party-Tag (Feier-Modus ab 7:00 Uhr), jedes Jahr wiederkehrend
+struct CelebrationDay {
+    uint8_t month; // 1–12
+    uint8_t day;   // 1–31
+};
+
+#define MAX_CELEBRATIONS 8
+#define LAMP_NAME_MAX_LEN 20
+
+// Systemeinstellungen: eigener Hotspot (AP), zwei externe WLANs (mit Fallback), Schalter,
+// persönliche Daten (Name, Party-Tage) und Debug-Optionen
 struct SystemSettings {
     char internalSSID[SSID_MAX_LEN + 1]; // Eigener Hotspot-Name
     char internalPW[PWD_MAX_LEN + 1];
@@ -71,6 +81,15 @@ struct SystemSettings {
     bool rtcCrystalEnabled;  // Benutzer-Einstellung: externen 32-kHz-Quarz verwenden
     bool rtcCrystalAvailable; // Quarz vorhanden (bei jedem Einschalten gemessen, intern gesetzt)
     uint8_t ledCount;         // Anzahl der LEDs im Streifen (1–MAX_LED_COUNT)
+    // --- Persönlich (Standardwerte aus secrets.h) ---
+    char lampName[LAMP_NAME_MAX_LEN + 1];            // Name der Lampe, z. B. "Liza"
+    uint8_t celebrationCount;                         // Anzahl Party-Tage (0–MAX_CELEBRATIONS)
+    CelebrationDay celebrations[MAX_CELEBRATIONS];
+    // --- Debug ---
+    bool statusLedEnabled; // blaue Status-LED auf dem Board
+    bool serialLogEnabled; // serielle Logs (serialPrint)
+    bool eventLogEnabled;  // Ereignisprotokoll aufzeichnen
+    bool logToUsb;         // serielle Logs über USB statt UART (RX/TX)
 };
 
 #define MAX_TSF_ENTRIES 16
@@ -97,7 +116,11 @@ enum StateChangeType {
     STATE_CHANGE_TSF_SNAPSHOT,  // (nullptr) TSF-Snapshot auslösen
     STATE_CHANGE_RESTART,       // (nullptr) verzögerter Neustart
     STATE_CHANGE_FACTORY_RESET, // (nullptr) verzögerter Werksreset + Neustart
-    STATE_CHANGE_LED_COUNT      // (uint8_t*) Anzahl der LEDs, wird sofort angewendet und gespeichert
+    STATE_CHANGE_LED_COUNT,     // (uint8_t*) Anzahl der LEDs, wird sofort angewendet und gespeichert
+    STATE_CHANGE_STATUS_LED,    // (bool*) Debug: Status-LED an/aus
+    STATE_CHANGE_SERIAL_LOG,    // (bool*) Debug: serielle Logs an/aus
+    STATE_CHANGE_EVENT_LOG,     // (bool*) Debug: Ereignisprotokoll aufzeichnen
+    STATE_CHANGE_LOG_USB        // (bool*) Debug: serielle Logs über USB (sonst UART RX/TX)
 };
 
 // Aktueller Betriebszustand der Lampe — bestimmt welcher LED-Effekt aktiv ist

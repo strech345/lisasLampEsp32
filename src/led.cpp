@@ -244,8 +244,24 @@ void statusLedOff() {
 // Status-LED (Bedeutung siehe wifiStatusBlinkCount()). Muss aus loop() aufgerufen werden.
 // blinkCount 0: langsam blinken (2 s an, 4 s aus); 1–3: so oft kurz aufblinken, Pause, von vorn.
 // Die Position im Muster ergibt sich direkt aus millis() — kein eigener Zustand nötig.
+static bool s_statusLedEnabled = true; // Einstellung Debug
+
+// Status-LED an/aus (aus = dauerhaft dunkel)
+void setStatusLedEnabled(bool enabled) {
+    s_statusLedEnabled = enabled;
+    if(!enabled)
+        statusLedOff();
+}
+
 void statusLedTick(uint8_t blinkCount) {
     static bool ledOn = false;
+    if(!s_statusLedEnabled) {
+        if(ledOn) {
+            ledOn = false;
+            statusLedOff();
+        }
+        return;
+    }
     bool on;
     if(blinkCount == 0) {
         on = millis() % (STATUS_SLOW_ON_MS + STATUS_SLOW_OFF_MS) < STATUS_SLOW_ON_MS;

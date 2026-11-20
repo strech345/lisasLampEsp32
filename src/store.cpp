@@ -24,6 +24,11 @@ static_assert(SECRET_LEN(SECRET_AP_SSID) >= 1 && SECRET_LEN(SECRET_AP_SSID) <= S
               "secrets.h: SECRET_AP_SSID muss 1-32 Zeichen lang sein");
 static_assert(SECRET_LEN(SECRET_EXT_SSID) <= SSID_MAX_LEN && SECRET_LEN(SECRET_EXT_SSID2) <= SSID_MAX_LEN,
               "secrets.h: externe SSIDs duerfen hoechstens 32 Zeichen lang sein");
+static_assert(SECRET_LEN(SECRET_LAMP_NAME) >= 1 && SECRET_LEN(SECRET_LAMP_NAME) <= LAMP_NAME_MAX_LEN,
+              "secrets.h: SECRET_LAMP_NAME muss 1-20 Zeichen lang sein");
+static const CelebrationDay DEFAULT_CELEBRATIONS[] = SECRET_CELEBRATIONS;
+static_assert(sizeof(DEFAULT_CELEBRATIONS) / sizeof(DEFAULT_CELEBRATIONS[0]) <= MAX_CELEBRATIONS,
+              "secrets.h: hoechstens 8 Party-Tage (SECRET_CELEBRATIONS)");
 static_assert(SECRET_PW_OK(SECRET_AP_PASSWORD) && SECRET_PW_OK(SECRET_EXT_PASSWORD)
                   && SECRET_PW_OK(SECRET_EXT_PASSWORD2),
               "secrets.h: Passwoerter muessen leer oder 8-63 Zeichen lang sein");
@@ -180,6 +185,14 @@ SystemSettings getDefaultSystemSettings() {
     defaultSettings.rtcCrystalEnabled = false;
     defaultSettings.rtcCrystalAvailable = false;
     defaultSettings.ledCount = DEFAULT_LED_COUNT;
+    strlcpy(defaultSettings.lampName, SECRET_LAMP_NAME, sizeof(defaultSettings.lampName));
+    memset(defaultSettings.celebrations, 0, sizeof(defaultSettings.celebrations));
+    defaultSettings.celebrationCount = sizeof(DEFAULT_CELEBRATIONS) / sizeof(DEFAULT_CELEBRATIONS[0]);
+    memcpy(defaultSettings.celebrations, DEFAULT_CELEBRATIONS, sizeof(DEFAULT_CELEBRATIONS));
+    defaultSettings.statusLedEnabled = true;
+    defaultSettings.serialLogEnabled = true;
+    defaultSettings.eventLogEnabled = true;
+    defaultSettings.logToUsb = false;
     return defaultSettings;
 }
 
@@ -291,4 +304,7 @@ void loadSystemSettingsOrDefault(SystemSettings& settings) {
     // Plausibilisieren (z. B. nach Speicherfehler)
     if(settings.ledCount < 1 || settings.ledCount > MAX_LED_COUNT)
         settings.ledCount = DEFAULT_LED_COUNT;
+    if(settings.celebrationCount > MAX_CELEBRATIONS)
+        settings.celebrationCount = 0;
+    settings.lampName[LAMP_NAME_MAX_LEN] = '\0';
 }

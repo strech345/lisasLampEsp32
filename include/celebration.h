@@ -1,5 +1,6 @@
 #ifndef CELEBRATION_H
 #define CELEBRATION_H
+#include "types.h"
 // Feier-Modus: startet täglich um 7 Uhr einen Regenbogen-Effekt an konfigurierten
 // Feiertagen (Geburtstag, Jahrestag, Neujahr, Heiligabend).
 
@@ -16,5 +17,8 @@ bool isCelebrationActive();
 
 // Gibt ms bis zur nächsten Feier zurück (für Deep-Sleep-Berechnung)
 int64_t getMillisToNextCelebration();
+
+// Merkt sich die Systemeinstellungen mit den Party-Tagen (einmal in setup())
+void initCelebration(const SystemSettings* settings);
 
 #endif // CELEBRATION_H

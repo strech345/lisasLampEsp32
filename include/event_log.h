@@ -11,4 +11,7 @@ void logEvent(const char* message);
 // Gibt alle Einträge als JSON zurück (neueste zuerst)
 String getEventLogJson();
 
+// Ereignisprotokoll an/aus (bestehende Einträge bleiben)
+void setEventLogEnabled(bool enabled);
+
 #endif // EVENT_LOG_H

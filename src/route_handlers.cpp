@@ -41,9 +41,14 @@ static const OptionDef OPTIONS[] = {
     {"tsfFallback", STATE_CHANGE_TSF_FALLBACK},
     {"rdsClock", STATE_CHANGE_RDS_CLOCK},
     {"rtcCrystal", STATE_CHANGE_RTC_CRYSTAL}, // löst danach einen Neustart aus
+    {"statusLed", STATE_CHANGE_STATUS_LED},   // Debug
+    {"serialLog", STATE_CHANGE_SERIAL_LOG},   // Debug
+    {"eventLog", STATE_CHANGE_EVENT_LOG},     // Debug
+    {"logUsb", STATE_CHANGE_LOG_USB},         // Debug: Logs über USB statt UART
 };
 
-// POST /set_option {"option": "warnings|deepSleep|tsfFallback|rdsClock|rtcCrystal", "enabled": bool}
+// POST /set_option {"option": "warnings|deepSleep|tsfFallback|rdsClock|rtcCrystal|statusLed|serialLog|
+//                    eventLog|logUsb", "enabled": bool}
 // Legt einen Auftrag ab (Ausführung in loop(), kein WLAN-Neustart). Antwort bei rtcCrystal:
 // {"status":"restarting"}, sonst {"status":"ok"}. Aktuelle Werte liefert /get_system_config.
 static void handleSetOption(AsyncWebServerRequest* request, const String& body) {

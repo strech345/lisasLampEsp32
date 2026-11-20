@@ -24,4 +24,9 @@
 #define SECRET_EXT_SSID2 ""
 #define SECRET_EXT_PASSWORD2 ""
 
+// Persönliches (Standardwerte, in der Weboberfläche änderbar)
+#define SECRET_LAMP_NAME "Liza" // höchstens 20 Zeichen
+// Party-Tage (Feier-Modus ab 7:00 Uhr), {Monat, Tag}; höchstens 8
+#define SECRET_CELEBRATIONS {{1, 1}, {8, 8}, {9, 2}, {12, 24}}
+
 #endif // SECRETS_H

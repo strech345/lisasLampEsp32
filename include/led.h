@@ -16,6 +16,7 @@ void startApWaitingEffect();   // blauer Komet: Hotspot wartet auf ein Gerät
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();
+void setStatusLedEnabled(bool enabled); // Status-LED an/aus (Einstellung Debug)
 void statusLedTick(uint8_t blinkCount); // 0 = langsam blinken, 1–3 = so oft kurz, Pause (aus loop())
 
 // Blendet kurz alle LEDs in color ein und stellt danach den vorherigen Zustand wieder her

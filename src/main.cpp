@@ -63,8 +63,12 @@ void setup() {
     // (vor WLAN-Init — Kanal-Scan und AP-Start dauern Sekunden; Timer-Wakeup: LEDs bleiben aus)
     loadFullConfigOrDefault(appConfig);
     loadSystemSettingsOrDefault(systemSettings); // enthält die LED-Anzahl
+    // Debug-Einstellungen sofort anwenden (Logs, Status-LED folgt nach ledInit())
+    setSerialLogging(systemSettings.serialLogEnabled, systemSettings.logToUsb);
+    setEventLogEnabled(systemSettings.eventLogEnabled);
     bool timerWakeup = applyWakeupReason();
     ledInit(systemSettings.ledCount);
+    setStatusLedEnabled(systemSettings.statusLedEnabled);
     checkAndApplyColorMode(appConfig);
     setBrightnessLevel(timerWakeup ? 0 : appConfig.brightnessMode);
     serialPrint("Licht gesetzt nach " + String(millis()) + " ms");
@@ -81,6 +85,7 @@ void setup() {
     initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
     initTsfClock(&systemSettings, &wifiTracker);
     initRdsClock(&systemSettings, &wifiTracker, fromDeepSleep);
+    initCelebration(&systemSettings);
     setAlarms(appConfig.alarms); // nächste Auslösezeit berechnen
 
     // --- Webserver und WLAN ---

@@ -4,26 +4,23 @@
 #include <time.h>
 #include "debug_utils.h"
 
-struct CelebrationDate {
-    int month;
-    int day;
-};
+// Party-Tage aus den Systemeinstellungen (in der Weboberfläche änderbar, Standard aus secrets.h)
+static const SystemSettings* s_settings = nullptr;
 
-// Feiertage an denen der Feier-Modus ab 7:00 Uhr startet
-static const CelebrationDate celebrationDates[] = {
-    {1, 1},  // Neujahr
-    {8, 8},  // Lizas Geburtstag
-    {9, 2},  // Jahrestag
-    {12, 24} // Heiligabend
-};
+// Merkt sich die Systemeinstellungen mit den Party-Tagen (einmal in setup())
+void initCelebration(const SystemSettings* settings) {
+    s_settings = settings;
+}
 
 static bool celebrationActive = false;
 static int lastTriggeredDay = -1; // tm_yday des letzten Starts — verhindert Neustart nach manuellem Stopp
 
 // Prüft ob Monat/Tag in der Feiertagsliste ist
 static bool isCelebrationDate(int m, int d) {
-    for(const auto& date : celebrationDates) {
-        if(date.month == m && date.day == d)
+    if(s_settings == nullptr)
+        return false;
+    for(uint8_t i = 0; i < s_settings->celebrationCount && i < MAX_CELEBRATIONS; i++) {
+        if(s_settings->celebrations[i].month == m && s_settings->celebrations[i].day == d)
             return true;
     }
     return false;
@@ -80,7 +77,8 @@ int64_t getMillisToNextCelebration() {
 
     int64_t minMillis = -1;
 
-    for(const auto& date : celebrationDates) {
+    for(uint8_t i = 0; s_settings != nullptr && i < s_settings->celebrationCount && i < MAX_CELEBRATIONS; i++) {
+        const CelebrationDay& date = s_settings->celebrations[i];
         struct tm target = *ptm;
         target.tm_mon = date.month - 1;
         target.tm_mday = date.day;

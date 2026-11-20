@@ -12,6 +12,7 @@
 #include "event_log.h"
 #include "lamp_state.h"
 #include "led.h"
+#include "debug_utils.h"
 #include "store.h"
 #include "tsf_clock.h"
 #include "wifi_controller.h"
@@ -34,6 +35,10 @@ struct PendingCommands {
     bool hasTsf = false, tsf = false;
     bool hasRds = false, rds = false;
     bool hasRtc = false, rtc = false;
+    bool hasStatusLed = false, statusLed = false;
+    bool hasSerialLog = false, serialLog = false;
+    bool hasEventLog = false, eventLog = false;
+    bool hasLogUsb = false, logUsb = false;
     bool hasLedCount = false;
     uint8_t ledCount = 0;
     bool ntpResync = false;
@@ -93,6 +98,22 @@ void queueWebCommand(StateChangeType type, void* data) {
         s_pending.ledCount = *static_cast<uint8_t*>(data);
         s_pending.hasLedCount = true;
         break;
+    case STATE_CHANGE_STATUS_LED:
+        s_pending.statusLed = *static_cast<bool*>(data);
+        s_pending.hasStatusLed = true;
+        break;
+    case STATE_CHANGE_SERIAL_LOG:
+        s_pending.serialLog = *static_cast<bool*>(data);
+        s_pending.hasSerialLog = true;
+        break;
+    case STATE_CHANGE_EVENT_LOG:
+        s_pending.eventLog = *static_cast<bool*>(data);
+        s_pending.hasEventLog = true;
+        break;
+    case STATE_CHANGE_LOG_USB:
+        s_pending.logUsb = *static_cast<bool*>(data);
+        s_pending.hasLogUsb = true;
+        break;
     case STATE_CHANGE_NTP_RESYNC:
         s_pending.ntpResync = true;
         break;
@@ -116,7 +137,8 @@ void processWebCommands() {
     PendingCommands cmd;
     xSemaphoreTake(s_pendingMutex, portMAX_DELAY);
     bool any = s_pending.hasConfig || s_pending.hasSystem || s_pending.hasWarnings || s_pending.hasDeepSleep ||
-               s_pending.hasTsf || s_pending.hasRds || s_pending.hasRtc || s_pending.hasLedCount || s_pending.ntpResync ||
+               s_pending.hasTsf || s_pending.hasRds || s_pending.hasRtc || s_pending.hasLedCount || s_pending.hasStatusLed ||
+               s_pending.hasSerialLog || s_pending.hasEventLog || s_pending.hasLogUsb || s_pending.ntpResync ||
                s_pending.tsfSnapshot || s_pending.restart || s_pending.factoryReset;
     if(any) {
         cmd = s_pending;
@@ -152,6 +174,10 @@ void processWebCommands() {
             memcpy(s_systemSettings->externalPW2, cmd.system.externalPW2, sizeof(s_systemSettings->externalPW2));
             s_systemSettings->warningsEnabled = cmd.system.warningsEnabled;
             s_systemSettings->deepSleepEnabled = cmd.system.deepSleepEnabled;
+            // Persönliches (kein WLAN-Neustart nötig)
+            memcpy(s_systemSettings->lampName, cmd.system.lampName, sizeof(s_systemSettings->lampName));
+            s_systemSettings->celebrationCount = cmd.system.celebrationCount;
+            memcpy(s_systemSettings->celebrations, cmd.system.celebrations, sizeof(s_systemSettings->celebrations));
             saveSystemSettings(*s_systemSettings);
             startAlert(ALERT_OK, 200);
             if(networkChanged) {
@@ -190,6 +216,22 @@ void processWebCommands() {
             char buf[40];
             snprintf(buf, sizeof(buf), "LED count: %u", cmd.ledCount);
             logEvent(buf);
+        }
+        // Debug-Schalter: sofort anwenden und speichern
+        if(cmd.hasStatusLed || cmd.hasSerialLog || cmd.hasEventLog || cmd.hasLogUsb) {
+            if(cmd.hasStatusLed)
+                s_systemSettings->statusLedEnabled = cmd.statusLed;
+            if(cmd.hasSerialLog)
+                s_systemSettings->serialLogEnabled = cmd.serialLog;
+            if(cmd.hasEventLog)
+                s_systemSettings->eventLogEnabled = cmd.eventLog;
+            if(cmd.hasLogUsb)
+                s_systemSettings->logToUsb = cmd.logUsb;
+            setStatusLedEnabled(s_systemSettings->statusLedEnabled);
+            setSerialLogging(s_systemSettings->serialLogEnabled, s_systemSettings->logToUsb);
+            setEventLogEnabled(s_systemSettings->eventLogEnabled);
+            saveSystemSettings(*s_systemSettings);
+            logEvent("Debug settings changed");
         }
         if(cmd.hasRtc) {
             // Taktquelle ist nur beim Boot umschaltbar → speichern und verzögert neu starten

@@ -10,4 +10,7 @@ void serialPrint(const String& text);
 // Startet die serielle Ausgabe (einmal am Anfang von setup() aufrufen)
 void debugInit();
 
+// Schaltet serielle Logs an/aus und wählt die Schnittstelle (useUsb = USB statt UART RX/TX)
+void setSerialLogging(bool enabled, bool useUsb);
+
 #endif // DEBUG_UTILS_H
