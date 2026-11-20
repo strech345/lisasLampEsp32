@@ -126,37 +126,38 @@
       <LightSets />
     </section>
 
-    <section aria-labelledby="section-durations">
-      <h3 id="section-durations">Dauer (Minuten)</h3>
-      <div class="duration-container">
-        <div class="duration-item">
-          <label for="goodNightDuration">Gute Nacht:</label>
-          <input
-            type="number"
-            id="goodNightDuration"
-            value={goodNightDuration}
-            on:change={handleGoodNightChange}
-            min="1"
-            max="1440"
-          />
-        </div>
-        <div class="duration-item">
-          <label for="alarmDuration">Wecker:</label>
-          <input
-            type="number"
-            id="alarmDuration"
-            value={alarmDuration}
-            on:change={handleAlarmChange}
-            min="1"
-            max="1440"
-          />
-        </div>
-      </div>
-    </section>
 
     <section aria-labelledby="section-alarms">
       <h3 id="section-alarms">Wecker</h3>
       <AlarmTable />
+    </section>
+
+    <section aria-labelledby="section-durations">
+      <h3 id="section-durations">Dauer</h3>
+      <!-- Raster: Bezeichnung | Feld | Einheit → Felder stehen genau untereinander -->
+      <div class="duration-grid">
+        <label for="goodNightDuration">Gute Nacht</label>
+        <input
+          type="number"
+          id="goodNightDuration"
+          value={goodNightDuration}
+          on:change={handleGoodNightChange}
+          min="1"
+          max="1440"
+        />
+        <span class="unit">min</span>
+
+        <label for="alarmDuration">Wecker</label>
+        <input
+          type="number"
+          id="alarmDuration"
+          value={alarmDuration}
+          on:change={handleAlarmChange}
+          min="1"
+          max="1440"
+        />
+        <span class="unit">min</span>
+      </div>
     </section>
   </div>
 </main>
@@ -245,24 +246,24 @@
     margin-bottom: 0.75rem;
   }
 
-  .duration-container {
-    display: flex;
-    gap: 1rem;
-    flex-direction: column;
-  }
-
-  .duration-item {
-    display: flex;
+  .duration-grid {
+    display: grid;
+    grid-template-columns: max-content 5.5rem max-content;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.5rem 0.75rem;
   }
 
-  .duration-item label {
+  .duration-grid label {
     margin-bottom: 0;
     white-space: nowrap;
   }
 
-  .duration-item input[type="number"] {
-    width: 80px;
+  .duration-grid input[type="number"] {
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  .unit {
+    opacity: 0.75;
   }
 </style>
