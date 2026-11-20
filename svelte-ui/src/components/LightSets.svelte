@@ -144,11 +144,13 @@
     text-overflow: ellipsis;
   }
 
+  /* Quadratisch: Breite = einheitliche Feldhöhe (--control-h, siehe Main.svelte) */
   .color-input {
-    flex: 0 0 2.2rem;
-    width: 2.2rem;
-    height: 2.2rem;
-    padding: 0.15rem;
+    flex: 0 0 var(--control-h);
+    width: var(--control-h) !important;
+    height: var(--control-h) !important;
+    aspect-ratio: 1 / 1;
+    padding: 0.2rem !important;
     margin: 0 !important;
   }
 
