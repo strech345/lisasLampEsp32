@@ -73,7 +73,7 @@
     >
     <img src="/meerkat.avif" alt="Meerkat" class="meerkat-img" />
     <header class="app-header">
-      <h1>Lisa's Lampe</h1>
+      <h1>Liza's Lampe</h1>
     </header>
     <p class="muted" style="display: block;">
       Viel Spaß mit deiner smarten Lampe ;-)!
@@ -83,15 +83,16 @@
 
     <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt (fieldset sperrt alle Felder/Knöpfe) -->
     <fieldset class="plain" disabled={!$online}>
-    <section aria-labelledby="section-general">
-      <h3 id="section-general">Licht-Sets</h3>
-      <LightSets />
-    </section>
 
 
     <section aria-labelledby="section-alarms">
       <h3 id="section-alarms">Wecker</h3>
       <AlarmTable />
+    </section>
+
+    <section aria-labelledby="section-general">
+      <h3 id="section-general">Licht-Sets</h3>
+      <LightSets />
     </section>
 
     <section aria-labelledby="section-durations">

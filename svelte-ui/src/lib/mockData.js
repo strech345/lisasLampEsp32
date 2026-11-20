@@ -33,7 +33,7 @@ export const mockConfig = {
 };
 
 export const mockSystemSettings = {
-  internalSSID: "Lisa_Lamp_Mock",
+  internalSSID: "Liza_Lamp_Mock",
   internalPW: "******",
   externalSSID: "Home_WiFi_Mock",
   externalPW: "******",

@@ -12,7 +12,7 @@ struct CelebrationDate {
 // Feiertage an denen der Feier-Modus ab 7:00 Uhr startet
 static const CelebrationDate celebrationDates[] = {
     {1, 1},  // Neujahr
-    {8, 8},  // Lisas Geburtstag
+    {8, 8},  // Lizas Geburtstag
     {9, 2},  // Jahrestag
     {12, 24} // Heiligabend
 };

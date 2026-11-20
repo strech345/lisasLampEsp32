@@ -1,4 +1,4 @@
-# Hinweise für KI-Assistenten (Lisas Lampe, ESP32-C3)
+# Hinweise für KI-Assistenten (Lizas Lampe, ESP32-C3)
 
 Kurzorientierung. Ausführlich: [README](../README.md) und `doc/`.
 

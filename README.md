@@ -1,4 +1,4 @@
-# Lisas Lampe (ESP32-C3)
+# Lizas Lampe (ESP32-C3)
 
 Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über einen eigenen WLAN-Hotspot.
 

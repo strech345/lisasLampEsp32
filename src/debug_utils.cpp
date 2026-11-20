@@ -25,7 +25,7 @@ void debugInit() {
         delay(500); // kurze Pause nur wenn Monitor wirklich verbunden
 #endif
     Serial.println("\n\n----------------------------------------");
-    Serial.println("   ESP32-C3 Lisas Lampe startet");
+    Serial.println("   ESP32-C3 Lizas Lampe startet");
     Serial.println("----------------------------------------");
 #endif
 }
