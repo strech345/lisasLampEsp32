@@ -87,11 +87,12 @@ hinzufügen, ändern und löschen (mindestens eines bleibt).
 
 Bis zu **16 Wecker**, je Zeile: Ein/Aus, Wochentag bzw. Datum, Uhrzeit, Löschen.
 
-- **Wecker hinzufügen:** wöchentlicher Wecker (Wochentag wählbar, Start Montag 7:00).
-- **Termin hinzufügen:** einmaliger Wecker an einem **Datum** (Start morgen 7:00). Er feuert nur an
-  diesem Tag; danach bleibt er blass als „vorbei“ in der Liste, bis man ihn löscht.
-- Ob ein Eintrag wöchentlich oder einmalig ist, wird beim Anlegen festgelegt.
-- Beim Maximum sind beide Knöpfe ausgegraut.
+- **Wecker hinzufügen:** neuer wöchentlicher Wecker (Montag 7:00); beim Maximum ausgegraut.
+- **Einmaliger Termin:** in der Wochentag-Auswahl den letzten Eintrag **„Datum“** wählen. Statt des
+  Wochentags erscheint ein Datumsfeld, vorbelegt mit dem heutigen Datum der Lampe (ohne gültige
+  Uhrzeit: 1.1.2026). Zurück zu einem Wochentag geht es danach nicht mehr.
+- Ein Termin feuert nur an diesem Tag; danach bleibt er blass als „vorbei“ in der Liste, bis man ihn
+  löscht.
 
 ## Einstellungen in der Weboberfläche
 

@@ -188,14 +188,29 @@
     --control-h: 2.4rem; /* einheitliche Feldhöhe in Licht-Sets, Weckern und Dauer */
   }
 
+  /* Quadratischer Icon-Knopf (z. B. Löschen) — gleiche Größe und Farbe wie der Einstellungs-Knopf */
+  :global(.icon-btn) {
+    flex: 0 0 auto;
+    width: 2rem !important;
+    height: 2rem !important;
+    min-height: 2rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    background-color: #0172ad !important;
+    border-color: #0172ad !important;
+    color: #fff !important;
+    border-radius: 4px;
+  }
+
   /* Alle Eingabefelder der Zeilen gleich hoch (Zeitfelder sind sonst höher als Auswahllisten) */
   :global(.set-row select),
   :global(.set-row input[type="color"]),
-  :global(.set-row button),
   :global(.alarm-row select),
   :global(.alarm-row input[type="time"]),
   :global(.alarm-row input[type="date"]),
-  :global(.alarm-row button),
   :global(.duration-grid input[type="number"]) {
     height: var(--control-h) !important;
     min-height: var(--control-h) !important;

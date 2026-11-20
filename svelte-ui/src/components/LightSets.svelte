@@ -82,10 +82,13 @@
       {#if sets.length > 1}
         <button
           type="button"
-          class="btn-small remove"
+          class="icon-btn"
           aria-label="Set {i + 1} löschen"
-          on:click={() => configStore.removeSet(i)}>×</button
+          title="Löschen"
+          on:click={() => configStore.removeSet(i)}
         >
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none" /></svg>
+        </button>
       {/if}
     </div>
   {/each}
@@ -148,12 +151,6 @@
     margin: 0 !important;
   }
 
-  .remove {
-    flex: 0 0 2rem;
-    width: 2rem;
-    padding: 0.2rem !important;
-    margin: 0 !important;
-  }
 
   .add {
     align-self: flex-start;

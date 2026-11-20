@@ -1,6 +1,7 @@
 <!-- Weckerliste: je Wecker eine Zeile mit Aktiv-Schalter, Wochentag oder Datum (einmalig), Uhrzeit, Löschen. -->
 <script>
   import { configStore, MAX_ALARMS } from '../stores/configStore.js';
+  import { getJson } from '../lib/api.js';
 
   const dayNames = {
     1: "Montag",
@@ -21,10 +22,25 @@
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   }
 
-  // Wochentag eines wöchentlichen Weckers geändert
-  function handleDayChange(index, event) {
-    const alarm = { ...$configStore.alarms[index], day: parseInt(event.target.value) };
-    configStore.updateAlarm(index, alarm);
+  // Heutiges Datum laut Lampenuhr; ohne gültige Uhrzeit (z. B. ohne Internet) der 1.1.2026
+  async function lampToday() {
+    try {
+      const status = await getJson("/get_status");
+      if (status.systemTime >= 1577836800) return isoDate(new Date(status.systemTime * 1000));
+    } catch {}
+    return "2026-01-01";
+  }
+
+  // Wochentag gewählt — oder "Datum": dann wird der Eintrag dauerhaft ein einmaliger Termin
+  // (Datumsfeld statt Wochentag, ein Zurück zum Wochentag gibt es nicht)
+  async function handleDayChange(index, event) {
+    const current = $configStore.alarms[index];
+    if (event.target.value === "date") {
+      const date = await lampToday();
+      configStore.updateAlarm(index, { ...current, once: true, day: 0, date });
+    } else {
+      configStore.updateAlarm(index, { ...current, day: parseInt(event.target.value) });
+    }
   }
 
   // Datum eines einmaligen Weckers geändert
@@ -62,12 +78,6 @@
     configStore.addAlarm();
   }
 
-  // Neuer einmaliger Termin (morgen 7:00)
-  function addOnceAlarm() {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    configStore.addAlarm(isoDate(tomorrow));
-  }
 
   // Belegte Plätze: wöchentlich (day > 0) oder einmalig (once)
   $: activeAlarms = $configStore.alarms
@@ -108,6 +118,7 @@
           {#each Object.entries(dayNames) as [value, name]}
             <option value={value}>{name}</option>
           {/each}
+          <option value="date">Datum</option>
         </select>
       {/if}
       <input
@@ -117,23 +128,21 @@
         on:change={(e) => handleTimeChange(alarm.index, e)}
       />
       <button
-        class="btn-small remove"
+        class="icon-btn"
         type="button"
+        title="Löschen"
         on:click={() => removeAlarm(alarm.index)}
-        aria-label="Wecker {alarm.index + 1} löschen">×</button
+        aria-label="Wecker {alarm.index + 1} löschen"
       >
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none" /></svg>
+      </button>
     </div>
   {/each}
 
   <!-- Beim Maximum der Firmware (MAX_ALARMS) ausgegraut -->
-  <div class="add-buttons">
-    <button class="btn-small btn-blue" type="button" disabled={activeAlarms.length >= MAX_ALARMS} on:click={addAlarm}>
-      Wecker hinzufügen
-    </button>
-    <button class="btn-small btn-blue" type="button" disabled={activeAlarms.length >= MAX_ALARMS} on:click={addOnceAlarm}>
-      Termin hinzufügen
-    </button>
-  </div>
+  <button class="btn-small btn-blue add" type="button" disabled={activeAlarms.length >= MAX_ALARMS} on:click={addAlarm}>
+    Wecker hinzufügen
+  </button>
 </div>
 
 <style>
@@ -181,17 +190,9 @@
 
 
 
-  .remove {
-    flex: 0 0 2rem;
-    width: 2rem;
-    padding: 0.2rem !important;
-    margin: 0 !important;
-  }
 
-  .add-buttons {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+  .add {
+    align-self: flex-start;
   }
 
 

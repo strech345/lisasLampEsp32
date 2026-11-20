@@ -115,8 +115,8 @@ function createConfigStore() {
       this.post();
     },
 
-    // Neuer Wecker im ersten freien Platz: ohne Datum wöchentlich (Montag 7:00),
-    // mit Datum ("JJJJ-MM-TT") ein einmaliger Termin um 7:00
+    // Neuer wöchentlicher Wecker (Montag 7:00) im ersten freien Platz
+    // (zum Termin wird er über die Auswahl "Datum" in der Zeile)
     addAlarm(date = null) {
       update((config) => {
         const alarms = [...config.alarms];
