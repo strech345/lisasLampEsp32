@@ -1,5 +1,17 @@
 # Änderungen
 
+## November 2026 — Nach der Bereinigung
+
+- **Lichtfarben:** Warm- und Neutralweiß klar unterscheidbar (weiße LED für warme/kalte Töne
+  zurückgenommen), neuer Ton **Kerzenlicht**; Auswahl in der UI von warm nach kalt, auf Deutsch.
+- **Helligkeit:** Stufen an das Auge angepasst (geometrisch statt linear); **Stufe 7 = Boost** mit
+  zusätzlichen Farb-Chips für deutlich mehr Licht.
+- **Hotspot nur per langem Tastendruck:** Beim Start verbindet sich die Lampe nur mit dem Heimnetz.
+- **Status-LED:** langsam = WLAN aus, 1× Heimnetz, 2× Hotspot, 3× beides.
+- **Ereignisprotokoll** lieferte ungültiges JSON (ArduinoJson 7 leert den Ziel-String) — behoben.
+- **`main.cpp` aufgeräumt** (373 → 121 Zeilen, Auftragsablage in `web_commands.cpp`); Zeitzone und
+  gespeicherte Uhrzeit werden jetzt vor den Weckern gesetzt.
+
 ## November 2026 — Bereinigung (Branch `cleanup2026`)
 
 Kompletter Durchgang durch Firmware, Weboberfläche und Doku; am Gerät getestet.
