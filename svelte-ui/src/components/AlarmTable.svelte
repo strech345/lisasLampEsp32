@@ -164,7 +164,8 @@
     border: 1px solid transparent;
   }
 
-  .alarm-row.inactive {
+  /* Inaktive/vergangene Wecker: nur die Felder blass, der Lösch-Knopf bleibt voll sichtbar */
+  .alarm-row.inactive > :not(.icon-btn) {
     opacity: 0.6;
   }
 
