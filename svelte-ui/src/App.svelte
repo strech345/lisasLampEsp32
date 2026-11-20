@@ -6,6 +6,7 @@
   import { ping } from "./lib/api.js";
   import { online } from "./stores/connectionStore.js";
   import { configStore } from "./stores/configStore.js";
+  import { lampName, loadLampName } from "./stores/systemStore.js";
   import { messageStore } from "./stores/messageStore.js";
   import { t } from "./lib/i18n.js";
 
@@ -31,6 +32,7 @@
     if (ok && !wasOnline) {
       messageStore.hide();
       configStore.load();
+      loadLampName();
     } else if (ok && page === "main") {
       configStore.syncActiveSet(); // Set-Wechsel am Drehknopf sichtbar machen
     } else if (!ok && wasOnline) {
@@ -38,8 +40,8 @@
     }
   }
 
-  // Seitentitel folgt der gewählten Sprache
-  $: document.title = $t("main.title");
+  // Seitentitel folgt der gewählten Sprache und dem Namen der Lampe
+  $: document.title = $t("main.title", { name: $lampName });
 
   onMount(() => {
     checkConnectivity(); // sofort beim Start

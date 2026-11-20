@@ -4,6 +4,22 @@ import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
 import { t } from "../lib/i18n.js";
 
+// Name der Lampe (Titel der Seite); wird beim Verbinden und nach dem Speichern aktualisiert
+export const lampName = writable("Liza");
+// Party-Tage [{month, day}] (Ballons auf der Hauptseite); Monat 1–12
+export const celebrations = writable([]);
+
+// Lädt Name und Party-Tage der Lampe (für Titel und Ballons)
+export async function loadLampName() {
+  try {
+    const s = await getJson("/get_system_config");
+    if (s.lampName) lampName.set(s.lampName);
+    if (Array.isArray(s.celebrations)) celebrations.set(s.celebrations);
+  } catch (e) {
+    // Titel behält den bisherigen Namen
+  }
+}
+
 const defaultSystemSettings = {
   internalSSID: "",
   internalPW: "",
@@ -30,7 +46,9 @@ function createSystemStore() {
     async load() {
       try {
         const settings = await getJson("/get_system_config");
-        const merged = { ...defaultSystemSettings, ...settings };
+        // Nur WLAN-Felder übernehmen (Änderungsanzeige der WLAN-Sektion)
+        const merged = { ...defaultSystemSettings };
+        for (const key of Object.keys(defaultSystemSettings)) if (key in settings) merged[key] = settings[key];
         originalSystemSettings = JSON.parse(JSON.stringify(merged));
         systemStoreData.set(merged);
       } catch (error) {
@@ -42,9 +60,10 @@ function createSystemStore() {
     async post() {
       try {
         const currentSettings = get(systemStoreData);
-        // Warn-/Sleep-Schalter haben eigene Endpunkte → nicht mitsenden, sonst würde ein
-        // zwischenzeitlich umgeschalteter Wert mit dem alten Stand überschrieben
-        const { warningsEnabled, deepSleepEnabled, ...payload } = currentSettings;
+        // Nur WLAN-Felder senden: Schalter, Persönliches und Debug haben eigene Speicherwege, sonst
+        // würde ein zwischenzeitlich geänderter Wert mit dem alten Stand überschrieben
+        const payload = {};
+        for (const key of Object.keys(defaultSystemSettings)) payload[key] = currentSettings[key];
         await postJson("/set_system_config", payload);
         // Nach dem Speichern: Clear-Flags zurücksetzen, Passwörter wie vom Gerät maskiert zeigen
         const saved = { ...currentSettings };

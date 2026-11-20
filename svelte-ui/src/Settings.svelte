@@ -1,8 +1,8 @@
-<!-- Einstellungsseite: WLAN/Hotspot, Energie & Uhr, Warnungen, System-Status und Event-Log (Accordion). -->
+<!-- Einstellungsseite: Persönliches, WLAN/Hotspot, Energie & Uhr, Warnungen, System, Debug und Event-Log (Accordion). -->
 <script>
   import { onMount } from "svelte";
   import { messageStore } from "./stores/messageStore.js";
-  import { systemStore } from "./stores/systemStore.js";
+  import { systemStore, lampName, celebrations } from "./stores/systemStore.js";
   import { getJson, postJson } from "./lib/api.js";
   import EventLog from "./components/EventLog.svelte";
   import { online } from "./stores/connectionStore.js";
@@ -35,6 +35,20 @@
   let rtcCrystalChanged = false;
   let statusInfo = null;
   let restarting = false;
+
+  // Persönliches: Name der Lampe und Party-Tage (eigener Speichern-Knopf)
+  const MAX_CELEBRATIONS = 8;   // muss zur Firmware passen (include/types.h)
+  const NAME_MAX_LEN = 20;      // muss zur Firmware passen (LAMP_NAME_MAX_LEN)
+  let personalName = "";
+  let personalDays = [];        // [{month, day}], Monat 1–12
+  let personalOriginal = "";    // gespeicherter Stand als JSON (Änderungsanzeige)
+  $: personalChanged = JSON.stringify({ n: personalName, d: personalDays }) !== personalOriginal;
+
+  // Debug-Schalter (wirken sofort)
+  let statusLedEnabled = true;
+  let serialLogEnabled = true;
+  let eventLogEnabled = true;
+  let logToUsb = false;
 
   // Prop: Navigation zurück zur Hauptseite
   export let onNavigateBack;
@@ -70,18 +84,26 @@
     }
   }
 
-  // Setzt einen Schalter der Lampe (warnings, deepSleep, tsfFallback, rdsClock, rtcCrystal)
+  // Setzt einen Schalter der Lampe (warnings, deepSleep, tsfFallback, rdsClock, rtcCrystal,
+  // statusLed, serialLog, eventLog, logUsb)
   function setOption(option, enabled) {
     return postJson("/set_option", { option, enabled });
   }
 
-  // Lädt die Schalter Warnungen und Deep Sleep (stehen in den Systemeinstellungen)
+  // Lädt Schalter, LED-Anzahl, Persönliches und Debug (stehen in den Systemeinstellungen)
   async function loadSwitches() {
     try {
       const s = await getJson("/get_system_config");
       warningsEnabled = s.warningsEnabled;
       deepSleepEnabled = s.deepSleepEnabled;
       if (s.ledCount) ledCount = s.ledCount;
+      statusLedEnabled = s.statusLedEnabled ?? true;
+      serialLogEnabled = s.serialLogEnabled ?? true;
+      eventLogEnabled = s.eventLogEnabled ?? true;
+      logToUsb = s.logToUsb ?? false;
+      personalName = s.lampName || "";
+      personalDays = (s.celebrations || []).map((c) => ({ month: c.month, day: c.day }));
+      personalOriginal = JSON.stringify({ n: personalName, d: personalDays });
     } catch (e) {
       showError($t("set.err.loadSettings"), e);
     }
@@ -102,6 +124,69 @@
     } catch (e) {
       showError($t("set.err.saveFailed"), e);
       loadSwitches();
+    }
+  }
+
+  // Speichert einen Debug-Schalter; bei Fehler Stand neu laden
+  async function handleDebugToggle(option, enabled) {
+    try {
+      await setOption(option, enabled);
+    } catch (e) {
+      showError($t("set.err.saveFailed"), e);
+      loadSwitches();
+    }
+  }
+
+  // Tage im Monat (Februar mit 29, damit der 29.2. als Party-Tag möglich ist)
+  function daysInMonth(month) {
+    return new Date(2024, month, 0).getDate();
+  }
+
+  // Fügt einen Party-Tag hinzu (heute als Vorschlag)
+  function addPartyDay() {
+    if (personalDays.length >= MAX_CELEBRATIONS) return;
+    const now = new Date();
+    personalDays = [...personalDays, { month: now.getMonth() + 1, day: now.getDate() }];
+  }
+
+  // Entfernt einen Party-Tag
+  function removePartyDay(index) {
+    personalDays = personalDays.filter((_, i) => i !== index);
+  }
+
+  // Monat geändert: Tag ggf. auf das Monatsende kürzen
+  function handleMonthChange(index) {
+    const d = personalDays[index];
+    if (d.day > daysInMonth(d.month)) d.day = daysInMonth(d.month);
+    personalDays = personalDays;
+  }
+
+  // Monatsnamen in der gewählten Sprache
+  $: monthNames = Array.from({ length: 12 }, (_, i) =>
+    new Date(2024, i, 1).toLocaleString(localeFor($lang), { month: "long" }));
+
+  // Speichert Name und Party-Tage (kein WLAN-Neustart)
+  async function handlePersonalSave() {
+    const name = personalName.trim();
+    if (name.length < 1 || byteLength(name) > NAME_MAX_LEN) {
+      messageStore.show("error", $t("set.val.lampName", { max: NAME_MAX_LEN }));
+      return;
+    }
+    for (const d of personalDays) {
+      if (!Number.isInteger(d.day) || d.day < 1 || d.day > daysInMonth(d.month)) {
+        messageStore.show("error", $t("set.val.partyDay"));
+        return;
+      }
+    }
+    try {
+      await postJson("/set_system_config", { lampName: name, celebrations: personalDays });
+      personalName = name;
+      personalOriginal = JSON.stringify({ n: personalName, d: personalDays });
+      lampName.set(name);
+      celebrations.set(personalDays.map((d) => ({ ...d })));
+      messageStore.show("success", $t("set.msg.personalSaved"));
+    } catch (e) {
+      showError($t("set.err.saveFailed"), e);
     }
   }
 
@@ -344,6 +429,52 @@
   <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt (je Sektion ein fieldset); nur die
        Sprachauswahl liegt außerhalb und bleibt immer bedienbar -->
   <div class="acc-scroll">
+  <!-- Accordion: Persönlich (Name der Lampe, Party-Tage) -->
+  <div class="acc-item" class:open={openSection === "personal"}>
+    <button class="acc-head" type="button" on:click={() => toggleSection("personal")}>
+      <span class="acc-icon">{openSection === "personal" ? "▾" : "▸"}</span>
+      {$t("set.acc.personal")}
+      {#if personalChanged}<span class="acc-badge">●</span>{/if}
+    </button>
+    {#if openSection === "personal"}
+      <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
+        <div class="group">
+          <label for="lampName">{$t("set.personal.name")}</label>
+          <input type="text" id="lampName" maxlength={NAME_MAX_LEN} bind:value={personalName} />
+        </div>
+
+        <div class="group">
+          <span class="group-title">{$t("set.personal.days")}</span>
+          <small class="hint">{$t("set.personal.daysHint")}</small>
+          {#each personalDays as d, i}
+            <div class="party-row">
+              <input type="number" min="1" max={daysInMonth(d.month)} bind:value={d.day}
+                aria-label={$t("set.personal.day")} />
+              <select bind:value={d.month} on:change={() => handleMonthChange(i)} aria-label={$t("set.personal.month")}>
+                {#each monthNames as m, mi}<option value={mi + 1}>{m}</option>{/each}
+              </select>
+              <button type="button" class="icon-btn" title={$t("set.personal.remove")}
+                aria-label={$t("set.personal.remove")} on:click={() => removePartyDay(i)}>
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none" /></svg>
+              </button>
+            </div>
+          {:else}
+            <small class="hint">{$t("set.personal.none")}</small>
+          {/each}
+          <button type="button" class="btn-tiny add-day" disabled={personalDays.length >= MAX_CELEBRATIONS}
+            on:click={addPartyDay}>{$t("set.personal.add", { max: MAX_CELEBRATIONS })}</button>
+        </div>
+
+        <div class="acc-actions group">
+          <button class="btn-small btn-blue" type="button" on:click={handlePersonalSave}
+            disabled={!personalChanged}>{$t("set.personal.save")}</button>
+        </div>
+        </fieldset>
+      </div>
+    {/if}
+  </div>
+
   <!-- Accordion: WLAN -->
   <div class="acc-item" class:open={openSection === "wifi"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("wifi")}>
@@ -613,6 +744,53 @@
     {/if}
   </div>
 
+  <!-- Accordion: Debug (Status-LED, Logs, Ausgabe-Schnittstelle) -->
+  <div class="acc-item" class:open={openSection === "debug"}>
+    <button class="acc-head" type="button" on:click={() => toggleSection("debug")}>
+      <span class="acc-icon">{openSection === "debug" ? "▾" : "▸"}</span>
+      {$t("set.acc.debug")}
+    </button>
+    {#if openSection === "debug"}
+      <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
+        <section class="warnings-section group">
+          <label class="warnings-label">
+            <input type="checkbox" bind:checked={statusLedEnabled}
+              on:change={() => handleDebugToggle("statusLed", statusLedEnabled)} />
+            {$t("set.debug.statusLed")}
+          </label>
+          <small>{$t("set.debug.statusLedHint")}</small>
+        </section>
+
+        <section class="warnings-section group">
+          <label class="warnings-label">
+            <input type="checkbox" bind:checked={eventLogEnabled}
+              on:change={() => handleDebugToggle("eventLog", eventLogEnabled)} />
+            {$t("set.debug.eventLog")}
+          </label>
+          <small>{$t("set.debug.eventLogHint")}</small>
+        </section>
+
+        <section class="warnings-section group">
+          <label class="warnings-label">
+            <input type="checkbox" bind:checked={serialLogEnabled}
+              on:change={() => handleDebugToggle("serialLog", serialLogEnabled)} />
+            {$t("set.debug.serialLog")}
+          </label>
+          <small>{$t("set.debug.serialLogHint")}</small>
+          <label for="logOutput" class="sub-label">{$t("set.debug.output")}</label>
+          <select id="logOutput" disabled={!serialLogEnabled} value={logToUsb ? "usb" : "uart"}
+            on:change={(e) => { logToUsb = e.target.value === "usb"; handleDebugToggle("logUsb", logToUsb); }}>
+            <option value="uart">{$t("set.debug.uart")}</option>
+            <option value="usb">{$t("set.debug.usb")}</option>
+          </select>
+          <small>{$t("set.debug.outputHint")}</small>
+        </section>
+        </fieldset>
+      </div>
+    {/if}
+  </div>
+
   <!-- Accordion: Event Log -->
   <div class="acc-item" class:open={openSection === "log"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("log")}>
@@ -862,6 +1040,36 @@
   /* Sprachauswahl steht außerhalb des fieldsets → Trennlinie nach unten statt über .group + .group */
   .lang-group {
     border-bottom: 1px solid var(--pico-muted-border-color, #ddd);
+  }
+
+  .group-title {
+    display: block;
+    font-weight: 500;
+  }
+
+  /* Party-Tag: Tag | Monat | Löschen in einer Zeile */
+  .party-row {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) 2rem;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  .party-row input,
+  .party-row select {
+    margin: 0;
+    height: var(--control-h, 2.4rem);
+  }
+
+  .add-day {
+    margin-top: 0.6rem;
+  }
+
+  .sub-label {
+    display: block;
+    margin: 0.6rem 0 0.35rem;
+    font-size: 0.85rem;
   }
 
   .led-count input[type="number"] {

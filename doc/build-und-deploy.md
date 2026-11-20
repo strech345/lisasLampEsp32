@@ -50,7 +50,8 @@ pio device monitor                   # serieller Monitor (115200 Baud, über mon
 Die Lampe muss für das Aufspielen **wach** sein: Im Deep Sleep ist ihr USB-Anschluss abgeschaltet.
 Kurz auf den Drehknopf drücken, dann erscheint der Port.
 
-Das serielle Log läuft über UART0 (TX = GPIO21, z. B. FTDI-Adapter), nicht über USB.
+Das serielle Log läuft standardmäßig über UART0 (TX = GPIO21, z. B. FTDI-Adapter). Unter
+**Einstellungen → Debug** lässt es sich auf USB umstellen oder ganz abschalten.
 
 ---
 
@@ -94,7 +95,7 @@ Alle Requests laufen über `svelte-ui/src/lib/api.js` (`getJson`, `postJson`): P
 svelte-ui/src/
 ├── App.svelte              Seitenwechsel Hauptseite ↔ Einstellungen
 ├── Main.svelte             Farbe, Dauern, Wecker
-├── Settings.svelte         WLAN, Energie & Uhr, Warnungen, System, Ereignisprotokoll
+├── Settings.svelte         Persönlich, WLAN, Energie & Uhr, Warnungen, System, Debug, Ereignisprotokoll
 ├── components/             AlarmTable, ColorPicker, EventLog, MessageAlert, Snowfall, Balloons
 ├── stores/                 configStore (Lampe), systemStore (WLAN), messageStore (Meldungen)
 └── lib/                    api.js (Fetch-Helfer), mockData.js (Mock-Modus), i18n.js + i18n/de.js, en.js

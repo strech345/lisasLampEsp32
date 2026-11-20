@@ -111,6 +111,22 @@ bedienbar); kommt die Verbindung zurück, wird die Konfiguration neu geladen.
 Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;
 die Änderung wirkt sofort. Weitere Einstellungen: WLAN, Energie & Uhr, Warnungen, Ereignisprotokoll.
 
+**Persönlich:** Name der Lampe (1–20 Zeichen, erscheint im Seitentitel, z. B. „Liza's Lampe“) und bis
+zu 8 **Party-Tage** (Tag + Monat). An diesen Tagen startet um 7:00 der Feier-Modus und die Hauptseite
+zeigt Ballons. Speichern über den eigenen Knopf; das WLAN wird dabei nicht neu gestartet. Standardwerte
+(nach Werksreset) stehen in `include/secrets.h`.
+
+**Debug** (jeder Schalter wirkt sofort und wird gespeichert):
+
+| Schalter | Wirkung |
+|---|---|
+| Status-LED | blaue LED auf dem Board an/aus (aus = bleibt dunkel) |
+| Ereignisprotokoll aufzeichnen | aus = keine neuen Einträge, vorhandene bleiben |
+| Serielle Logs (Monitor) | Textausgabe für `pio device monitor` an/aus |
+| Ausgabe über | **UART** (TX = GPIO21, RX = GPIO20, z. B. FTDI) oder **USB** (USB-CDC des ESP32-C3) |
+
+USB-Logs gibt es nur, solange die Lampe wach ist: Im Deep Sleep ist der USB-Anschluss abgeschaltet.
+
 ## Boot-Taste
 
 | Druck | Wirkung |
@@ -155,4 +171,4 @@ Kurzes Blinken: 0,1 s an, 0,2 s Abstand, danach 2 s Pause (`statusLedTick()` in 
 | Wecker-Zeit erreicht (bis 10 min verspätet) | Wecker startet: Farbe der aktiven Szene, Helligkeit steigt von 1 auf 7 |
 | Wecker-Dauer abgelaufen | Lampe geht aus (Sleep) |
 | Gute-Nacht-Dauer abgelaufen | Lampe geht aus (Sleep) |
-| 1.1., 8.8., 2.9., 24.12. ab 7:00 | Feier-Modus (Regenbogen) |
+| Party-Tag ab 7:00 (Standard 1.1., 8.8., 2.9., 24.12.; Einstellungen → Persönlich) | Feier-Modus (Regenbogen) |

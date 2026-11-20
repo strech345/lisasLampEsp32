@@ -45,6 +45,12 @@ export const mockSystemSettings = {
   rdsClockEnabled: false,
   rtcCrystalEnabled: false,
   ledCount: 4,
+  lampName: "Liza",
+  celebrations: [{ month: 1, day: 1 }, { month: 8, day: 8 }, { month: 9, day: 2 }, { month: 12, day: 24 }],
+  statusLedEnabled: true,
+  serialLogEnabled: true,
+  eventLogEnabled: true,
+  logToUsb: false,
 };
 
 // Check if mocking is enabled via URL parameter

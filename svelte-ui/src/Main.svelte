@@ -6,6 +6,7 @@
   import LightSets from "./components/LightSets.svelte";
   import MessageAlert from "./components/MessageAlert.svelte";
   import { configStore } from "./stores/configStore.js";
+  import { lampName, celebrations } from "./stores/systemStore.js";
   import { messageStore } from "./stores/messageStore.js";
   import Snowfall from "./components/Snowfall.svelte";
   import Balloons from "./components/Balloons.svelte";
@@ -15,10 +16,8 @@
   const month = now.getMonth(); // 0-11
   const day = now.getDate();
   
-  const isCelebration = (month === 0 && day === 1) || // Jan 1
-                         (month === 7 && day === 8) || // Aug 8
-                         (month === 8 && day === 2) || // Sep 2 
-                         (month === 11 && day === 24); // 24. Dez (getMonth ist 0-basiert)
+  // Party-Tag (Ballons): Liste kommt von der Lampe, Monat dort 1–12
+  $: isCelebration = $celebrations.some((c) => c.month === month + 1 && c.day === day);
   
   // Winter (Schneefall): 15. Dez. bis 15. Feb. (Monate 0-basiert: 11 = Dez, 0 = Jan, 1 = Feb)
   const isWinter = (month === 11 && day >= 15) || // 15.–31. Dezember
@@ -74,7 +73,7 @@
     >
     <img src="/meerkat.avif" alt={$t("main.meerkatAlt")} class="meerkat-img" />
     <header class="app-header">
-      <h1>{$t("main.title")}</h1>
+      <h1>{$t("main.title", { name: $lampName })}</h1>
     </header>
     <p class="muted" style="display: block;">
       {$t("main.welcome")}

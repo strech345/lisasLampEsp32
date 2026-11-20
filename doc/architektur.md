@@ -15,7 +15,7 @@ _Stand: November 2026_
 | `src/button.cpp` | Drehknopf und Boot-Taste: rastungsgenaues Drehen, kurzer/langer Druck |
 | `src/alarm.cpp` | Wecker: Auslösung (10-min-Fenster), Helligkeitsverlauf, Zeit bis zum nächsten Wecker |
 | `src/good_night.cpp` | Gute-Nacht-Modus: Helligkeit dimmt über die eingestellte Dauer auf 0 |
-| `src/celebration.cpp` | Feier-Modus an festen Tagen ab 7:00 |
+| `src/celebration.cpp` | Feier-Modus an den Party-Tagen aus `SystemSettings` ab 7:00 |
 | `src/alerts.cpp` | Kurze Hinweise (OK/Warnung/Fehler) mit Ablaufzeit |
 | `src/sleep_manager.cpp` | Deep Sleep: Bedingungen, Aufwachzeit inkl. Uhrabweichung, Wakeup-Pins |
 | `src/wifi_controller.cpp` | WLAN AP/STA/APSTA, Auto-Start/-Stopp, Kanalwahl, NTP, Wiederverbinden |
@@ -59,7 +59,7 @@ aus `loop()` angefasst.
 
 ## Boot (`setup()`)
 
-1. `debugInit()` (Serial über UART0), LittleFS, `loadFullConfigOrDefault()`,
+1. `debugInit()` (Serial über UART0 und USB-CDC; nach dem Laden der Einstellungen gilt die gewählte Ausgabe), LittleFS, `loadFullConfigOrDefault()`,
    `loadSystemSettingsOrDefault()` (enthält die LED-Anzahl)
 2. **Aufwachgrund** (`applyWakeupReason()`): Taster → Normalbetrieb mit Helligkeit 1; Timer → Sleep
 3. **LEDs sofort** setzen (Anzahl, Farbe, Helligkeit; bei Timer-Wakeup aus) — vor allem Langsamen
@@ -100,7 +100,7 @@ checkToGoSleep()           Deep Sleep prüfen (alle 10 s)
 | Schlüssel | Inhalt |
 |---|---|
 | `fullConfig` | `FullConfig`: bis zu 6 Szenen + aktive Szene, Helligkeit, 16 Wecker (wöchentlich oder einmaliges Datum), Dauern |
-| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz, LED-Anzahl |
+| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz, LED-Anzahl, Lampenname, Party-Tage, Debug-Schalter |
 | `tsfData` | bis zu 16 TSF-Referenzen |
 | `lastKnownTime` | letzte gültige Uhrzeit (alle 30 min bei gültigem NTP) |
 
@@ -121,10 +121,10 @@ POSTs ohne Nutzdaten senden `{}`.
 | `/ping` | GET | `pong` (Verbindungsprüfung der UI) |
 | `/get_config` | GET | `FullConfig` als JSON |
 | `/set_config` | POST | Teil-Update der `FullConfig`; fehlende Felder bleiben, `brightnessMode` wird ignoriert (Drehknopf ist Master), Wertebereiche geprüft |
-| `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`), alle Schalter und `ledCount` |
-| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32, Passwort leer (= unverändert) oder 8–63; `clearInternalPW`/`clearExternalPW`/`clearExternalPW2` entfernen ein Passwort |
+| `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`), alle Schalter, `ledCount`, `lampName`, `celebrations` (`[{month, day}]`), Debug-Schalter (`statusLedEnabled`, `serialLogEnabled`, `eventLogEnabled`, `logToUsb`) |
+| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32, Passwort leer (= unverändert) oder 8–63; `clearInternalPW`/`clearExternalPW`/`clearExternalPW2` entfernen ein Passwort; `lampName` (1–20 Zeichen) und `celebrations` (0–8, ersetzt die Liste) optional, WLAN-Neustart nur bei geänderten Netzwerkdaten |
 | `/set_led_count` | POST | `{"count": 1–16}` → Anzahl der LEDs, sofort wirksam (in `SystemSettings`) |
-| `/set_option` | POST | `{"option": "warnings\|deepSleep\|tsfFallback\|rdsClock\|rtcCrystal", "enabled": bool}`; `rtcCrystal` startet neu |
+| `/set_option` | POST | `{"option": "warnings\|deepSleep\|tsfFallback\|rdsClock\|rtcCrystal\|statusLed\|serialLog\|eventLog\|logUsb", "enabled": bool}`; `rtcCrystal` startet neu, Debug-Optionen wirken sofort |
 | `/get_status` | GET | Uhrzeit, NTP-Status, externe WLAN-Verbindung |
 | `/get_event_log` | GET | Ereignisprotokoll (neueste zuerst) |
 | `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal` | GET | Detailstatus der Zeitquellen |

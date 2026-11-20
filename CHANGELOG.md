@@ -2,6 +2,12 @@
 
 ## November 2026 — Nach der Bereinigung
 
+- **Einstellungen → Persönlich:** Name der Lampe (Titel der Seite, Standard „Liza“) und bis zu 8
+  **Party-Tage** frei wählbar; Standardwerte aus `include/secrets.h` (`SECRET_LAMP_NAME`,
+  `SECRET_CELEBRATIONS`). Die Ballons der Weboberfläche folgen derselben Liste.
+- **Einstellungen → Debug:** Status-LED, Ereignisprotokoll und serielle Logs einzeln abschaltbar;
+  Log-Ausgabe wahlweise über UART (RX/TX-Pins) oder USB. Das Update setzt die Systemeinstellungen
+  (inkl. WLAN-Daten) einmalig zurück.
 - **Wecker:** bis zu 16, zusätzlich **einmalige Termine** mit Datum (Auswahl „Datum“ in der Zeile); Weckzeit über
   die Sommer-/Winterzeit-Umstellung hinweg korrigiert. Das Update setzt die Lampen-Konfiguration
   einmalig zurück.

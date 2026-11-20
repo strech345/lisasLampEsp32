@@ -50,6 +50,7 @@ const EXACT = {
   "RDS: module not responding (I2C)": "RDS: Modul antwortet nicht (I2C)",
   "RDS: no signal found": "RDS: kein Signal gefunden",
   "Config updated via WiFi": "Konfiguration per WLAN geändert",
+  "Debug settings changed": "Debug-Einstellungen geändert",
   "System settings updated via WiFi": "Systemeinstellungen per WLAN geändert",
   "Warnings enabled": "Warnungen aktiviert",
   "Warnings disabled": "Warnungen deaktiviert",

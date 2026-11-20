@@ -50,7 +50,7 @@ Stromversorgung der Peripherie:
 | 10 | `PIN_LED_STRIP` | LED-Daten | WS2812B GRBW (Anzahl einstellbar, Standard 4) | OUT | 300–500 Ω Serienwiderstand empfohlen |
 | 18–19 | — | USB D−/D+ | USB-JTAG | BIDIR | Aufspielen; im Deep Sleep abgeschaltet |
 | 20 | — | RX0 | UART0 | IN | frei |
-| 21 | — | TX0 | UART0 | OUT | serielles Log (115200 Baud, z. B. FTDI-Adapter) |
+| 21 | — | TX0 | UART0 | OUT | serielles Log (115200 Baud, z. B. FTDI-Adapter); alternativ USB, Einstellungen → Debug |
 | 12–17 | — | Flash-SPI | internes Flash | — | reserviert, nie als GPIO verwenden |
 
 **Deep-Sleep-Wakeup** funktioniert nur an RTC-fähigen GPIOs (0–5). `PIN_ENCODER_SW` und `PIN_ENCODER_CLK`

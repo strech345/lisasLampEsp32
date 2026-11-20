@@ -46,7 +46,8 @@ cp include/secrets.example.h include/secrets.h
 ```
 
 Dann `include/secrets.h` bearbeiten. Die Datei steht in `.gitignore` und wird nie eingecheckt. Fehlt sie,
-wird automatisch die Vorlage verwendet. Ungültige Werte (Passwort nicht leer und kürzer als 8 Zeichen,
+wird automatisch die Vorlage verwendet. Außer den Zugangsdaten stehen dort auch der **Name der Lampe**
+(`SECRET_LAMP_NAME`) und die **Party-Tage** (`SECRET_CELEBRATIONS`, `{Monat, Tag}`, höchstens 8). Ungültige Werte (Passwort nicht leer und kürzer als 8 Zeichen,
 SSID länger als 32 Zeichen) brechen den Build mit einer Fehlermeldung ab.
 
 > Wer `SECRET_AP_PASSWORD` ändert, sollte die Tabelle oben für sich nicht mehr als gültig ansehen. Sie
@@ -79,7 +80,8 @@ Weitere Details, Mock-Modus und UI-Entwicklung: [doc/build-und-deploy.md](doc/bu
 
 ## Entwicklung
 
-- Serieller Monitor: `pio device monitor` (Log über UART0/TX = GPIO21, 115200 Baud).
+- Serieller Monitor: `pio device monitor` (Log standardmäßig über UART0/TX = GPIO21, 115200 Baud;
+  umstellbar auf USB unter Einstellungen → Debug).
   Bei Problemen mit dem Wiederverbinden hilft die VS-Code-Erweiterung
   [Serial Monitor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor).
 - Kommentare und Doku sind auf Deutsch. Pins nur in `include/pins.h`, Zugangsdaten nur in
