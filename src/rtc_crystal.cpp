@@ -65,8 +65,8 @@ void initRtcCrystal(SystemSettings* settings, bool fromDeepSleep) {
 #else
         rtc_clk_slow_freq_set(RTC_SLOW_FREQ_32K_XTAL);
 #endif
-        logEvent("RTC: 32kHz Quarz aktiv");
-        serialPrint("RTC: 32kHz Quarz aktiv (" + String(s_measuredFreqHz) + " Hz)");
+        logEvent("RTC: 32 kHz crystal active");
+        serialPrint("RTC: 32 kHz crystal active (" + String(s_measuredFreqHz) + " Hz)");
     } else {
         // Quarz fehlt oder schwingt nicht → sicher auf RC-Oszillator zurückfallen
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
@@ -75,7 +75,7 @@ void initRtcCrystal(SystemSettings* settings, bool fromDeepSleep) {
         rtc_clk_slow_freq_set(RTC_SLOW_FREQ_8MD256);
 #endif
         rtc_clk_32k_enable(false);
-        logEvent("RTC: Quarz nicht erkannt, RC-Oszi");
+        logEvent("RTC: no crystal, using RC oscillator");
         serialPrint("RTC: Quarz nicht erkannt, bleibe auf RC-Oszi");
     }
     settings->rtcCrystalAvailable = valid;

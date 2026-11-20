@@ -5,9 +5,11 @@
 - **Wecker:** bis zu 16, zusätzlich **einmalige Termine** mit Datum (Auswahl „Datum“ in der Zeile); Weckzeit über
   die Sommer-/Winterzeit-Umstellung hinweg korrigiert. Das Update setzt die Lampen-Konfiguration
   einmalig zurück.
+- **Sprache Deutsch/Englisch** in den Einstellungen; Protokoll-Meldungen der Firmware einheitlich englisch,
+  bei Deutsch in der Weboberfläche übersetzt.
 - **Hardware-Erkennung:** Quarz und RDS-Modul werden bei jedem Einschalten geprüft; nicht vorhandene
   lassen sich nicht aktivieren.
-- **Termine:** Vorschlag jetzt + 1 h, abgelaufene gesperrt; aktives Set folgt dem Drehknopf in der UI;
+- **Termine:** Vorschlag jetzt + 1 h, abgelaufene blass und nicht einschaltbar (aber bearbeitbar); aktives Set folgt dem Drehknopf in der UI;
   Zeitquellen mit Datum/Uhrzeit statt „vor X“; „Liza“ statt „Lisa“.
 - **Weboberfläche ohne Verbindung:** alle Eingaben gesperrt, bis die Lampe wieder erreichbar ist.
 - **Weboberfläche:** Licht-Sets, Wecker und Dauer je einzeilig mit gleich großen Feldern; Lösch-Knöpfe

@@ -152,8 +152,8 @@ static void processSnapshot() {
     }
     if(g_captureUnixUs < MIN_VALID_EPOCH_US) {
         // Ohne gültige Systemzeit wären die gespeicherten Referenzen wertlos
-        serialPrint("TSF: Snapshot verworfen, Uhrzeit ungueltig");
-        logEvent("TSF: Snapshot verworfen, Uhrzeit ungueltig");
+        serialPrint("TSF: snapshot discarded, time invalid");
+        logEvent("TSF: snapshot discarded, time invalid");
         return;
     }
 
@@ -209,7 +209,7 @@ static void processSnapshot() {
     g_lastSnapshotMs = millis();
 
     char msg[52];
-    snprintf(msg, sizeof(msg), "TSF: Snapshot %d neu, %d ersetzt, %d total", newAdded, updated, g_storedCount);
+    snprintf(msg, sizeof(msg), "TSF: snapshot %d new, %d replaced, %d total", newAdded, updated, g_storedCount);
     logEvent(msg);
     serialPrint(msg);
 }
@@ -219,7 +219,7 @@ static void reportInsufficient(uint8_t aps) {
     g_lastCalcResult = "insufficient";
     g_lastCalcAps = aps;
     char msg[52];
-    snprintf(msg, sizeof(msg), "TSF: zu wenig APs (%d)", aps);
+    snprintf(msg, sizeof(msg), "TSF: too few APs (%d)", aps);
     logEvent(msg);
 }
 
@@ -242,7 +242,7 @@ static void processFallback() {
     if(newCount == 0 || g_storedCount == 0) {
         g_lastCalcResult = "insufficient";
         g_lastCalcAps = 0;
-        logEvent("TSF: Fallback: keine Daten");
+        logEvent("TSF: fallback has no data");
         return;
     }
 
@@ -308,7 +308,7 @@ static void processFallback() {
     if(medianNowUs < MIN_VALID_EPOCH_US) {
         g_lastCalcResult = "invalid";
         g_lastCalcAps = keptCount;
-        logEvent("TSF: ungueltige Referenzzeit");
+        logEvent("TSF: invalid reference time");
         return;
     }
 
@@ -338,7 +338,7 @@ static void processFallback() {
         }
         saveTsfEntries(g_storedEntries, g_storedCount);
         char msg[52];
-        snprintf(msg, sizeof(msg), "TSF: %d Eintraege neu basiert", rebaseCount);
+        snprintf(msg, sizeof(msg), "TSF: %d entries rebased", rebaseCount);
         logEvent(msg);
     }
 
@@ -347,7 +347,7 @@ static void processFallback() {
     g_lastCalcDeviationMs = deviationMs;
 
     char msg[52];
-    snprintf(msg, sizeof(msg), "TSF: Zeit gesetzt %d APs +-%lums", keptCount, (unsigned long)deviationMs);
+    snprintf(msg, sizeof(msg), "TSF: time set, %d APs +-%lums", keptCount, (unsigned long)deviationMs);
     logEvent(msg);
     serialPrint(msg);
 }
@@ -389,7 +389,7 @@ void tsfClockLoop() {
             g_snapshotScheduled = true;
             serialPrint("TSF: Starte Snapshot-Scan");
         } else {
-            logEvent("TSF: Scan-Start fehlgeschlagen");
+            logEvent("TSF: scan start failed");
         }
         return;
     }
@@ -404,7 +404,7 @@ void tsfClockLoop() {
                 serialPrint("TSF: Starte Fallback-Scan");
             } else {
                 g_fallbackAttempted = true;
-                logEvent("TSF: Scan-Start fehlgeschlagen");
+                logEvent("TSF: scan start failed");
             }
             return;
         }

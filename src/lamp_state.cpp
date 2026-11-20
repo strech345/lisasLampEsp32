@@ -220,7 +220,7 @@ static const char* lampStateName(LampState s) {
     case LAMP_STATE_CELEBRATION: return "Celebration";
     case LAMP_STATE_SYS_ERROR:   return "SysError: no time";
     case LAMP_STATE_SYS_WARNING: return "SysWarning: stale NTP";
-    case LAMP_STATE_AP_WAITING:  return "Hotspot wartet";
+    case LAMP_STATE_AP_WAITING:  return "AP waiting";
     default:                     return "Unknown";
     }
 }
@@ -370,7 +370,7 @@ void switchLightSet(int delta) {
     }
     saveFullConfig(cfg, true);
     char buf[24];
-    snprintf(buf, sizeof(buf), "Licht-Set %u", cfg.activeSet + 1);
+    snprintf(buf, sizeof(buf), "Light set %u", cfg.activeSet + 1);
     logEvent(buf);
 }
 

@@ -3,6 +3,8 @@
   import { onMount, onDestroy } from "svelte";
   import { getJson } from "../lib/api.js";
   import { messageStore } from "../stores/messageStore.js";
+  import { t, lang } from "../lib/i18n.js";
+  import { translateEvent } from "../lib/logTranslations.js";
 
   let logData = null;
   let loading = false;
@@ -17,7 +19,7 @@
     try {
       logData = await getJson("/get_event_log");
     } catch (e) {
-      error = "Fehler beim Laden der Logs: " + e.message;
+      error = $t("log.loadFailed", { msg: e.message });
       // Meldung nur beim ersten Fehler, nicht alle 10 s erneut
       if (!hadError) messageStore.show("error", error);
     } finally {
@@ -28,7 +30,7 @@
   // Format relative time from millisecond delta
   function formatRelative(deltaMs) {
     const s = Math.floor(deltaMs / 1000);
-    if (s < 5) return "gerade";
+    if (s < 5) return $t("log.justNow");
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60);
     if (m < 60) return `${m}min`;
@@ -41,7 +43,11 @@
   function formatAbsolute(unixSec) {
     const d = new Date(unixSec * 1000);
     const pad = (n) => String(n).padStart(2, "0");
-    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}. ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    // Deutsch: Tag.Monat. — Englisch: Monat/Tag
+    return $lang === "en"
+      ? `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${time}`
+      : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}. ${time}`;
   }
 
   // Get the best absolute time for an event:
@@ -65,7 +71,7 @@
   function eventRelativeTime(event) {
     if (!logData) return "?";
     const delta = logData.uptimeMs - event.uptimeMs;
-    return "vor " + formatRelative(delta);
+    return $t("log.ago", { t: formatRelative(delta) });
   }
 
   onMount(() => {
@@ -81,7 +87,7 @@
 <div class="event-log">
   <div class="log-header">
     <button class="btn-blue refresh-btn" type="button" on:click={loadLog} disabled={loading}
-      aria-label="Aktualisieren" title="Aktualisieren">
+      aria-label={$t("log.refresh")} title={$t("log.refresh")}>
       <svg class:spin={loading} viewBox="0 0 24 24" width="22" height="22" fill="none"
         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 12a9 9 0 1 1-2.64-6.36" />
@@ -93,17 +99,17 @@
   {#if error}
     <p class="log-error">{error}</p>
   {:else if !logData}
-    <p class="log-empty">Laden…</p>
+    <p class="log-empty">{$t("log.loading")}</p>
   {:else if logData.events.length === 0}
-    <p class="log-empty">Keine Einträge</p>
+    <p class="log-empty">{$t("log.empty")}</p>
   {:else}
     <div class="log-table-wrap">
       <table class="log-table">
         <thead>
           <tr>
-            <th>Zeit</th>
-            <th>Vor</th>
-            <th>Ereignis</th>
+            <th>{$t("log.colTime")}</th>
+            <th>{$t("log.colAgo")}</th>
+            <th>{$t("log.colEvent")}</th>
           </tr>
         </thead>
         <tbody>
@@ -117,7 +123,7 @@
                 {/if}
               </td>
               <td class="col-rel">{eventRelativeTime(event)}</td>
-              <td class="col-msg">{event.msg}</td>
+              <td class="col-msg">{$lang === "de" ? translateEvent(event.msg) : event.msg}</td>
             </tr>
           {/each}
         </tbody>

@@ -9,6 +9,7 @@
   import { messageStore } from "./stores/messageStore.js";
   import Snowfall from "./components/Snowfall.svelte";
   import Balloons from "./components/Balloons.svelte";
+  import { t } from "./lib/i18n.js";
 
   const now = new Date();
   const month = now.getMonth(); // 0-11
@@ -31,7 +32,7 @@
   function validDuration(raw, label, inputEl) {
     const value = Number(raw);
     if (raw === "" || !Number.isInteger(value) || value < 1 || value > 1440) {
-      messageStore.show("error", `${label}: Bitte eine ganze Zahl von 1 bis 1440 Minuten eingeben.`);
+      messageStore.show("error", $t("main.durationInvalid", { label }));
       // Anzeige auf den gespeicherten Wert zurücksetzen
       if (inputEl) inputEl.value = inputEl.id === "goodNightDuration" ? goodNightDuration : alarmDuration;
       return null;
@@ -41,13 +42,13 @@
 
   // Gute-Nacht-Dauer geändert
   function handleGoodNightChange(event) {
-    const value = validDuration(event.target.value, "Gute-Nacht-Dauer", event.target);
+    const value = validDuration(event.target.value, $t("main.goodNightLabel"), event.target);
     if (value !== null) configStore.updateDuration("goodNightDuration", value);
   }
 
   // Wecker-Dauer geändert
   function handleAlarmChange(event) {
-    const value = validDuration(event.target.value, "Wecker-Dauer", event.target);
+    const value = validDuration(event.target.value, $t("main.alarmLabel"), event.target);
     if (value !== null) configStore.updateDuration("alarmDuration", value);
   }
 
@@ -71,12 +72,12 @@
       class="btn-smallblue square btn-icon system"
       on:click={onNavigateToSettings}><span class="gear-icon">⚙︎</span></button
     >
-    <img src="/meerkat.avif" alt="Meerkat" class="meerkat-img" />
+    <img src="/meerkat.avif" alt={$t("main.meerkatAlt")} class="meerkat-img" />
     <header class="app-header">
-      <h1>Liza's Lampe</h1>
+      <h1>{$t("main.title")}</h1>
     </header>
     <p class="muted" style="display: block;">
-      Viel Spaß mit deiner smarten Lampe ;-)!
+      {$t("main.welcome")}
     </p>
 
     <MessageAlert />
@@ -86,20 +87,20 @@
 
 
     <section aria-labelledby="section-alarms">
-      <h3 id="section-alarms">Wecker</h3>
+      <h3 id="section-alarms">{$t("main.alarms")}</h3>
       <AlarmTable />
     </section>
 
     <section aria-labelledby="section-general">
-      <h3 id="section-general">Licht-Sets</h3>
+      <h3 id="section-general">{$t("main.lightSets")}</h3>
       <LightSets />
     </section>
 
     <section aria-labelledby="section-durations">
-      <h3 id="section-durations">Dauer</h3>
+      <h3 id="section-durations">{$t("main.durations")}</h3>
       <!-- Raster: Bezeichnung | Feld | Einheit → Felder stehen genau untereinander -->
       <div class="duration-grid">
-        <label for="goodNightDuration">Gute Nacht</label>
+        <label for="goodNightDuration">{$t("main.goodNight")}</label>
         <input
           type="number"
           id="goodNightDuration"
@@ -108,9 +109,9 @@
           min="1"
           max="1440"
         />
-        <span class="unit">min</span>
+        <span class="unit">{$t("main.min")}</span>
 
-        <label for="alarmDuration">Wecker</label>
+        <label for="alarmDuration">{$t("main.alarm")}</label>
         <input
           type="number"
           id="alarmDuration"
@@ -119,7 +120,7 @@
           min="1"
           max="1440"
         />
-        <span class="unit">min</span>
+        <span class="unit">{$t("main.min")}</span>
       </div>
     </section>
     </fieldset>

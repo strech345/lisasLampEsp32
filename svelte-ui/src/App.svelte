@@ -7,6 +7,7 @@
   import { online } from "./stores/connectionStore.js";
   import { configStore } from "./stores/configStore.js";
   import { messageStore } from "./stores/messageStore.js";
+  import { t } from "./lib/i18n.js";
 
   let page = "main"; // 'main' | 'settings'
   let pingInterval;
@@ -33,9 +34,12 @@
     } else if (ok && page === "main") {
       configStore.syncActiveSet(); // Set-Wechsel am Drehknopf sichtbar machen
     } else if (!ok && wasOnline) {
-      messageStore.showPersistent("error", "Verbindung zur Lampe verloren – Eingaben sind gesperrt.");
+      messageStore.showPersistent("error", $t("app.connLost"));
     }
   }
+
+  // Seitentitel folgt der gewählten Sprache
+  $: document.title = $t("main.title");
 
   onMount(() => {
     checkConnectivity(); // sofort beim Start

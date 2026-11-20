@@ -243,7 +243,7 @@ void checkWifiStop() {
     // im Hintergrund verbunden; sonst liefe der Hotspot ewig und verhinderte den Deep Sleep)
     wifi_mode_t mode = WiFi.getMode();
     if((mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) && millis() - s_lastWebActivityMs >= AP_IDLE_TIMEOUT_MS) {
-        logEvent("Hotspot aus: 10 min ohne Bedienung");
+        logEvent("Hotspot off: 10 min idle");
         stopWifi();
         s_wifiStopTimerMs = millis();
         return;
@@ -293,7 +293,7 @@ void updateTelemetryWiFiStatus() {
         if(millis() - s_lastNtpSyncMs >= NTP_STALE_AFTER_MS) {
             // Kein Sync seit 24 h: NTP-Status zurücknehmen (TSF-/RDS-Fallback darf wieder greifen)
             g_wifiTracker->clockSynced = false;
-            logEvent("NTP veraltet");
+            logEvent("NTP stale");
         } else if(isTimeForAction(&lastSaveMs, NTP_SAVE_INTERVAL_MS)) {
             saveLastKnownTime(time(NULL)); // Zeitstempel für Neustart-Restore sichern
         }
@@ -393,9 +393,9 @@ void stopAccessPoint() {
     if(mode == WIFI_MODE_APSTA) {
         dnsServer.stop();
         WiFi.mode(WIFI_MODE_STA);
-        logEvent("Hotspot aus (Bedienung)");
+        logEvent("Hotspot off (user action)");
     } else if(mode == WIFI_MODE_AP) {
-        logEvent("Hotspot aus (Bedienung)");
+        logEvent("Hotspot off (user action)");
         stopWifi();
     }
 }
@@ -535,11 +535,11 @@ static void processWifiEvents() {
         case MSG_NTP_SYNCED:
             if(m.hasDrift) {
                 char buf[52];
-                snprintf(buf, sizeof(buf), "NTP sync: Abweichung %+ldms", (long)m.driftMs);
+                snprintf(buf, sizeof(buf), "NTP sync: drift %+ldms", (long)m.driftMs);
                 logEvent(buf);
                 serialPrint(buf);
             } else {
-                logEvent("NTP sync: ohne Referenzzeit");
+                logEvent("NTP sync: no reference time");
             }
             // NTP-Status hier setzen (nicht per Polling): Zeitpunkt merken, Tracker aktualisieren, Zeit sichern
             s_lastNtpSyncMs = millis();

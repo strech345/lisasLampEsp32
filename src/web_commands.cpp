@@ -188,14 +188,14 @@ void processWebCommands() {
             s_systemSettings->ledCount = cmd.ledCount;
             saveSystemSettings(*s_systemSettings);
             char buf[40];
-            snprintf(buf, sizeof(buf), "LED-Anzahl: %u", cmd.ledCount);
+            snprintf(buf, sizeof(buf), "LED count: %u", cmd.ledCount);
             logEvent(buf);
         }
         if(cmd.hasRtc) {
             // Taktquelle ist nur beim Boot umschaltbar → speichern und verzögert neu starten
             s_systemSettings->rtcCrystalEnabled = cmd.rtc;
             saveSystemSettings(*s_systemSettings);
-            logEvent("RTC: Einstellung geändert, Neustart");
+            logEvent("RTC: setting changed, restarting");
             cmd.restart = true;
         }
         if(cmd.ntpResync) {

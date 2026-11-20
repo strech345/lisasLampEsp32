@@ -250,7 +250,7 @@ void rdsClockLoop() {
         if (g_state != RDS_STATE_OFF && g_state != RDS_STATE_DONE) {
             digitalWrite(PIN_RDS_POWER, LOW);
             g_state = RDS_STATE_OFF;
-            logEvent("RDS: Modul aus");
+            logEvent("RDS: module off");
         }
         return;
     }
@@ -263,13 +263,13 @@ void rdsClockLoop() {
         digitalWrite(PIN_RDS_POWER, HIGH);
         g_stateMs = millis();
         g_state = RDS_STATE_POWERING;
-        logEvent("RDS: Scan gestartet");
+        logEvent("RDS: scan started");
         break;
 
     case RDS_STATE_POWERING:
         if (millis() - g_stateMs < POWER_UP_MS) break;
         if (!chipInit()) {
-            logEvent("RDS: Modul antwortet nicht (I2C)");
+            logEvent("RDS: module not responding (I2C)");
             enterIdle(RDS_STATE_NO_SIGNAL);
             break;
         }
@@ -297,7 +297,7 @@ void rdsClockLoop() {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
                 enterIdle(RDS_STATE_NO_SIGNAL);
-                logEvent("RDS: kein Signal gefunden");
+                logEvent("RDS: no signal found");
             } else {
                 g_currentCh = next;
                 chipTune(g_currentCh);
@@ -314,11 +314,11 @@ void rdsClockLoop() {
 
         if (checkRds()) {
             char msg[52];
-            snprintf(msg, sizeof(msg), "RDS: Zeit gesetzt %.1fMHz", g_currentCh / 10.0f);
+            snprintf(msg, sizeof(msg), "RDS: time set %.1fMHz", g_currentCh / 10.0f);
             logEvent(msg);
             g_lastSyncMs = millis();
             enterIdle(RDS_STATE_DONE);
-            logEvent("RDS: Modul aus");
+            logEvent("RDS: module off");
             break;
         }
         // Mit gemerktem ersten CT-Paket auf das zweite warten (CT kommt ~1x pro Minute)
@@ -326,7 +326,7 @@ void rdsClockLoop() {
             uint16_t next = nextChannel(g_currentCh);
             if (next == g_scanStartCh) {
                 enterIdle(RDS_STATE_NO_SIGNAL);
-                logEvent("RDS: kein Signal gefunden");
+                logEvent("RDS: no signal found");
             } else {
                 g_currentCh = next;
                 chipTune(g_currentCh);

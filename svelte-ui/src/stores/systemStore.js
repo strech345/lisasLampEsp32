@@ -2,6 +2,7 @@
 import { get, writable } from "svelte/store";
 import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
+import { t } from "../lib/i18n.js";
 
 const defaultSystemSettings = {
   internalSSID: "",
@@ -33,7 +34,7 @@ function createSystemStore() {
         originalSystemSettings = JSON.parse(JSON.stringify(merged));
         systemStoreData.set(merged);
       } catch (error) {
-        messageStore.show("error", `Systemeinstellungen konnten nicht geladen werden: ${error.message}`);
+        messageStore.show("error", get(t)("system.loadFailed", { msg: error.message }));
       }
     },
 
@@ -56,7 +57,7 @@ function createSystemStore() {
         originalSystemSettings = JSON.parse(JSON.stringify(saved));
         return true;
       } catch (error) {
-        messageStore.show("error", `Speichern fehlgeschlagen: ${error.message}`);
+        messageStore.show("error", get(t)("system.saveFailed", { msg: error.message }));
         return false;
       }
     },

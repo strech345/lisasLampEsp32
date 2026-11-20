@@ -2,16 +2,10 @@
 <script>
   import { configStore, MAX_ALARMS } from '../stores/configStore.js';
   import { getJson } from '../lib/api.js';
+  import { t } from '../lib/i18n.js';
 
-  const dayNames = {
-    1: "Montag",
-    2: "Dienstag", 
-    3: "Mittwoch",
-    4: "Donnerstag",
-    5: "Freitag",
-    6: "Samstag",
-    7: "Sonntag"
-  };
+  // Wochentage 1 (Montag) bis 7 (Sonntag); die Namen kommen aus dem Wörterbuch (alarm.day.N)
+  const dayNumbers = ["1", "2", "3", "4", "5", "6", "7"];
 
   function pad2(n) {
     return n.toString().padStart(2, '0');
@@ -106,15 +100,16 @@
       class="alarm-row"
       id="alarm-row-{alarm.index}"
       class:inactive={!alarm.active || isPast(alarm)}
-      title={isPast(alarm) ? "Termin ist vorbei" : ""}
+      title={isPast(alarm) ? $t("alarm.past") : ""}
     >
-      <!-- Abgelaufene Termine: Felder gesperrt, nur noch löschbar -->
+      <!-- Abgelaufene Termine: blass und nicht einschaltbar, Datum/Uhrzeit aber bearbeitbar
+           (in die Zukunft verschoben → wieder einschaltbar) -->
       <input
         type="checkbox"
         role="switch"
         disabled={isPast(alarm)}
-        aria-label="Wecker {alarm.index + 1} aktiv"
-        checked={alarm.active}
+        aria-label={$t("alarm.ariaActive", { n: alarm.index + 1 })}
+        checked={alarm.active && !isPast(alarm)}
         on:change={(e) => handleActiveChange(alarm.index, e)}
       />
       <!-- Wöchentlich: Wochentag; einmaliger Termin: Datum an derselben Stelle, gleich groß -->
@@ -122,37 +117,35 @@
         <input
           type="date"
           required
-          disabled={isPast(alarm)}
-          aria-label="Datum Wecker {alarm.index + 1}"
+          aria-label={$t("alarm.ariaDate", { n: alarm.index + 1 })}
           value={alarm.date}
           on:change={(e) => handleDateChange(alarm.index, e)}
         />
       {:else}
         <select
-          aria-label="Wochentag Wecker {alarm.index + 1}"
+          aria-label={$t("alarm.ariaDay", { n: alarm.index + 1 })}
           value={String(alarm.day)}
           on:change={(e) => handleDayChange(alarm.index, e)}
         >
-          {#each Object.entries(dayNames) as [value, name]}
-            <option value={value}>{name}</option>
+          {#each dayNumbers as value}
+            <option value={value}>{$t("alarm.day." + value)}</option>
           {/each}
-          <option value="date">Datum</option>
+          <option value="date">{$t("alarm.date")}</option>
         </select>
       {/if}
       <input
         type="time"
         required
-        disabled={isPast(alarm)}
-        aria-label="Uhrzeit Wecker {alarm.index + 1}"
+        aria-label={$t("alarm.ariaTime", { n: alarm.index + 1 })}
         value="{pad2(alarm.hour)}:{pad2(alarm.minute)}"
         on:change={(e) => handleTimeChange(alarm.index, e)}
       />
       <button
         class="icon-btn"
         type="button"
-        title="Löschen"
+        title={$t("alarm.delete")}
         on:click={() => removeAlarm(alarm.index)}
-        aria-label="Wecker {alarm.index + 1} löschen"
+        aria-label={$t("alarm.ariaDelete", { n: alarm.index + 1 })}
       >
         <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none" /></svg>
       </button>
@@ -161,7 +154,7 @@
 
   <!-- Beim Maximum der Firmware (MAX_ALARMS) ausgegraut -->
   <button class="btn-small btn-blue add" type="button" disabled={activeAlarms.length >= MAX_ALARMS} on:click={addAlarm}>
-    Wecker hinzufügen
+    {$t("alarm.add")}
   </button>
 </div>
 

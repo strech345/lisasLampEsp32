@@ -2,6 +2,7 @@
 import { get, writable } from "svelte/store";
 import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
+import { t } from "../lib/i18n.js";
 
 export const MAX_ALARMS = 16; // muss zur Firmware passen (include/types.h)
 
@@ -45,7 +46,7 @@ function createConfigStore() {
         originalConfig = JSON.parse(JSON.stringify(config));
         set(config);
       } catch (error) {
-        messageStore.show("error", `Konfiguration konnte nicht geladen werden: ${error.message}`);
+        messageStore.show("error", get(t)("config.loadFailed", { msg: error.message }));
       }
     },
 
@@ -57,7 +58,7 @@ function createConfigStore() {
         await postJson("/set_config", payload);
         originalConfig = JSON.parse(JSON.stringify(currentConfig));
       } catch (error) {
-        messageStore.show("error", `Speichern fehlgeschlagen: ${error.message}`);
+        messageStore.show("error", get(t)("config.saveFailed", { msg: error.message }));
       }
       // Auch bei Fehler neu laden, damit die UI den Gerätezustand zeigt
       this.load();
@@ -141,7 +142,7 @@ function createConfigStore() {
             return { ...config, alarms };
           }
         }
-        messageStore.show("error", "Maximale Anzahl Alarme erreicht");
+        messageStore.show("error", get(t)("config.maxAlarms"));
         return config;
       });
       this.post();

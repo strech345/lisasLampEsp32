@@ -93,10 +93,16 @@ Bis zu **16 Wecker**, je Zeile: Ein/Aus, Wochentag bzw. Datum, Uhrzeit, Löschen
 - **Einmaliger Termin:** in der Wochentag-Auswahl den letzten Eintrag **„Datum“** wählen. Statt des
   Wochentags erscheint ein Datumsfeld, vorbelegt mit dem heutigen Datum der Lampe (ohne gültige
   Uhrzeit: 1.1.2026). Zurück zu einem Wochentag geht es danach nicht mehr.
-- Ein Termin feuert nur an diesem Tag; danach bleibt er blass als „vorbei“ in der Liste, bis man ihn
-  löscht.
+- Ein Termin feuert nur an diesem Tag. Liegt er in der Vergangenheit, wird er blass angezeigt und
+  lässt sich nicht einschalten; Datum und Uhrzeit bleiben bearbeitbar (in die Zukunft verschoben →
+  wieder einschaltbar). Neuer Termin: Vorschlag Lampenuhr + 1 Stunde.
 
 ## Einstellungen in der Weboberfläche
+
+**Sprache:** Unter **Einstellungen → System → Sprache / Language** zwischen Deutsch und Englisch wählen.
+Die Wahl wird im Browser gespeichert (pro Gerät/Browser). Das Ereignisprotokoll schreibt die Firmware
+einheitlich auf Englisch; bei Deutsch übersetzt die Weboberfläche die Meldungen
+(`svelte-ui/src/lib/logTranslations.js`).
 
 Die Weboberfläche prüft alle 10 s die Verbindung zur Lampe (`/ping`). Ist sie nicht erreichbar, erscheint
 „Verbindung zur Lampe verloren“ und **alle Felder und Knöpfe sind gesperrt** (nur ⚙ und „Zurück“ bleiben

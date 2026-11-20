@@ -97,5 +97,6 @@ svelte-ui/src/
 ├── Settings.svelte         WLAN, Energie & Uhr, Warnungen, System, Ereignisprotokoll
 ├── components/             AlarmTable, ColorPicker, EventLog, MessageAlert, Snowfall, Balloons
 ├── stores/                 configStore (Lampe), systemStore (WLAN), messageStore (Meldungen)
-└── lib/                    api.js (Fetch-Helfer), mockData.js (Mock-Modus)
+└── lib/                    api.js (Fetch-Helfer), mockData.js (Mock-Modus), i18n.js + i18n/de.js, en.js
+                            (Sprachen), logTranslations.js (Protokoll-Meldungen → Deutsch)
 ```

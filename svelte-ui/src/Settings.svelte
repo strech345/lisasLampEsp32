@@ -7,6 +7,7 @@
   import EventLog from "./components/EventLog.svelte";
   import { online } from "./stores/connectionStore.js";
   import MessageAlert from "./components/MessageAlert.svelte";
+  import { t, lang, localeFor } from "./lib/i18n.js";
 
   const MASK = "******"; // Platzhalter, mit dem das Gerät gespeicherte Passwörter zurückliefert
 
@@ -82,7 +83,7 @@
       deepSleepEnabled = s.deepSleepEnabled;
       if (s.ledCount) ledCount = s.ledCount;
     } catch (e) {
-      showError("Einstellungen konnten nicht geladen werden", e);
+      showError($t("set.err.loadSettings"), e);
     }
   }
 
@@ -90,16 +91,16 @@
   async function handleLedCountChange(event) {
     const value = parseInt(event.target.value, 10);
     if (!Number.isInteger(value) || value < 1 || value > MAX_LED_COUNT) {
-      messageStore.show("error", `Anzahl LEDs muss zwischen 1 und ${MAX_LED_COUNT} liegen.`);
+      messageStore.show("error", $t("set.msg.ledRange", { max: MAX_LED_COUNT }));
       loadSwitches();
       return;
     }
     try {
       await postJson("/set_led_count", { count: value });
       ledCount = value;
-      messageStore.show("success", `Anzahl LEDs: ${value}`);
+      messageStore.show("success", $t("set.msg.ledSaved", { n: value }));
     } catch (e) {
-      showError("Speichern fehlgeschlagen", e);
+      showError($t("set.err.saveFailed"), e);
       loadSwitches();
     }
   }
@@ -109,7 +110,7 @@
     try {
       await setOption("warnings", warningsEnabled);
     } catch (e) {
-      showError("Speichern fehlgeschlagen", e);
+      showError($t("set.err.saveFailed"), e);
       loadSwitches();
     }
   }
@@ -119,7 +120,7 @@
     try {
       await setOption("deepSleep", deepSleepEnabled);
     } catch (e) {
-      showError("Speichern fehlgeschlagen", e);
+      showError($t("set.err.saveFailed"), e);
       loadSwitches();
     }
   }
@@ -131,7 +132,7 @@
       tsfFallbackEnabled = data.enabled;
       tsfStatus = data;
     } catch (e) {
-      showError("TSF-Status konnte nicht geladen werden", e);
+      showError($t("set.err.tsfStatus"), e);
     }
   }
 
@@ -140,7 +141,7 @@
     try {
       await setOption("tsfFallback", tsfFallbackEnabled);
     } catch (e) {
-      showError("Speichern fehlgeschlagen", e);
+      showError($t("set.err.saveFailed"), e);
       loadTsfStatus();
     }
   }
@@ -151,7 +152,7 @@
       await postJson("/trigger_tsf_snapshot");
       setTimeout(loadTsfStatus, 3000);
     } catch (e) {
-      showError("Snapshot fehlgeschlagen", e);
+      showError($t("set.err.snapshot"), e);
     }
   }
 
@@ -162,7 +163,7 @@
       rtcCrystalEnabled = data.enabled;
       rtcCrystalStatus = data;
     } catch (e) {
-      showError("RTC-Quarz-Status konnte nicht geladen werden", e);
+      showError($t("set.err.rtcStatus"), e);
     }
   }
 
@@ -175,10 +176,10 @@
   async function applyRtcCrystal() {
     try {
       await setOption("rtcCrystal", rtcCrystalEnabled);
-      messageStore.show("success", "RTC-Quarz-Einstellung gespeichert. ESP32 startet neu…");
+      messageStore.show("success", $t("set.msg.rtcSaved"));
       setTimeout(() => location.reload(), 6000);
     } catch (e) {
-      showError("Speichern fehlgeschlagen", e);
+      showError($t("set.err.saveFailed"), e);
     }
   }
 
@@ -192,7 +193,7 @@
       else stopRdsPolling();
     } catch (e) {
       // Bei Polling-Fehlern nicht dauernd Meldungen zeigen
-      if (!rdsRefreshInterval) showError("RDS-Status konnte nicht geladen werden", e);
+      if (!rdsRefreshInterval) showError($t("set.err.rdsStatus"), e);
     }
   }
 
@@ -203,7 +204,7 @@
       if (rdsClockEnabled) startRdsPolling();
       else stopRdsPolling();
     } catch (e) {
-      showError("Speichern fehlgeschlagen", e);
+      showError($t("set.err.saveFailed"), e);
       loadRdsStatus();
     }
   }
@@ -214,7 +215,9 @@
     if (!msAgo) return "—";
     const d = new Date(Date.now() - msAgo);
     const p = (n) => String(n).padStart(2, "0");
-    return `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${p(d.getHours())}:${p(d.getMinutes())}`;
+    const time = `${p(d.getHours())}:${p(d.getMinutes())}`;
+    // Deutsch: Tag.Monat. — Englisch: Monat/Tag
+    return $lang === "en" ? `${p(d.getMonth() + 1)}/${p(d.getDate())} ${time}` : `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${time}`;
   }
 
   // Länge eines Strings in UTF-8-Bytes (SSID/Passwort-Grenzen gelten in Bytes)
@@ -225,22 +228,22 @@
   // Prüft die Systemeinstellungen wie die Firmware; gibt Fehlertext oder null zurück
   function validateSystemSettings(s) {
     if (byteLength(s.internalSSID) < 1 || byteLength(s.internalSSID) > 32) {
-      return "Hotspot-SSID: Der Name muss 1 bis 32 Zeichen lang sein.";
+      return $t("set.val.hotspotSsid");
     }
     if (byteLength(s.externalSSID) > 32 || byteLength(s.externalSSID2) > 32) {
-      return "Externes WLAN: Die SSID darf höchstens 32 Zeichen lang sein.";
+      return $t("set.val.extSsid");
     }
     const pwChecks = [
-      ["internalPW", "clearInternalPW", "Hotspot-Passwort"],
-      ["externalPW", "clearExternalPW", "Passwort des externen WLANs"],
-      ["externalPW2", "clearExternalPW2", "Fallback-Passwort"],
+      ["internalPW", "clearInternalPW", $t("set.val.pwHotspot")],
+      ["externalPW", "clearExternalPW", $t("set.val.pwExt")],
+      ["externalPW2", "clearExternalPW2", $t("set.val.pwFallback")],
     ];
     for (const [field, clear, label] of pwChecks) {
       const pw = s[field] || "";
       if (s[clear] || pw === "" || pw === MASK) continue; // entfernt, leer oder unverändert
       const len = byteLength(pw);
       if (len < 8 || len > 63) {
-        return `${label}: Das Passwort muss leer sein oder 8 bis 63 Zeichen haben.`;
+        return $t("set.val.pw", { label });
       }
     }
     return null;
@@ -255,10 +258,7 @@
     }
     const success = await systemStore.post();
     if (success) {
-      messageStore.show(
-        "success",
-        "Einstellungen gespeichert. Das Gerät startet den Hotspot neu – bitte kurz warten und das Handy neu mit dem WLAN verbinden."
-      );
+      messageStore.show("success", $t("set.msg.saved"));
     }
   }
 
@@ -274,18 +274,18 @@
 
   // Setzt das Gerät nach Rückfrage auf Werkseinstellungen zurück
   async function handleFactoryReset() {
-    if (!confirm("Werkseinstellungen wirklich zurücksetzen? Alle Einstellungen gehen verloren!")) return;
+    if (!confirm($t("set.confirm.reset"))) return;
     restarting = true;
     try {
       await postJson("/factory_reset");
-      messageStore.show("success", "Werkseinstellungen wiederhergestellt. ESP32 startet neu…");
+      messageStore.show("success", $t("set.msg.resetDone"));
     } catch (e) {
       // Netzwerkfehler (status 0) ist erwartbar, wenn das Gerät vor der Antwort neu startet
       if (e.status === 0) {
-        messageStore.show("success", "Werkseinstellungen wiederhergestellt. ESP32 startet neu…");
+        messageStore.show("success", $t("set.msg.resetDone"));
       } else {
         restarting = false;
-        showError("Zurücksetzen fehlgeschlagen", e);
+        showError($t("set.err.reset"), e);
       }
     }
   }
@@ -298,19 +298,19 @@
       // Zeit seit dem letzten erfolgreichen Test aus ms formatieren
       const ms = rawStatus.timeSinceLastSucceededTestMs;
       let lastTestTime;
-      if (ms < 60000) lastTestTime = "vor " + Math.floor(ms / 1000) + " Sekunden";
-      else if (ms < 3600000) lastTestTime = "vor " + Math.floor(ms / 60000) + " Minuten";
-      else lastTestTime = "vor " + Math.floor(ms / 3600000) + " Stunden";
+      if (ms < 60000) lastTestTime = $t("set.sys.secAgo", { n: Math.floor(ms / 1000) });
+      else if (ms < 3600000) lastTestTime = $t("set.sys.minAgo", { n: Math.floor(ms / 60000) });
+      else lastTestTime = $t("set.sys.hourAgo", { n: Math.floor(ms / 3600000) });
 
       // Systemzeit (Epoch-Sekunden) als lokale Zeit
       let formattedSystemTime = "";
       if (rawStatus.systemTime && !isNaN(rawStatus.systemTime)) {
-        formattedSystemTime = new Date(rawStatus.systemTime * 1000).toLocaleString();
+        formattedSystemTime = new Date(rawStatus.systemTime * 1000).toLocaleString(localeFor($lang));
       }
 
       statusInfo = { ...rawStatus, lastTestTime, systemTime: formattedSystemTime };
     } catch (e) {
-      showError("Status konnte nicht geladen werden", e);
+      showError($t("set.err.status"), e);
     }
   }
 
@@ -318,90 +318,99 @@
   async function handleNtpResync() {
     try {
       await postJson("/trigger_ntp_sync");
-      messageStore.show("success", "NTP-Synchronisation gestartet…");
+      messageStore.show("success", $t("set.msg.ntpStarted"));
     } catch (e) {
-      showError("NTP-Synchronisation fehlgeschlagen", e);
+      showError($t("set.err.ntp"), e);
     }
+  }
+
+  // Übersetzt einen Rohstatus der Firmware (z. B. "locked"); unbekannte Werte bleiben unverändert
+  function statusText(kind, value) {
+    const key = `status.${kind}.${value}`;
+    const text = $t(key);
+    return text === key ? value : text;
   }
 </script>
 
 <main class="container settings-container">
   <header>
-    <h2>Systemeinstellungen</h2>
-    <button class="btn-small btn-blue" on:click={onNavigateBack}>Zurück</button>
+    <h2>{$t("set.title")}</h2>
+    <button class="btn-small btn-blue" on:click={onNavigateBack}>{$t("set.back")}</button>
   </header>
 
   <!-- Meldungen (Erfolg/Fehler) auch auf der Einstellungsseite anzeigen -->
   <MessageAlert />
 
-  <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt -->
-  <fieldset class="plain" disabled={!$online}>
+  <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt (je Sektion ein fieldset); nur die
+       Sprachauswahl liegt außerhalb und bleibt immer bedienbar -->
   <div class="acc-scroll">
   <!-- Accordion: WLAN -->
   <div class="acc-item" class:open={openSection === "wifi"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("wifi")}>
       <span class="acc-icon">{openSection === "wifi" ? "▾" : "▸"}</span>
-      WLAN
+      {$t("set.acc.wifi")}
       {#if hasChanges}<span class="acc-badge">●</span>{/if}
     </button>
     {#if openSection === "wifi"}
       <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
         <form on:submit|preventDefault={handleSave}>
           <div class="group">
-            <label for="internalSSID">Hotspot SSID</label>
+            <label for="internalSSID">{$t("set.wifi.hotspotSsid")}</label>
             <input type="text" id="internalSSID" value={$systemStore.internalSSID}
               on:input={(e) => handleFieldChange("internalSSID", e)} />
 
-            <label for="internalPW">Hotspot Passwort</label>
+            <label for="internalPW">{$t("set.wifi.hotspotPw")}</label>
             <input autocomplete="off" disabled={$systemStore.clearInternalPW} type={pwFocus.internalPW ? "text" : "password"} id="internalPW" value={$systemStore.internalPW}
               on:focus={() => pwFocus.internalPW = true} on:blur={() => pwFocus.internalPW = false}
               on:input={(e) => handleFieldChange("internalPW", e)} />
             <label class="clear-pw">
               <input type="checkbox" checked={$systemStore.clearInternalPW}
                 on:change={(e) => handleClearChange("clearInternalPW", e)} />
-              Passwort entfernen
+              {$t("set.wifi.clearPw")}
             </label>
           </div>
 
           <div class="group">
-            <label for="externalSSID">Externes WLAN SSID</label>
+            <label for="externalSSID">{$t("set.wifi.extSsid")}</label>
             <input type="text" id="externalSSID" value={$systemStore.externalSSID}
               on:input={(e) => handleFieldChange("externalSSID", e)} />
 
-            <label for="externalPW">Externes WLAN Passwort</label>
+            <label for="externalPW">{$t("set.wifi.extPw")}</label>
             <input autocomplete="off" disabled={$systemStore.clearExternalPW} type={pwFocus.externalPW ? "text" : "password"} id="externalPW" value={$systemStore.externalPW}
               on:focus={() => pwFocus.externalPW = true} on:blur={() => pwFocus.externalPW = false}
               on:input={(e) => handleFieldChange("externalPW", e)} />
             <label class="clear-pw">
               <input type="checkbox" checked={$systemStore.clearExternalPW}
                 on:change={(e) => handleClearChange("clearExternalPW", e)} />
-              Passwort entfernen
+              {$t("set.wifi.clearPw")}
             </label>
           </div>
 
           <div class="group">
-            <label for="externalSSID2">Fallback SSID <span class="optional">(optional)</span></label>
+            <label for="externalSSID2">{$t("set.wifi.fbSsid")} <span class="optional">{$t("set.wifi.optionalParen")}</span></label>
             <input type="text" id="externalSSID2" value={$systemStore.externalSSID2}
-              placeholder="optional" on:input={(e) => handleFieldChange("externalSSID2", e)} />
+              placeholder={$t("set.wifi.optional")} on:input={(e) => handleFieldChange("externalSSID2", e)} />
 
-            <label for="externalPW2">Fallback Passwort</label>
+            <label for="externalPW2">{$t("set.wifi.fbPw")}</label>
             <input autocomplete="off" disabled={$systemStore.clearExternalPW2} type={pwFocus.externalPW2 ? "text" : "password"} id="externalPW2" value={$systemStore.externalPW2}
-              placeholder="optional" on:focus={() => pwFocus.externalPW2 = true} on:blur={() => pwFocus.externalPW2 = false}
+              placeholder={$t("set.wifi.optional")} on:focus={() => pwFocus.externalPW2 = true} on:blur={() => pwFocus.externalPW2 = false}
               on:input={(e) => handleFieldChange("externalPW2", e)} />
             <label class="clear-pw">
               <input type="checkbox" checked={$systemStore.clearExternalPW2}
                 on:change={(e) => handleClearChange("clearExternalPW2", e)} />
-              Passwort entfernen
+              {$t("set.wifi.clearPw")}
             </label>
           </div>
 
-          <small class="hint">Hinweis: Nach dem Speichern startet das Gerät den Hotspot neu. Das Handy muss sich danach neu verbinden. SSID: 1–32 Zeichen, Passwörter: leer oder 8–63 Zeichen. Ein angezeigtes „******“ steht für ein gespeichertes, unverändertes Passwort.</small>
+          <small class="hint">{$t("set.wifi.hint")}</small>
 
           <div class="acc-actions group">
             <button class="btn-small btn-blue" type="button" on:click={handleSave}
-              disabled={!hasChanges}>Speichern</button>
+              disabled={!hasChanges}>{$t("set.wifi.save")}</button>
           </div>
         </form>
+        </fieldset>
       </div>
     {/if}
   </div>
@@ -410,16 +419,17 @@
   <div class="acc-item" class:open={openSection === "clock"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("clock")}>
       <span class="acc-icon">{openSection === "clock" ? "▾" : "▸"}</span>
-      Energie &amp; Uhr
+      {$t("set.acc.clock")}
     </button>
     {#if openSection === "clock"}
       <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
         <section class="warnings-section group">
           <label class="warnings-label">
             <input type="checkbox" bind:checked={deepSleepEnabled} on:change={handleDeepSleepToggle} />
-            Deep sleep
+            {$t("set.clock.deepSleep")}
           </label>
-          <small>ESP32 schläft zwischen Alarmen. Wacht 5 min + Drift-Puffer vor jedem Event auf.</small>
+          <small>{$t("set.clock.deepSleepHint")}</small>
         </section>
 
         <section class="warnings-section group">
@@ -431,23 +441,23 @@
               disabled={!rtcCrystalEnabled && !(rtcCrystalStatus && rtcCrystalStatus.available)}
               on:change={handleRtcCrystalToggle}
             />
-            Externer 32kHz RTC-Quarz
+            {$t("set.clock.rtc")}
           </label>
-          <small>Genauerer Schlaf-Timer (GPIO0/1 = XTAL_32K). Änderung erfordert Neustart.</small>
+          <small>{$t("set.clock.rtcHint")}</small>
           {#if rtcCrystalStatus}
             <div class="fallback-status">
               {#if rtcCrystalStatus.available}
-                <span style="color: #22c55e;">Quarz erkannt ✓</span>
+                <span style="color: #22c55e;">{$t("set.clock.rtcFound")}</span>
                 {#if rtcCrystalStatus.freqHz > 0}<span>· {rtcCrystalStatus.freqHz} Hz</span>{/if}
               {:else}
-                <span>Kein Quarz erkannt (wird bei jedem Einschalten geprüft)</span>
+                <span>{$t("set.clock.rtcNone")}</span>
               {/if}
             </div>
           {/if}
           {#if rtcCrystalChanged}
             <div class="fallback-status">
-              <small style="color: #f59e0b;">Änderung erfordert Neustart</small>
-              <button class="btn-tiny" type="button" on:click={applyRtcCrystal}>Jetzt anwenden &amp; Neustart</button>
+              <small style="color: #f59e0b;">{$t("set.clock.rtcRestart")}</small>
+              <button class="btn-tiny" type="button" on:click={applyRtcCrystal}>{$t("set.clock.rtcApply")}</button>
             </div>
           {/if}
         </section>
@@ -455,25 +465,23 @@
         <section class="warnings-section group">
           <label class="warnings-label">
             <input type="checkbox" bind:checked={tsfFallbackEnabled} on:change={handleTsfToggle} />
-            TSF-Zeitfallback
+            {$t("set.clock.tsf")}
           </label>
-          <small>Nutzt WiFi-Beacon-Timestamps zur Zeitschätzung wenn kein NTP erreichbar ist.</small>
+          <small>{$t("set.clock.tsfHint")}</small>
           {#if tsfFallbackEnabled && tsfStatus}
             <div class="fallback-status">
-              <span>{tsfStatus.storedAps} APs gespeichert</span>
-              {#if tsfStatus.lastSnapshotMs > 0}<span>· Snapshot {formatAt(tsfStatus.lastSnapshotMs)}</span>{/if}
+              <span>{$t("set.clock.tsfStored", { n: tsfStatus.storedAps })}</span>
+              {#if tsfStatus.lastSnapshotMs > 0}<span>{$t("set.clock.tsfSnapshotAt", { at: formatAt(tsfStatus.lastSnapshotMs) })}</span>{/if}
               {#if tsfStatus.lastCalcResult !== "none"}
                 <span>· {tsfStatus.lastCalcResult === "success"
-                  ? `✓ ${tsfStatus.lastCalcAps} APs, ±${tsfStatus.lastCalcDeviationMs}ms`
-                  : `✗ ${tsfStatus.lastCalcResult}`}</span>
+                  ? $t("set.clock.tsfOk", { aps: tsfStatus.lastCalcAps, dev: tsfStatus.lastCalcDeviationMs })
+                  : `✗ ${statusText("tsf", tsfStatus.lastCalcResult)}`}</span>
               {/if}
-              {#if tsfStatus.minScore !== undefined}<span>· Score: {tsfStatus.minScore}–{tsfStatus.maxScore}</span>{/if}
-              <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>Snapshot</button>
+              {#if tsfStatus.minScore !== undefined}<span>{$t("set.clock.tsfScore", { min: tsfStatus.minScore, max: tsfStatus.maxScore })}</span>{/if}
+              <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>{$t("set.clock.tsfButton")}</button>
             </div>
             <small>
-              Score = Güte der gespeicherten Access Points: Signalstärke (0–100) + Laufzeit des APs in Tagen
-              (max. 365). Höher = zuverlässiger; lange laufende APs liefern die stabilste Zeit. Angezeigt wird
-              der schwächste und der beste Wert.
+              {$t("set.clock.tsfScoreHelp")}
             </small>
           {/if}
         </section>
@@ -487,23 +495,23 @@
               disabled={!rdsClockEnabled && !(rdsStatus && rdsStatus.present)}
               on:change={handleRdsToggle}
             />
-            RDS-Zeitfallback (RDA5807M)
+            {$t("set.clock.rds")}
           </label>
-          <small>FM-Modul empfängt RDS-Zeitstempel (CT) wenn kein NTP erreichbar ist.</small>
+          <small>{$t("set.clock.rdsHint")}</small>
           {#if rdsStatus && !rdsStatus.present}
-            <div class="fallback-status"><span>Kein RDS-Modul gefunden (wird bei jedem Einschalten geprüft)</span></div>
+            <div class="fallback-status"><span>{$t("set.clock.rdsNone")}</span></div>
           {/if}
           {#if rdsClockEnabled && rdsStatus}
             <div class="fallback-status">
               {#if rdsStatus.status !== "off"}
-                <span>Kanal: {rdsStatus.channelMhz} MHz</span>
-                <span>· {rdsStatus.status}</span>
+                <span>{$t("set.clock.rdsChannel", { mhz: rdsStatus.channelMhz })}</span>
+                <span>· {statusText("rds", rdsStatus.status)}</span>
                 {#if rdsStatus.status === "locked" || rdsStatus.status === "scanning"}
-                  <span>· RSSI {rdsStatus.rssi}</span>
+                  <span>{$t("set.clock.rdsRssi", { rssi: rdsStatus.rssi })}</span>
                 {/if}
-                {#if rdsStatus.lastSyncMs > 0}<span>· Zeit gesetzt {formatAt(rdsStatus.lastSyncMs)}</span>{/if}
+                {#if rdsStatus.lastSyncMs > 0}<span>{$t("set.clock.rdsSet", { at: formatAt(rdsStatus.lastSyncMs) })}</span>{/if}
               {:else}
-                <span>Bereit (inaktiv)</span>
+                <span>{$t("set.clock.rdsReady")}</span>
               {/if}
             </div>
           {/if}
@@ -511,9 +519,10 @@
 
         <div class="acc-actions group">
           <button class="btn-small btn-blue" type="button" on:click={handleNtpResync}>
-            Uhr jetzt synchronisieren
+            {$t("set.clock.syncNow")}
           </button>
         </div>
+        </fieldset>
       </div>
     {/if}
   </div>
@@ -522,17 +531,19 @@
   <div class="acc-item" class:open={openSection === "warnings"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("warnings")}>
       <span class="acc-icon">{openSection === "warnings" ? "▾" : "▸"}</span>
-      Warnungen
+      {$t("set.acc.warnings")}
     </button>
     {#if openSection === "warnings"}
       <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
         <section class="warnings-section group">
           <label class="warnings-label">
             <input type="checkbox" bind:checked={warningsEnabled} on:change={handleWarningsToggle} />
-            LED-Warnungen aktiv
+            {$t("set.warn.label")}
           </label>
-          <small>Pixel 0 blinkt rot (keine Zeit) oder gelb (veraltete NTP-Sync).</small>
+          <small>{$t("set.warn.hint")}</small>
         </section>
+        </fieldset>
       </div>
     {/if}
   </div>
@@ -541,53 +552,63 @@
   <div class="acc-item" class:open={openSection === "system"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("system")}>
       <span class="acc-icon">{openSection === "system" ? "▾" : "▸"}</span>
-      System
+      {$t("set.acc.system")}
     </button>
     {#if openSection === "system"}
       <div class="acc-body">
+        <!-- Sprachauswahl: bewusst außerhalb des fieldsets, auch ohne Verbindung zur Lampe bedienbar -->
+        <div class="group lang-group">
+          <label for="langSelect">{$t("set.sys.language")}</label>
+          <select id="langSelect" bind:value={$lang}>
+            <option value="de">Deutsch</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <fieldset class="plain" disabled={!$online}>
         {#if statusInfo}
           <div class="status-info group">
             {#if statusInfo.currentTime}
               <div class="status-line">
-                <span class="status-label">Aktuelle Zeit:</span>
+                <span class="status-label">{$t("set.sys.currentTime")}</span>
                 <span class="status-value">{statusInfo.currentTime}</span>
               </div>
             {/if}
             <div class="status-line">
-              <span class="status-label">Systemzeit:</span>
+              <span class="status-label">{$t("set.sys.systemTime")}</span>
               <span class="status-value">{statusInfo.systemTime}</span>
             </div>
             <div class="status-line">
-              <span class="status-label">NTP synchronisiert:</span>
+              <span class="status-label">{$t("set.sys.ntpSynced")}</span>
               <span class="status-value {statusInfo.clockSynced ? 'success' : 'connection_failed'}">
-                {statusInfo.clockSynced ? "Ja" : "Nein"}
+                {statusInfo.clockSynced ? $t("set.sys.yes") : $t("set.sys.no")}
               </span>
             </div>
             <div class="status-line">
-              <span class="status-label">Letzter Test:</span>
+              <span class="status-label">{$t("set.sys.lastTest")}</span>
               <span class="status-value">{statusInfo.lastTestTime}</span>
             </div>
             <div class="status-line">
-              <span class="status-label">STA verbunden:</span>
+              <span class="status-label">{$t("set.sys.staConnected")}</span>
               <span class="status-value {statusInfo.staConfigValid ? 'success' : 'connection_failed'}">
-                {statusInfo.staConfigValid ? "Ja" : "Nein"}
+                {statusInfo.staConfigValid ? $t("set.sys.yes") : $t("set.sys.no")}
               </span>
             </div>
           </div>
         {/if}
 
         <div class="group led-count">
-          <label for="ledCount">Anzahl LEDs</label>
+          <label for="ledCount">{$t("set.sys.ledCount")}</label>
           <input id="ledCount" type="number" min="1" max={MAX_LED_COUNT} value={ledCount}
             on:change={handleLedCountChange} />
-          <small>Wirkt sofort.</small>
+          <small>{$t("set.sys.ledHint")}</small>
         </div>
 
         <div class="acc-actions group">
           <button class="btn-small btn-danger" type="button" disabled={restarting} on:click={handleFactoryReset}>
-            {restarting ? "Wird zurückgesetzt…" : "Werkseinstellungen"}
+            {restarting ? $t("set.sys.resetting") : $t("set.sys.factory")}
           </button>
         </div>
+        </fieldset>
       </div>
     {/if}
   </div>
@@ -596,17 +617,18 @@
   <div class="acc-item" class:open={openSection === "log"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("log")}>
       <span class="acc-icon">{openSection === "log" ? "▾" : "▸"}</span>
-      Ereignisprotokoll
+      {$t("set.acc.log")}
     </button>
     {#if openSection === "log"}
       <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
         <EventLog />
+        </fieldset>
       </div>
     {/if}
   </div>
 
   </div> <!-- /acc-scroll -->
-  </fieldset>
 </main>
 
 <style>
@@ -837,6 +859,11 @@
     font-size: 0.75rem;
     color: var(--pico-muted-color, #888);
   }
+  /* Sprachauswahl steht außerhalb des fieldsets → Trennlinie nach unten statt über .group + .group */
+  .lang-group {
+    border-bottom: 1px solid var(--pico-muted-border-color, #ddd);
+  }
+
   .led-count input[type="number"] {
     width: 80px;
   }

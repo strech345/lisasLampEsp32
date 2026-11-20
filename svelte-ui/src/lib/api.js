@@ -1,6 +1,8 @@
 // Kleiner Fetch-Helfer für die Lampen-API: prüft res.ok, liefert verständliche
 // Fehlertexte aus der Antwort und nutzt im Mock-Modus (?mock=true) mockFetch.
+import { get } from "svelte/store";
 import { isMockEnabled, mockFetch } from "./mockData.js";
+import { t } from "./i18n.js";
 
 // Fehlerklasse mit HTTP-Status (0 = Netzwerkfehler)
 export class ApiError extends Error {
@@ -18,7 +20,7 @@ async function request(url, options) {
   try {
     res = await fetchFn(url, options);
   } catch (e) {
-    throw new ApiError(`Keine Verbindung zur Lampe (${e.message})`, 0);
+    throw new ApiError(get(t)("api.noConn", { msg: e.message }), 0);
   }
   if (!res.ok) {
     let text = "";

@@ -2,21 +2,12 @@
   // Licht-Sets: bis zu 6 Kombinationen aus Lichtfarbe und Animation. Eines ist aktiv; am Drehknopf
   // wechselt "gedrückt halten + drehen" zwischen den Sets.
   import { configStore, MAX_LIGHT_SETS } from "../stores/configStore.js";
+  import { t } from "../lib/i18n.js";
 
   // Lichtfarben; Reihenfolge = Anzeige, id = colorMode in der Firmware
-  const colorModes = [
-    { id: 4, name: "Kerzenlicht" },
-    { id: 2, name: "Warmweiß" },
-    { id: 1, name: "Neutralweiß" },
-    { id: 0, name: "Kaltweiß" },
-    { id: 3, name: "Eigene Farbe" },
-  ];
+  const colorModes = [{ id: 4 }, { id: 2 }, { id: 1 }, { id: 0 }, { id: 3 }]; // Namen: color.N im Wörterbuch
 
-  const animationModes = [
-    { id: 0, name: "Statisch" },
-    { id: 1, name: "Atmen" },
-    { id: 2, name: "Flamme" },
-  ];
+  const animationModes = [{ id: 0 }, { id: 1 }, { id: 2 }]; // Namen: anim.N im Wörterbuch
 
   $: sets = $configStore.sets || [];
   $: activeSet = $configStore.activeSet ?? 0;
@@ -43,8 +34,8 @@
       <input
         type="radio"
         name="activeSet"
-        aria-label="Set {i + 1} aktivieren"
-        title="Dieses Set aktivieren"
+        aria-label={$t("sets.ariaActivate", { n: i + 1 })}
+        title={$t("sets.titleActivate")}
         checked={i === activeSet}
         on:change={() => configStore.setActiveSet(i)}
       />
@@ -52,12 +43,12 @@
       <!-- Lichtfarbe (+ Farbfeld bei "Eigene Farbe") in einer Spalte → Animation bleibt überall gleich breit -->
       <div class="color-cell">
       <select
-        aria-label="Lichtfarbe Set {i + 1}"
+        aria-label={$t("sets.ariaColor", { n: i + 1 })}
         value={set.colorMode}
         on:change={(e) => configStore.updateSet(i, { colorMode: parseInt(e.target.value) })}
       >
         {#each colorModes as mode}
-          <option value={mode.id}>{mode.name}</option>
+          <option value={mode.id}>{$t("color." + mode.id)}</option>
         {/each}
       </select>
 
@@ -65,7 +56,7 @@
         <input
           type="color"
           class="color-input"
-          aria-label="Eigene Farbe Set {i + 1}"
+          aria-label={$t("sets.ariaCustom", { n: i + 1 })}
           value={rgbToHex(set.color)}
           on:change={(e) => configStore.updateSet(i, { color: hexToRgb(e.target.value) })}
         />
@@ -73,12 +64,12 @@
       </div>
 
       <select
-        aria-label="Animation Set {i + 1}"
+        aria-label={$t("sets.ariaAnim", { n: i + 1 })}
         value={set.animationMode}
         on:change={(e) => configStore.updateSet(i, { animationMode: parseInt(e.target.value) })}
       >
         {#each animationModes as mode}
-          <option value={mode.id}>{mode.name}</option>
+          <option value={mode.id}>{$t("anim." + mode.id)}</option>
         {/each}
       </select>
 
@@ -86,8 +77,8 @@
         <button
           type="button"
           class="icon-btn"
-          aria-label="Set {i + 1} löschen"
-          title="Löschen"
+          aria-label={$t("sets.ariaDelete", { n: i + 1 })}
+          title={$t("sets.delete")}
           on:click={() => configStore.removeSet(i)}
         >
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 5 L19 19 M19 5 L5 19" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none" /></svg>
@@ -103,9 +94,9 @@
     disabled={sets.length >= MAX_LIGHT_SETS}
     on:click={() => configStore.addSet()}
   >
-    Set hinzufügen
+    {$t("sets.add")}
   </button>
-  <p class="hint">Am Drehknopf: gedrückt halten und drehen wechselt das Set.</p>
+  <p class="hint">{$t("sets.hint")}</p>
 </div>
 
 <style>
