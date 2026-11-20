@@ -82,6 +82,7 @@ Kurzes Blinken: 0,1 s an, 0,2 s Abstand, danach 2 s Pause (`statusLedTick()` in 
 | Bedingung | Aktion |
 |---|---|
 | WLAN an, 1 min kein Gerät im Hotspot | WLAN aus |
+| Hotspot an, 10 min keine Bedienung der Weboberfläche | WLAN aus (auch mit verbundenem Gerät) |
 | WLAN aus, 5 h vergangen | WLAN kurz ohne Hotspot an (Uhrzeit per NTP) |
 | Lampe aus (Sleep oder Helligkeit 0), WLAN aus, Deep Sleep aktiviert | Deep Sleep bis zum nächsten Wecker/WLAN-Sync (wacht ca. 5 min plus erwartete Uhrabweichung vorher auf) |
 | Wecker in weniger als 5 min | kein Deep Sleep |

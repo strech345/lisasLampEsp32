@@ -31,6 +31,11 @@ man dann ohnehin verbunden ist). Ohne Heim-WLAN bleibt das WLAN nach dem Start a
 ### Automatischer Start und Stopp
 
 - **Stopp:** 1 min kein Gerät im Hotspot → WLAN komplett aus (`STOP_WIFI_AFTER_MS`).
+- **Hotspot-Bedienzeit:** 10 min ohne Bedienung → WLAN aus, auch wenn ein Gerät verbunden bleibt
+  (`AP_IDLE_TIMEOUT_MS`). Handys bleiben oft im Hintergrund verbunden; ohne dieses Limit liefe der
+  Hotspot ewig und verhinderte den Deep Sleep. Jede echte Anfrage an die Weboberfläche startet die
+  10 min neu (`noteWebActivity()` in `captive_portal.cpp`); automatisches Nachfragen der geöffneten
+  Seite (`/ping`, `/get_event_log`, `/get_rds_clock`) und Captive-Portal-Prüfungen zählen nicht.
 - **Start:** 5 h nach dem letzten aktiven WLAN → STA-only für den NTP-Abgleich (`START_WIFI_AFTER_MS`).
 - Der Webserver wird nur einmal gestartet und läuft weiter; nur das WLAN wird an- und abgeschaltet.
 

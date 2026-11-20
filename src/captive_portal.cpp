@@ -6,6 +6,17 @@
 #include <Arduino.h>
 #include "route_handlers.h"
 #include "debug_utils.h"
+#include "wifi_controller.h"
+
+// Zählt eine Anfrage als Bedienung (verlängert die Hotspot-Laufzeit). Ausgenommen sind die
+// Endpunkte, die die geöffnete Weboberfläche automatisch alle paar Sekunden abfragt — sonst liefe der
+// Hotspot ewig, solange irgendwo ein Tab offen ist. Captive-Portal-Prüfungen der Handys laufen nicht
+// über die App-Routen und zählen daher ebenfalls nicht.
+static void markActivity(const char* uri) {
+    if(strcmp(uri, "/ping") == 0 || strcmp(uri, "/get_event_log") == 0 || strcmp(uri, "/get_rds_clock") == 0)
+        return;
+    noteWebActivity();
+}
 
 // Maximale Größe eines POST-Bodys in Bytes
 static const size_t MAX_BODY_SIZE = 4096;
@@ -91,6 +102,7 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
                 // Request‑Callback – wird sofort ausgeführt, wenn kein Body kommt
                 [r](AsyncWebServerRequest* request) {
                     if(request->contentLength() == 0 && checkPostHeaders(request)) {
+                        markActivity(r.uri);
                         r.handler(request, String(""));
                     }
                 },
@@ -132,11 +144,15 @@ void setUpWebserver(AsyncWebServer& server, const IPAddress& localIP, const std:
                         body.concat((const char*)buf, total);
                         free(buf);
                         request->_tempObject = nullptr;
+                        markActivity(r.uri);
                         r.handler(request, body);
                     }
                 });
         } else {
-            server.on(r.uri, r.method, [r](AsyncWebServerRequest* request) { r.handler(request, String("")); });
+            server.on(r.uri, r.method, [r](AsyncWebServerRequest* request) {
+                markActivity(r.uri);
+                r.handler(request, String(""));
+            });
         }
     }
 

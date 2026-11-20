@@ -227,8 +227,27 @@ void handleClientRequests() {
 
 static unsigned long s_wifiStopTimerMs = 0;
 
+// Hotspot-Bedienzeit: letzte echte Web-Anfrage (Seite laden, Einstellungen lesen/speichern).
+// Wird aus dem async_tcp-Task geschrieben; 32-Bit-Zugriffe sind auf dem ESP32 atomar.
+#define AP_IDLE_TIMEOUT_MS (10UL * 60UL * 1000UL) // Hotspot aus nach 10 min ohne Bedienung
+static volatile unsigned long s_lastWebActivityMs = 0;
+
+// Merkt sich eine echte Bedienung der Weboberfläche (verlängert die Hotspot-Laufzeit)
+void noteWebActivity() {
+    s_lastWebActivityMs = millis();
+}
+
 // Schaltet WiFi ab wenn STOP_WIFI_AFTER_MS (1min) lang kein Client verbunden war
 void checkWifiStop() {
+    // Hotspot 10 min ohne Bedienung → aus, auch wenn noch ein Gerät verbunden ist (Handys bleiben oft
+    // im Hintergrund verbunden; sonst liefe der Hotspot ewig und verhinderte den Deep Sleep)
+    wifi_mode_t mode = WiFi.getMode();
+    if((mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) && millis() - s_lastWebActivityMs >= AP_IDLE_TIMEOUT_MS) {
+        logEvent("Hotspot aus: 10 min ohne Bedienung");
+        stopWifi();
+        s_wifiStopTimerMs = millis();
+        return;
+    }
     if(!isWiFiActive() || hasWifiClients()) {
         s_wifiStopTimerMs = millis();
         return;
@@ -319,6 +338,7 @@ void tryReconnectSta() {
 static void startCaptivePortal() {
     dnsServer.start(53, "*", localIP);
     s_wifiStopTimerMs = millis();
+    s_lastWebActivityMs = millis(); // 10-min-Bedienzeit beginnt mit dem Hotspot-Start
 }
 
 // Startet WiFi: withAP=true → APSTA (Nutzer-sichtbar, Weboberfläche erreichbar),
