@@ -6,8 +6,8 @@
 #include "types.h"
 
 // Initialisiert alle Zeiger auf den globalen Zustand (einmalig in setup() aufrufen)
-void initLampState(LampState* pLampState, LampState* pLastNormalState, bool* pWarningsEnabled,
-                   FullConfig* pAppConfig, WiFiTestTracker* pWifiTracker, uint32_t* pPendingFlash);
+void initLampState(LampState* pLampState, bool* pWarningsEnabled, FullConfig* pAppConfig,
+                   WiFiTestTracker* pWifiTracker);
 
 // Wendet den konfigurierten Farbmodus auf die LEDs an
 void checkAndApplyColorMode(const FullConfig& config);

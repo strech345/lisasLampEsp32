@@ -29,13 +29,11 @@
 
 // --- Globale Zustandsvariablen ---
 static std::vector<Route> apRoutes;
-static uint32_t s_pendingFlash = 0; // wird von Button-Handlern gesetzt, in updateLed() angewendet
 
 static FullConfig appConfig;
 static SystemSettings systemSettings;
 static LampState lampState = LAMP_STATE_DEFAULT;
 static WiFiTestTracker wifiTracker;
-static LampState lastNormalState = LAMP_STATE_DEFAULT;
 
 
 // Einmalige Initialisierung beim Start
@@ -118,8 +116,7 @@ void setup() {
     initRtcCrystal(&systemSettings);
 
     // --- Module mit Zeigern auf globalen Zustand initialisieren ---
-    initLampState(&lampState, &lastNormalState, &systemSettings.warningsEnabled, &appConfig, &wifiTracker,
-                  &s_pendingFlash);
+    initLampState(&lampState, &systemSettings.warningsEnabled, &appConfig, &wifiTracker);
     initSleepManager(&systemSettings.deepSleepEnabled, &lampState, &appConfig);
     initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
     initTsfClock(&systemSettings, &wifiTracker);

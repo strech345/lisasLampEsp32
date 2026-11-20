@@ -18,21 +18,21 @@
 
 // Zeiger auf den globalen Zustand — werden in initLampState() gesetzt
 static LampState* s_lampState = nullptr;
-static LampState* s_lastNormalState = nullptr;
 static bool* s_warningsEnabled = nullptr;
 static FullConfig* s_appConfig = nullptr;
 static WiFiTestTracker* s_wifiTracker = nullptr;
-static uint32_t* s_pendingFlash = nullptr;
+
+// Interner Zustand des Moduls
+static LampState s_stateBeforeAlert = LAMP_STATE_DEFAULT; // wird nach einem Hinweis wiederhergestellt
+static uint32_t s_pendingFlash = 0; // Farbe für kurzes Aufblitzen (Tasten-Feedback), 0 = keins
 
 // Initialisiert das Modul mit Zeigern auf die globalen Variablen aus main.cpp
-void initLampState(LampState* pLampState, LampState* pLastNormalState, bool* pWarningsEnabled,
-                   FullConfig* pAppConfig, WiFiTestTracker* pWifiTracker, uint32_t* pPendingFlash) {
+void initLampState(LampState* pLampState, bool* pWarningsEnabled, FullConfig* pAppConfig,
+                   WiFiTestTracker* pWifiTracker) {
     s_lampState = pLampState;
-    s_lastNormalState = pLastNormalState;
     s_warningsEnabled = pWarningsEnabled;
     s_appConfig = pAppConfig;
     s_wifiTracker = pWifiTracker;
-    s_pendingFlash = pPendingFlash;
 }
 
 // Setzt die LED-Farbe passend zum konfigurierten Farbmodus (Weiß-Töne oder Custom-RGB)
@@ -114,7 +114,7 @@ void checkLampState() {
     if(alertState != LAMP_STATE_DEFAULT) {
         // Beim Alert-Beginn den Zustand davor merken (nicht bei Alert → Alert)
         if(!isAlertState(*s_lampState)) {
-            *s_lastNormalState = *s_lampState;
+            s_stateBeforeAlert = *s_lampState;
         }
         *s_lampState = alertState;
         return;
@@ -122,7 +122,7 @@ void checkLampState() {
     if(isAlertState(*s_lampState)) {
         // Alert gerade beendet → Zustand von vor dem Alert wiederherstellen und normal weiter prüfen;
         // updateLed() setzt die LEDs beim Zustandswechsel passend neu
-        *s_lampState = *s_lastNormalState;
+        *s_lampState = s_stateBeforeAlert;
     }
 
     // --- Alarm ---
@@ -272,9 +272,9 @@ void updateLed() {
     lastLampState = *s_lampState;
 
     // --- Kurz-Aufblitzen (z.B. Button-Feedback) ---
-    if(*s_pendingFlash) {
-        flashLeds(*s_pendingFlash);
-        *s_pendingFlash = 0;
+    if(s_pendingFlash) {
+        flashLeds(s_pendingFlash);
+        s_pendingFlash = 0;
     }
 
     // --- Periodische Helligkeitsanpassung alle 5 Sekunden ---
@@ -299,39 +299,39 @@ void onShortPress() {
         // Zustand von vor dem Alert wiederherstellen (falls der Alert-Zustand schon aktiv war);
         // updateLed() setzt die LEDs beim Zustandswechsel passend neu
         if(isAlertState(*s_lampState)) {
-            *s_lampState = *s_lastNormalState;
+            *s_lampState = s_stateBeforeAlert;
         }
         return;
     }
     if(*s_lampState == LAMP_STATE_SLEEP) {
         serialPrint("stopping sleep mode");
         *s_lampState = LAMP_STATE_DEFAULT;
-        *s_pendingFlash = COLOR_GREEN;
+        s_pendingFlash = COLOR_GREEN;
         return;
     }
     if(*s_lampState == LAMP_STATE_ALARM) {
         serialPrint("stop alarm");
         *s_lampState = LAMP_STATE_DEFAULT;
         stopActiveAlarm();
-        *s_pendingFlash = COLOR_RED;
+        s_pendingFlash = COLOR_RED;
         return;
     }
     if(*s_lampState == LAMP_STATE_GOOD_NIGHT) {
         serialPrint("stop good night");
         *s_lampState = LAMP_STATE_DEFAULT;
         stopGoodNightMode();
-        *s_pendingFlash = COLOR_RED;
+        s_pendingFlash = COLOR_RED;
         return;
     }
     if(*s_lampState == LAMP_STATE_CELEBRATION) {
         serialPrint("stop celebration");
         *s_lampState = LAMP_STATE_DEFAULT;
         stopCelebration();
-        *s_pendingFlash = COLOR_RED;
+        s_pendingFlash = COLOR_RED;
         return;
     }
     // Normalbetrieb → Gute-Nacht-Modus starten
     serialPrint("activate good night");
     activateGoodNightMode();
-    *s_pendingFlash = COLOR_GREEN;
+    s_pendingFlash = COLOR_GREEN;
 }
