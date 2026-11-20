@@ -208,12 +208,13 @@
     }
   }
 
-  // Formatiert eine Zeitspanne in ms als "5 s" / "3 min" / "2 h"
-  function formatAgo(ms) {
-    if (!ms) return "—";
-    if (ms < 60000) return Math.floor(ms / 1000) + " s";
-    if (ms < 3600000) return Math.floor(ms / 60000) + " min";
-    return Math.floor(ms / 3600000) + " h";
+  // Zeitpunkt aus "vor ms Millisekunden" (Angabe der Lampe) als "20.11. 14:32" — absolut statt
+  // "vor X", damit die Anzeige nicht veraltet, solange die Seite offen ist
+  function formatAt(msAgo) {
+    if (!msAgo) return "—";
+    const d = new Date(Date.now() - msAgo);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
   // Länge eines Strings in UTF-8-Bytes (SSID/Passwort-Grenzen gelten in Bytes)
@@ -456,7 +457,7 @@
           {#if tsfFallbackEnabled && tsfStatus}
             <div class="fallback-status">
               <span>{tsfStatus.storedAps} APs gespeichert</span>
-              {#if tsfStatus.lastSnapshotMs > 0}<span>· Snapshot vor {formatAgo(tsfStatus.lastSnapshotMs)}</span>{/if}
+              {#if tsfStatus.lastSnapshotMs > 0}<span>· Snapshot {formatAt(tsfStatus.lastSnapshotMs)}</span>{/if}
               {#if tsfStatus.lastCalcResult !== "none"}
                 <span>· {tsfStatus.lastCalcResult === "success"
                   ? `✓ ${tsfStatus.lastCalcAps} APs, ±${tsfStatus.lastCalcDeviationMs}ms`
@@ -465,6 +466,11 @@
               {#if tsfStatus.minScore !== undefined}<span>· Score: {tsfStatus.minScore}–{tsfStatus.maxScore}</span>{/if}
               <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>Snapshot</button>
             </div>
+            <small>
+              Score = Güte der gespeicherten Access Points: Signalstärke (0–100) + Laufzeit des APs in Tagen
+              (max. 365). Höher = zuverlässiger; lange laufende APs liefern die stabilste Zeit. Angezeigt wird
+              der schwächste und der beste Wert.
+            </small>
           {/if}
         </section>
 
@@ -482,6 +488,7 @@
                 {#if rdsStatus.status === "locked" || rdsStatus.status === "scanning"}
                   <span>· RSSI {rdsStatus.rssi}</span>
                 {/if}
+                {#if rdsStatus.lastSyncMs > 0}<span>· Zeit gesetzt {formatAt(rdsStatus.lastSyncMs)}</span>{/if}
               {:else}
                 <span>Bereit (inaktiv)</span>
               {/if}
