@@ -65,9 +65,12 @@ Nach dem Werksreset gelten die Standard-Zugangsdaten (Hotspot `Lizas-Lamp`, Pass
 
 | Blinkmuster | Bedeutung |
 |---|---|
-| langsam (2 s an, 4 s aus) | WLAN aus |
-| schnell (0,2 s an, 0,3 s aus) | WLAN aktiv |
+| 1× kurz, Pause | WLAN aus |
+| 2× kurz, Pause | nur Heim-WLAN verbunden (kein Hotspot) |
+| 3× kurz, Pause | Hotspot an (Weboberfläche erreichbar) |
 | aus | Deep Sleep |
+
+Ein Blink dauert 0,1 s, Abstand 0,2 s, danach 2 s Pause (`statusLedTick()` in `src/led.cpp`).
 
 ---
 

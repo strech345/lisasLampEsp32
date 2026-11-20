@@ -103,7 +103,7 @@ void loop() {
     wifiLoop();
     tsfClockLoop();
     rdsClockLoop();
-    statusLedTick(isWiFiActive());
+    statusLedTick(wifiStatusBlinkCount()); // 1× WLAN aus, 2× nur Heim-WLAN, 3× Hotspot
     rotary_loop();
     ledUpdate(); // nach rotary_loop: Helligkeitsänderung sofort rendern
 
