@@ -90,11 +90,15 @@
     </div>
   {/each}
 
-  {#if sets.length < MAX_LIGHT_SETS}
-    <button type="button" class="btn-small btn-blue add" on:click={() => configStore.addSet()}>
-      Set hinzufügen
-    </button>
-  {/if}
+  <!-- Bei MAX_LIGHT_SETS Sets ausgegraut -->
+  <button
+    type="button"
+    class="btn-small btn-blue add"
+    disabled={sets.length >= MAX_LIGHT_SETS}
+    on:click={() => configStore.addSet()}
+  >
+    Set hinzufügen
+  </button>
   <p class="hint">Am Drehknopf: gedrückt halten und drehen wechselt das Set.</p>
 </div>
 

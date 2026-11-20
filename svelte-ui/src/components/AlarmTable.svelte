@@ -87,10 +87,10 @@
     </div>
   {/each}
 
-  {#if activeAlarms.length < 10}
-    <button class="btn-small btn-blue add" type="button" on:click={addAlarm}>Wecker hinzufügen</button>
-  {/if}
-  <p class="hint">Maximal 10 Wecker.</p>
+  <!-- Bei 10 Weckern (Maximum der Firmware) ausgegraut -->
+  <button class="btn-small btn-blue add" type="button" disabled={activeAlarms.length >= 10} on:click={addAlarm}>
+    Wecker hinzufügen
+  </button>
 </div>
 
 <style>
@@ -145,11 +145,6 @@
     align-self: flex-start;
   }
 
-  .hint {
-    font-size: 0.85rem;
-    opacity: 0.75;
-    margin: 0;
-  }
 
   @media (max-width: 420px) {
     .alarm-row {
