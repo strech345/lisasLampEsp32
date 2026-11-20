@@ -63,6 +63,19 @@ function createConfigStore() {
       this.load();
     },
 
+    // Übernimmt nur das aktive Set vom Gerät (z. B. nach Wechsel per Drehknopf), ohne andere Felder
+    // anzufassen — so wird nichts überschrieben, was gerade bearbeitet wird
+    async syncActiveSet() {
+      try {
+        const remote = await getJson("/get_config");
+        update((config) =>
+          remote.activeSet !== undefined && remote.activeSet !== config.activeSet
+            ? { ...config, activeSet: remote.activeSet }
+            : config
+        );
+      } catch {}
+    },
+
     // Macht Set i zum aktiven Set
     setActiveSet(i) {
       update((config) => ({ ...config, activeSet: i }));

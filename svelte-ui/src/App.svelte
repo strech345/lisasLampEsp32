@@ -30,6 +30,8 @@
     if (ok && !wasOnline) {
       messageStore.hide();
       configStore.load();
+    } else if (ok && page === "main") {
+      configStore.syncActiveSet(); // Set-Wechsel am Drehknopf sichtbar machen
     } else if (!ok && wasOnline) {
       messageStore.showPersistent("error", "Verbindung zur Lampe verloren – Eingaben sind gesperrt.");
     }
