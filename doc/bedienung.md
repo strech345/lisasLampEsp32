@@ -49,6 +49,22 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 - **Abbrechen:** Kurzer Druck während der Animation schaltet Hotspot und Animation aus, sonst nichts.
   Drehen bricht ebenfalls ab und ändert zusätzlich die Helligkeit. Ein verbundenes Heimnetz bleibt.
 
+## Lichtfarbe und Animation (Hauptseite der Weboberfläche)
+
+| Lichtfarbe | Ton |
+|---|---|
+| Kerzenlicht | ca. 2200 K, fast nur Rot/Bernstein |
+| Warmweiß | ca. 2700 K |
+| Neutralweiß | ca. 4000 K, nur die weiße LED |
+| Kaltweiß | ca. 6000 K |
+| Eigene Farbe | frei wählbar (ohne Boost auf Stufe 7) |
+
+| Animation | Wirkung |
+|---|---|
+| Statisch | gleichmäßiges Licht |
+| Atmen | langsames Auf- und Abschwellen |
+| Flamme | jedes Pixel flackert unabhängig; dunkle Phasen werden röter (Glut). Die Farbe kommt aus der Lichtfarbe — Kerzenlicht = Kerze, Blau = Gasflamme |
+
 ## Einstellungen in der Weboberfläche
 
 Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;

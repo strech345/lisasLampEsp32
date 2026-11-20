@@ -2,6 +2,8 @@
 
 ## November 2026 — Nach der Bereinigung
 
+- **Animation „Flamme“:** jedes Pixel flackert unabhängig, Töne aus der gewählten Lichtfarbe abgeleitet
+  (dunkler = röter).
 - **Lichtfarben:** Warm- und Neutralweiß klar unterscheidbar (weiße LED für warme/kalte Töne
   zurückgenommen), neuer Ton **Kerzenlicht**; Auswahl in der UI von warm nach kalt, auf Deutsch.
 - **Helligkeit:** Stufen an das Auge angepasst (geometrisch statt linear); **Stufe 7 = Boost** mit

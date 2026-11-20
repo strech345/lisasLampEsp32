@@ -27,6 +27,7 @@
   const animationModes = [
     { id: 0, name: "Statisch" },
     { id: 1, name: "Atmen" },
+    { id: 2, name: "Flamme" },
   ];
 
   $: colorHex = rgbToHex(

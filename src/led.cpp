@@ -22,6 +22,45 @@ static LedState      s_preFlashState;  // Gespeicherter Zustand vor dem Flash
 WS2812FX ws2812fx = WS2812FX(MAX_LED_COUNT, PIN_LED_STRIP, NEO_GRBW + NEO_KHZ800);
 static uint8_t s_ledCount = DEFAULT_LED_COUNT; // aktuell angesteuerte Anzahl
 
+// --- Flammen-Effekt (eigener WS2812FX-Modus) ---
+// Jedes Pixel flackert unabhängig: zufällige Ziel-Intensität, weich angenähert, gelegentlich ein
+// tieferer Einbruch. Die Farbe wird aus der Grundfarbe abgeleitet: Rot sinkt linear mit der
+// Intensität, Grün/Blau quadratisch, Weiß kubisch → dunkle Phasen werden röter (Glut), helle
+// gelblicher. So passt die Flamme zu jeder Lichtfarbe (Kerzenlicht = Kerze, Blau = Gasflamme).
+#define FLAME_FRAME_MS 30 // Bildrate des Effekts
+static uint8_t s_flameMode = FX_MODE_STATIC;       // von setCustomMode() vergebene Modus-Nummer
+static uint8_t s_flameLevel[MAX_LED_COUNT];        // aktuelle Intensität je Pixel (0–255)
+static uint8_t s_flameTarget[MAX_LED_COUNT];       // Ziel-Intensität je Pixel
+
+// Skaliert einen Farbkanal mit der Intensität f (0–255), potenziert (1 = linear, 2 = quadratisch …)
+static uint8_t flameChannel(uint8_t c, uint8_t f, uint8_t power) {
+    uint32_t v = c;
+    for(uint8_t i = 0; i < power; i++)
+        v = v * f / 255;
+    return (uint8_t)v;
+}
+
+// Ein Bild des Flammen-Effekts; Rückgabe = Wartezeit bis zum nächsten Bild (ms)
+static uint16_t flameEffect() {
+    uint32_t base = ws2812fx.getSegment()->colors[0]; // 0xWWRRGGBB
+    uint8_t w = base >> 24, r = base >> 16, g = base >> 8, b = base;
+    uint16_t len = ws2812fx.getLength();
+    for(uint16_t n = 0; n < len && n < MAX_LED_COUNT; n++) {
+        uint8_t cur = s_flameLevel[n], tgt = s_flameTarget[n];
+        if(abs((int)cur - (int)tgt) < 6) {
+            // Neues Ziel: meist hell (150–255), selten ein Einbruch (70–140) für lebendiges Flackern
+            tgt = (ws2812fx.random8() < 25) ? 70 + ws2812fx.random8(70) : 150 + ws2812fx.random8(106);
+            s_flameTarget[n] = tgt;
+        }
+        cur = cur + ((int)tgt - (int)cur) / 4; // weich annähern
+        s_flameLevel[n] = cur;
+        uint32_t c = ((uint32_t)flameChannel(w, cur, 3) << 24) | ((uint32_t)flameChannel(r, cur, 1) << 16)
+            | ((uint32_t)flameChannel(g, cur, 2) << 8) | flameChannel(b, cur, 2);
+        ws2812fx.setPixelColor(n, c);
+    }
+    return FLAME_FRAME_MS;
+}
+
 // Interne Hilfsfunktion — setzt den PWM-Helligkeitswert (0–255)
 static void applyBrightness(uint8_t brightness) {
     ws2812fx.setBrightness(brightness);
@@ -36,6 +75,9 @@ void ledInit(uint8_t ledCount) {
     ws2812fx.show();
     s_ledCount = ledCount;
     ws2812fx.setLength(ledCount);
+    s_flameMode = ws2812fx.setCustomMode(F("Flamme"), flameEffect);
+    for(uint8_t n = 0; n < MAX_LED_COUNT; n++)
+        s_flameLevel[n] = s_flameTarget[n] = 200;
     ws2812fx.setSpeed(200);
     ws2812fx.start();
     ws2812fx.setColor(0xFFC896);
@@ -109,12 +151,14 @@ void setLedColors(uint32_t baseColor, uint32_t boostColor) {
     applyColorForLevel();
 }
 
-// Animationsmodus für Farben: 1 = Atmen, sonst statisch. Setzt auch Effekt-Optionen zurück
-// (z. B. die Schweif-Länge der Hotspot-Animation).
+// Animationsmodus für Farben: 1 = Atmen, 2 = Flamme, sonst statisch. Setzt auch Effekt-Optionen
+// zurück (z. B. die Schweif-Länge der Hotspot-Animation).
 void setAnimationMode(uint8_t mode) {
     ws2812fx.setOptions(0, NO_OPTIONS);
     if(mode == 1) {
         ws2812fx.setMode(FX_MODE_BREATH);
+    } else if(mode == 2) {
+        ws2812fx.setMode(s_flameMode);
     } else {
         ws2812fx.setMode(FX_MODE_STATIC);
     }

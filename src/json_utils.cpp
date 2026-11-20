@@ -71,7 +71,7 @@ bool parseConfigJson(const String& jsonString, FullConfig& config, String* error
 
     if(!readIntRange(doc["colorMode"], tmp.colorMode, 0, 4, v)) return fail(error, "colorMode muss 0–4 sein.");
     tmp.colorMode = v;
-    if(!readIntRange(doc["animationMode"], tmp.animationMode, 0, 1, v)) return fail(error, "animationMode muss 0–1 sein.");
+    if(!readIntRange(doc["animationMode"], tmp.animationMode, 0, 2, v)) return fail(error, "animationMode muss 0–2 sein.");
     tmp.animationMode = v;
     if(!readIntRange(doc["goodNightDuration"], tmp.goodNightDuration, 1, 1440, v))
         return fail(error, "Gute-Nacht-Dauer muss 1–1440 Minuten sein.");
