@@ -1,4 +1,4 @@
-// Store für die Lampen-Konfiguration (Licht-Sets, Alarme, Dauer) inkl. Laden/Speichern über lib/api.js.
+// Store für die Lampen-Konfiguration (Szenen, Alarme, Dauer) inkl. Laden/Speichern über lib/api.js.
 import { get, writable } from "svelte/store";
 import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";

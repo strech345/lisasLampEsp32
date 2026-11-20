@@ -68,7 +68,7 @@ const PATTERNS = [
   [/^Alert start: (.*)$/, (m) => `Hinweis Start: ${ALERT_NAMES[m[1]] ?? m[1]}`],
   [/^Alert stop: (.*)$/, (m) => `Hinweis Ende: ${ALERT_NAMES[m[1]] ?? m[1]}`],
   [/^State: (.*) -> (.*)$/, (m) => `Zustand: ${STATE_NAMES[m[1]] ?? m[1]} -> ${STATE_NAMES[m[2]] ?? m[2]}`],
-  [/^Light set (\d+)$/, "Licht-Set $1"],
+  [/^Scene (\d+)$/, "Szene $1"],
   [/^LED count: (\d+)$/, "LED-Anzahl: $1"],
   [/^STA connect \(fallback\): (.*)$/, "STA verbinden (Fallback): $1"],
   [/^STA connect: (.*)$/, "STA verbinden: $1"],

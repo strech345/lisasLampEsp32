@@ -27,9 +27,9 @@ Die Lampe hat zwei Bedienelemente: den **Drehknopf** (KY-040, drehen und drücke
 
 ## Drehknopf gedrückt halten und drehen
 
-- Wechselt das **Licht-Set** (nächstes/vorheriges, rundum), die Helligkeit bleibt.
+- Wechselt das **Szene** (nächstes/vorheriges, rundum), die Helligkeit bleibt.
 - Ist die Lampe aus (Sleep oder Helligkeit 0), geht sie auf Stufe 1 an. Gute Nacht, Sleep und
-  Systemwarnung wechseln in den Normalbetrieb; ein laufender Wecker übernimmt das neue Set.
+  Systemwarnung wechseln in den Normalbetrieb; ein laufender Wecker übernimmt die neue Szene.
 - Wurde gedreht, löst das Loslassen weder einen kurzen Druck noch den Hotspot aus.
 
 ## Drehknopf kurz drücken (höchstens 0,5 s, ohne Drehen)
@@ -59,13 +59,13 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 - **Abbrechen:** Kurzer Druck während der Animation schaltet Hotspot und Animation aus, sonst nichts.
   Drehen bricht ebenfalls ab und ändert zusätzlich die Helligkeit. Ein verbundenes Heimnetz bleibt.
 
-## Licht-Sets (Hauptseite der Weboberfläche)
+## Szenen (Hauptseite der Weboberfläche)
 
-Ein Set ist eine Kombination aus Lichtfarbe und Animation. Es gibt bis zu **6 Sets**; eines ist aktiv
-(in der Weboberfläche auswählen oder am Drehknopf: gedrückt halten + drehen). Sets lassen sich
-hinzufügen, ändern und löschen (mindestens eines bleibt).
+Eine Szene ist eine Kombination aus Lichtfarbe und Animation. Es gibt bis zu **6 Szenen**; eine ist aktiv
+(in der Weboberfläche auswählen oder am Drehknopf: gedrückt halten + drehen). Szenen lassen sich
+hinzufügen, ändern und löschen (mindestens eine bleibt).
 
-| Standard-Set | Lichtfarbe | Animation |
+| Standard-Szene | Lichtfarbe | Animation |
 |---|---|---|
 | 1 | Neutralweiß | Statisch |
 | 2 (aktiv) | Warmweiß | Atmen |
@@ -152,7 +152,7 @@ Kurzes Blinken: 0,1 s an, 0,2 s Abstand, danach 2 s Pause (`statusLedTick()` in 
 | WLAN aus, 5 h vergangen | WLAN kurz ohne Hotspot an (Uhrzeit per NTP) |
 | Lampe aus (Sleep oder Helligkeit 0), WLAN aus, Deep Sleep aktiviert | Deep Sleep bis zum nächsten Wecker/WLAN-Sync (wacht ca. 5 min plus erwartete Uhrabweichung vorher auf) |
 | Wecker in weniger als 5 min | kein Deep Sleep |
-| Wecker-Zeit erreicht (bis 10 min verspätet) | Wecker startet: Farbe des aktiven Sets, Helligkeit steigt von 1 auf 7 |
+| Wecker-Zeit erreicht (bis 10 min verspätet) | Wecker startet: Farbe der aktiven Szene, Helligkeit steigt von 1 auf 7 |
 | Wecker-Dauer abgelaufen | Lampe geht aus (Sleep) |
 | Gute-Nacht-Dauer abgelaufen | Lampe geht aus (Sleep) |
 | 1.1., 8.8., 2.9., 24.12. ab 7:00 | Feier-Modus (Regenbogen) |

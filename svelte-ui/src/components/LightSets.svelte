@@ -1,5 +1,5 @@
 <script>
-  // Licht-Sets: bis zu 6 Kombinationen aus Lichtfarbe und Animation. Eines ist aktiv; am Drehknopf
+  // Szenen: bis zu 6 Kombinationen aus Lichtfarbe und Animation. Eines ist aktiv; am Drehknopf
   // wechselt "gedrückt halten + drehen" zwischen den Sets.
   import { configStore, MAX_LIGHT_SETS } from "../stores/configStore.js";
   import { t } from "../lib/i18n.js";

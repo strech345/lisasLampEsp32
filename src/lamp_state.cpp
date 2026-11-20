@@ -40,7 +40,7 @@ void initLampState(LampState* pLampState, bool* pWarningsEnabled, FullConfig* pA
 
 // Setzt die LED-Farbe passend zum konfigurierten Farbmodus (Weiß-Töne oder Custom-RGB)
 void checkAndApplyColorMode(const FullConfig& config) {
-    // Aktives Licht-Set (Index abgesichert)
+    // Aktives Szene (Index abgesichert)
     const LightSet& set = config.sets[config.activeSet < config.setCount ? config.activeSet : 0];
     RGB colorToApply;
     String modeName;
@@ -334,7 +334,7 @@ bool dismissApAnimation() {
     return true;
 }
 
-// Wechselt das Licht-Set um delta Schritte (zyklisch) — Drehen bei gedrückter Taste.
+// Wechselt das Szene um delta Schritte (zyklisch) — Drehen bei gedrückter Taste.
 // Ist die Lampe aus (Sleep oder Helligkeit 0), geht sie auf Stufe 1 an; Gute Nacht, Sleep und
 // Systemwarnung wechseln in den Normalbetrieb. Ein wartender Hotspot wird abgebrochen.
 void switchLightSet(int delta) {
@@ -370,7 +370,7 @@ void switchLightSet(int delta) {
     }
     saveFullConfig(cfg, true);
     char buf[24];
-    snprintf(buf, sizeof(buf), "Light set %u", cfg.activeSet + 1);
+    snprintf(buf, sizeof(buf), "Scene %u", cfg.activeSet + 1);
     logEvent(buf);
 }
 

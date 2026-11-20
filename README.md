@@ -2,9 +2,9 @@
 
 Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über einen eigenen WLAN-Hotspot.
 
-- **Drehknopf:** Helligkeit in 8 Stufen, gedrückt halten + drehen = Licht-Set wechseln, kurzer Druck =
+- **Drehknopf:** Helligkeit in 8 Stufen, gedrückt halten + drehen = Szene wechseln, kurzer Druck =
   Gute Nacht / Wecker aus, 3 s halten = Hotspot
-- **Licht-Sets:** bis zu 6 Kombinationen aus Lichtfarbe und Animation (z. B. Kerze mit Flammen-Effekt)
+- **Szenen:** bis zu 6 Kombinationen aus Lichtfarbe und Animation (z. B. Kerze mit Flammen-Effekt)
 - **Wecker:** bis zu 16 Wecker — wöchentlich (Wochentag) oder als einmaliger Termin (Datum); Licht wird langsam heller
 - **Uhrzeit:** NTP über das Heim-WLAN, ohne Internet per WLAN-Beacons (TSF) oder UKW-RDS
 - **Stromsparen:** Deep Sleep, wenn die Lampe aus ist; wacht rechtzeitig vor dem Wecker auf

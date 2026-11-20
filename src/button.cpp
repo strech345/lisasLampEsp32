@@ -66,7 +66,7 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         startWifi();
         break;
     case RotaryEncoderEventType::Rotate: {
-        // Drehen bei gedrückter Taste: Licht-Set wechseln (statt Helligkeit), kein Hotspot für diesen Druck
+        // Drehen bei gedrückter Taste: Szene wechseln (statt Helligkeit), kein Hotspot für diesen Druck
         if(rotaryEncoder.isEncoderButtonDown()) {
             s_rotatedWhileHeld = true;
             switchLightSet(value);

@@ -18,7 +18,7 @@ export default {
   "main.welcome": "Enjoy your smart lamp ;-)!",
   "main.meerkatAlt": "Meerkat",
   "main.alarms": "Alarms",
-  "main.lightSets": "Light sets",
+  "main.lightSets": "Scenes",
   "main.durations": "Duration",
   "main.goodNight": "Good night",
   "main.alarm": "Alarm",
@@ -45,7 +45,7 @@ export default {
   "alarm.ariaDelete": "Delete alarm {n}",
   "alarm.add": "Add alarm",
 
-  // --- Licht-Sets ---
+  // --- Szenen ---
   "color.4": "Candlelight",
   "color.2": "Warm white",
   "color.1": "Neutral white",
@@ -54,15 +54,15 @@ export default {
   "anim.0": "Static",
   "anim.1": "Breathing",
   "anim.2": "Flame",
-  "sets.ariaActivate": "Activate set {n}",
-  "sets.titleActivate": "Activate this set",
-  "sets.ariaColor": "Light color of set {n}",
-  "sets.ariaCustom": "Custom color of set {n}",
-  "sets.ariaAnim": "Animation of set {n}",
-  "sets.ariaDelete": "Delete set {n}",
+  "sets.ariaActivate": "Activate scene {n}",
+  "sets.titleActivate": "Activate this scene",
+  "sets.ariaColor": "Light color of scene {n}",
+  "sets.ariaCustom": "Custom color of scene {n}",
+  "sets.ariaAnim": "Animation of scene {n}",
+  "sets.ariaDelete": "Delete scene {n}",
   "sets.delete": "Delete",
-  "sets.add": "Add set",
-  "sets.hint": "On the knob: press and hold, then turn to switch sets.",
+  "sets.add": "Add scene",
+  "sets.hint": "On the knob: press and hold, then turn to switch scenes.",
 
   // --- Stores ---
   "config.loadFailed": "Could not load configuration: {msg}",

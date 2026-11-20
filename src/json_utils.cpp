@@ -4,7 +4,7 @@
 String createConfigJson(const FullConfig& config) {
     JsonDocument doc;
 
-    // Licht-Sets und aktives Set
+    // Szenen und aktives Set
     JsonArray setsArray = doc["sets"].to<JsonArray>();
     for(int i = 0; i < config.setCount && i < MAX_LIGHT_SETS; ++i) {
         JsonObject s = setsArray.add<JsonObject>();
@@ -71,7 +71,7 @@ bool parseConfigJson(const String& jsonString, FullConfig& config, String* error
     FullConfig tmp = config; // erst auf Kopie arbeiten, bei Fehler nichts übernehmen
     long v;
 
-    // Licht-Sets: fehlt "sets", bleiben die aktuellen; sonst wird die Liste komplett ersetzt (1–6)
+    // Szenen: fehlt "sets", bleiben die aktuellen; sonst wird die Liste komplett ersetzt (1–6)
     JsonArrayConst setsArray = doc["sets"].as<JsonArrayConst>();
     if(!setsArray.isNull()) {
         if(setsArray.size() < 1 || setsArray.size() > MAX_LIGHT_SETS)

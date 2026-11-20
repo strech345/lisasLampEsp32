@@ -30,7 +30,7 @@ struct Alarm {
 #define DEFAULT_LED_COUNT 4
 #define MAX_LED_COUNT 16 // Strombedarf: bis ca. 80 mA pro RGBW-LED bei voller Helligkeit
 
-// Ein Licht-Set: Lichtfarbe + Animation (in der Weboberfläche anlegbar, per Drücken + Drehen wählbar)
+// Ein Szene: Lichtfarbe + Animation (in der Weboberfläche anlegbar, per Drücken + Drehen wählbar)
 struct LightSet {
     byte colorMode;     // 0=Kaltweiß, 1=Neutralweiß, 2=Warmweiß, 3=Eigene Farbe, 4=Kerzenlicht
     byte animationMode; // 0=Statisch, 1=Atmen, 2=Flamme

@@ -18,7 +18,7 @@ export default {
   "main.welcome": "Viel Spaß mit deiner smarten Lampe ;-)!",
   "main.meerkatAlt": "Erdmännchen",
   "main.alarms": "Wecker",
-  "main.lightSets": "Licht-Sets",
+  "main.lightSets": "Szenen",
   "main.durations": "Dauer",
   "main.goodNight": "Gute Nacht",
   "main.alarm": "Wecker",
@@ -45,7 +45,7 @@ export default {
   "alarm.ariaDelete": "Wecker {n} löschen",
   "alarm.add": "Wecker hinzufügen",
 
-  // --- Licht-Sets ---
+  // --- Szenen ---
   "color.4": "Kerzenlicht",
   "color.2": "Warmweiß",
   "color.1": "Neutralweiß",
@@ -54,15 +54,15 @@ export default {
   "anim.0": "Statisch",
   "anim.1": "Atmen",
   "anim.2": "Flamme",
-  "sets.ariaActivate": "Set {n} aktivieren",
-  "sets.titleActivate": "Dieses Set aktivieren",
-  "sets.ariaColor": "Lichtfarbe Set {n}",
-  "sets.ariaCustom": "Eigene Farbe Set {n}",
-  "sets.ariaAnim": "Animation Set {n}",
-  "sets.ariaDelete": "Set {n} löschen",
+  "sets.ariaActivate": "Szene {n} aktivieren",
+  "sets.titleActivate": "Diese Szene aktivieren",
+  "sets.ariaColor": "Lichtfarbe Szene {n}",
+  "sets.ariaCustom": "Eigene Farbe Szene {n}",
+  "sets.ariaAnim": "Animation Szene {n}",
+  "sets.ariaDelete": "Szene {n} löschen",
   "sets.delete": "Löschen",
-  "sets.add": "Set hinzufügen",
-  "sets.hint": "Am Drehknopf: gedrückt halten und drehen wechselt das Set.",
+  "sets.add": "Szene hinzufügen",
+  "sets.hint": "Am Drehknopf: gedrückt halten und drehen wechselt die Szene.",
 
   // --- Stores ---
   "config.loadFailed": "Konfiguration konnte nicht geladen werden: {msg}",

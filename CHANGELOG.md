@@ -5,6 +5,7 @@
 - **Wecker:** bis zu 16, zusätzlich **einmalige Termine** mit Datum (Auswahl „Datum“ in der Zeile); Weckzeit über
   die Sommer-/Winterzeit-Umstellung hinweg korrigiert. Das Update setzt die Lampen-Konfiguration
   einmalig zurück.
+- **„Licht-Sets“ heißen jetzt „Szenen“** (englisch „Scenes“).
 - **Sprache Deutsch/Englisch** in den Einstellungen; Protokoll-Meldungen der Firmware einheitlich englisch,
   bei Deutsch in der Weboberfläche übersetzt.
 - **Hardware-Erkennung:** Quarz und RDS-Modul werden bei jedem Einschalten geprüft; nicht vorhandene
