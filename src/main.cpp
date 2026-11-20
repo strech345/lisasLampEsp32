@@ -31,7 +31,7 @@ static LampState lampState = LAMP_STATE_DEFAULT;
 static WiFiTestTracker wifiTracker;
 
 // Wertet den Aufwachgrund aus und setzt den Startzustand.
-// Rückgabe: true bei Timer-Wakeup (Lampe bleibt aus, WLAN ohne Hotspot).
+// Rückgabe: true bei Timer-Wakeup (Lampe bleibt aus).
 static bool applyWakeupReason() {
     esp_sleep_wakeup_cause_t reason = esp_sleep_get_wakeup_cause();
     switch(reason) {
@@ -85,7 +85,9 @@ void setup() {
     initWebCommands(&appConfig, &systemSettings);
     std::vector<Route> routes = initRouteHandlers(&appConfig, &systemSettings, &wifiTracker, queueWebCommand);
     initWiFiController(systemSettings, routes, wifiTracker);
-    startWifi(!timerWakeup); // Timer-Wakeup: stiller NTP-Sync ohne sichtbaren Hotspot
+    // Beim Start nur das Heim-WLAN (Uhrzeit per NTP), kein Hotspot — den schaltet nur ein langer
+    // Druck auf den Drehknopf dazu. Ohne eingetragenes Heim-WLAN bleibt das WLAN aus.
+    startWifi(false);
 
     // --- Drehknopf (Ruhepegel lernen) ---
     initRotaryEncoder(appConfig.brightnessMode, myRotaryEncoderCallback);

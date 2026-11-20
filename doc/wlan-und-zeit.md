@@ -13,9 +13,12 @@ externes WLAN; ohne WLAN helfen **gespeicherte Zeit**, **TSF-Fallback** (WLAN-Be
 
 | Modus | Wann | Hotspot sichtbar |
 |---|---|---|
-| **APSTA** | Einschalten, langer Tastendruck, Aufwecken per Taster (mit externem WLAN) | ja |
-| **AP** | wie oben, aber kein externes WLAN eingetragen | ja |
-| **STA** | automatischer Zeitabgleich alle 5 h und nach Timer-Wakeup aus dem Deep Sleep | nein |
+| **STA** | Einschalten/Aufwachen und automatischer Zeitabgleich alle 5 h (nur mit eingetragenem Heim-WLAN) | nein |
+| **APSTA** | langer Tastendruck, während Heim-WLAN eingetragen ist (läuft STA schon, kommt der AP dazu) | ja |
+| **AP** | langer Tastendruck ohne eingetragenes Heim-WLAN | ja |
+
+Der Hotspot startet **nur** per langem Tastendruck (bzw. nach dem Speichern von WLAN-Einstellungen, weil
+man dann ohnehin verbunden ist). Ohne Heim-WLAN bleibt das WLAN nach dem Start aus.
 
 | Einstellung | Wert |
 |---|---|

@@ -65,8 +65,8 @@ aus `loop()` angefasst.
 4. `initClock()`: Zeitzone setzen, Uhrzeit aus NVS falls leer — vor den Weckern
 5. `loadSystemSettingsOrDefault()`, RTC-Quarz prüfen (Taktquelle nur beim Boot umschaltbar)
 6. Module initialisieren (Zeiger auf den globalen Zustand), Wecker übernehmen
-7. Auftragsablage, Routen, WLAN-Controller (Kanal aus RTC-Speicher oder Scan), `startWifi()` —
-   bei Timer-Wakeup ohne Hotspot
+7. Auftragsablage, Routen, WLAN-Controller (Kanal aus RTC-Speicher oder Scan), `startWifi(false)` —
+   nur Heim-WLAN, kein Hotspot (der kommt nur per langem Tastendruck)
 8. Drehknopf (Ruhepegel lernen)
 
 Gemessen: Licht nach ca. 60 ms, einsatzbereit nach ca. 0,35 s (Deep-Sleep-Wakeup) bzw. 3,5 s

@@ -40,7 +40,9 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 
 ## Drehknopf lang drücken (≥ 1 s)
 
-- WLAN mit Hotspot einschalten (Weboberfläche erreichbar).
+- Hotspot einschalten (Weboberfläche erreichbar). Das ist der **einzige** Weg zum Hotspot — beim
+  Start verbindet sich die Lampe nur mit dem Heim-WLAN.
+- Ist die Lampe gerade mit dem Heim-WLAN verbunden, kommt der Hotspot dazu (beides gleichzeitig).
 - Kurzer gelber Blitz als Bestätigung; danach ist die Lampe wieder im vorherigen Zustand.
 
 ## Boot-Taste
