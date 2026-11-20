@@ -16,6 +16,9 @@
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
+#include <ArduinoJson.h>
+#include "json_utils.h" // PASSWORD_MASK
 #include "wifi_controller.h"
 #include "captive_portal.h"
 #include "debug_utils.h"
@@ -77,6 +80,12 @@ static std::vector<Route> g_routes;
 static WiFiTestTracker* g_wifiTracker = nullptr;
 static uint8_t s_staIdx = 0; // 0 = primäres WLAN, 1 = Fallback-WLAN
 static int s_retryCount = 0; // direkte Wiederholungsversuche nach Verbindungsabbruch
+
+// WLAN-Suche / Verbindungstest (Einstellungen → WLAN): solange aktiv, ruht die normale STA-Logik
+static volatile bool s_toolActive = false;
+static unsigned long s_toolQuietUntilMs = 0;          // kurz nach Ende noch Trennungs-Events ignorieren
+static volatile uint8_t s_lastDisconnectReason = 0;   // aus dem Event-Task (Grund der letzten Trennung)
+static void wifiToolsLoop();
 
 // Verbindet mit dem externen WLAN an Index idx; fällt auf primäres zurück wenn kein Fallback konfiguriert
 static void beginSta(uint8_t idx) {
@@ -188,6 +197,7 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
 // Läuft in der Hauptschleife: Events, DNS-Anfragen, Auto-Start/Stop, Telemetrie, Reconnect
 void wifiLoop() {
     processWifiEvents();
+    wifiToolsLoop();
     handleClientRequests();
     checkWifiStart();
     checkWifiStop();
@@ -303,7 +313,7 @@ void updateTelemetryWiFiStatus() {
 // Versucht alle 5 Minuten eine neue STA-Verbindung wenn die letzte fehlgeschlagen ist
 // Wechselt abwechselnd zwischen primärem und Fallback-WLAN
 void tryReconnectSta() {
-    if(g_wifiTracker->staConfigValid) {
+    if(g_wifiTracker->staConfigValid || s_toolActive) {
         return;
     }
     if(strlen(g_systemSettings->externalSSID) == 0) {
@@ -478,6 +488,9 @@ void syncTimeWithNTP() {
 
 // Verbindung verloren (läuft im Hauptthread): Wiederholungen, Fallback-WLAN, dann STA aufgeben
 static void handleStaDisconnected() {
+    // Während (und kurz nach) Suche/Test gehören Trennungen zum Test, nicht zur normalen Verbindung
+    if(s_toolActive || (long)(millis() - s_toolQuietUntilMs) < 0)
+        return;
     // Kein Telemetrie-Update nötig: der NTP-Status hängt nicht mehr an der Verbindung
     logEvent("STA disconnected");
 
@@ -522,6 +535,8 @@ static void processWifiEvents() {
             s_retryCount = 0;
             break;
         case MSG_GOT_IP:
+            if(s_toolActive)
+                break; // Verbindung des Tests, nicht die gespeicherte
             // Verbindung erfolgreich → NTP-Sync sofort starten
             s_retryCount = 0;
             logEvent("STA connected, NTP sync");
@@ -574,9 +589,278 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
         break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
         serialPrint("STA Disconnected");
+        s_lastDisconnectReason = info.wifi_sta_disconnected.reason;
         postMsg(MSG_DISCONNECTED);
         break;
     default:
         break;
+    }
+}
+// ================================================================================================
+// WLAN-Suche und Verbindungstest (Einstellungen → WLAN, Knöpfe „Finden“ und „Testen“)
+// Webhandler legen nur einen Auftrag ab (request…), ausgeführt wird in wifiToolsLoop() im
+// Hauptthread. Ergebnisse liegen unter Mutex und werden als JSON abgeholt (get…Json).
+// Suche und Test brauchen die STA-Schnittstelle: im reinen Hotspot-Modus wird kurz auf AP+STA
+// geschaltet und danach der vorherige Zustand (inkl. Heimnetz-Verbindung) wiederhergestellt.
+// ================================================================================================
+
+#define SCAN_MAX_RESULTS 20
+#define SCAN_TIMEOUT_MS 15000
+#define WIFI_TEST_TIMEOUT_MS 15000
+
+enum ToolState : uint8_t { TOOL_IDLE, TOOL_REQUESTED, TOOL_RUNNING, TOOL_DONE };
+
+struct ScanEntry {
+    char ssid[33];
+    int8_t rssi;
+    bool secure;
+};
+
+static StaticSemaphore_t s_toolMutexBuf;
+static SemaphoreHandle_t s_toolMutex = xSemaphoreCreateMutexStatic(&s_toolMutexBuf);
+
+static ToolState s_scanState = TOOL_IDLE;
+static bool s_scanFailed = false;
+static ScanEntry s_scanResults[SCAN_MAX_RESULTS];
+static uint8_t s_scanCount = 0;
+
+static ToolState s_testState = TOOL_IDLE;
+static char s_testSsid[33];
+static char s_testPw[64];
+static uint8_t s_testSlot = 1;          // 1 = externes WLAN, 2 = Fallback (für die Maske "******")
+static const char* s_testResult = "none"; // ok | wrong_password | not_found | timeout | failed
+
+static unsigned long s_toolStartMs = 0;
+static wifi_mode_t s_modeBeforeTool = WIFI_MODE_NULL;
+static bool s_staWasConnected = false;
+static bool s_scanNeedsReconnect = false; // Heimnetz-Aufbau wurde für den Scan angehalten
+
+// Auftrag: WLAN-Suche. false = gerade beschäftigt (Suche oder Test läuft)
+bool requestWifiScan() {
+    xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+    bool busy = s_scanState == TOOL_REQUESTED || s_scanState == TOOL_RUNNING || s_testState == TOOL_REQUESTED
+                || s_testState == TOOL_RUNNING;
+    if(!busy)
+        s_scanState = TOOL_REQUESTED;
+    xSemaphoreGive(s_toolMutex);
+    return !busy;
+}
+
+// Auftrag: Verbindungstest mit ssid/password; password "******" = gespeichertes Passwort von slot (1/2).
+// false = gerade beschäftigt
+bool requestWifiTest(uint8_t slot, const char* ssid, const char* password) {
+    xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+    bool busy = s_scanState == TOOL_REQUESTED || s_scanState == TOOL_RUNNING || s_testState == TOOL_REQUESTED
+                || s_testState == TOOL_RUNNING;
+    if(!busy) {
+        strlcpy(s_testSsid, ssid, sizeof(s_testSsid));
+        strlcpy(s_testPw, password, sizeof(s_testPw));
+        s_testSlot = slot;
+        s_testResult = "none";
+        s_testState = TOOL_REQUESTED;
+    }
+    xSemaphoreGive(s_toolMutex);
+    return !busy;
+}
+
+// {"status":"idle|running|done|failed","networks":[{"ssid","rssi","secure"}]} (stärkstes zuerst)
+String getWifiScanJson() {
+    JsonDocument doc;
+    xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+    const char* st = s_scanState == TOOL_DONE ? (s_scanFailed ? "failed" : "done")
+                     : s_scanState == TOOL_IDLE ? "idle" : "running";
+    doc["status"] = st;
+    JsonArray arr = doc["networks"].to<JsonArray>();
+    if(s_scanState == TOOL_DONE) {
+        for(uint8_t i = 0; i < s_scanCount; i++) {
+            JsonObject o = arr.add<JsonObject>();
+            o["ssid"] = (const char*)s_scanResults[i].ssid;
+            o["rssi"] = s_scanResults[i].rssi;
+            o["secure"] = s_scanResults[i].secure;
+        }
+    }
+    xSemaphoreGive(s_toolMutex);
+    String out;
+    serializeJson(doc, out);
+    return out;
+}
+
+// {"status":"idle|running|done","result":"none|ok|wrong_password|not_found|timeout|failed","slot":1|2}
+String getWifiTestJson() {
+    JsonDocument doc;
+    xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+    doc["status"] = s_testState == TOOL_DONE ? "done" : s_testState == TOOL_IDLE ? "idle" : "running";
+    doc["result"] = s_testResult;
+    doc["slot"] = s_testSlot;
+    xSemaphoreGive(s_toolMutex);
+    String out;
+    serializeJson(doc, out);
+    return out;
+}
+
+// Vor Suche/Test: Zustand merken, normale STA-Logik pausieren, STA-Schnittstelle bereitstellen
+static void beginTool() {
+    s_toolActive = true;
+    s_toolStartMs = millis();
+    s_modeBeforeTool = WiFi.getMode();
+    s_staWasConnected = WiFi.status() == WL_CONNECTED;
+    if(s_modeBeforeTool == WIFI_MODE_AP)
+        WiFi.mode(WIFI_MODE_APSTA);
+    else if(s_modeBeforeTool == WIFI_MODE_NULL)
+        WiFi.mode(WIFI_MODE_STA);
+}
+
+// Nach Suche/Test: vorherigen Zustand wiederherstellen; war das Heimnetz verbunden (oder im Aufbau),
+// wird neu verbunden
+static void endTool(bool staTouched) {
+    if(staTouched)
+        WiFi.disconnect(false); // nur STA trennen, Hotspot bleibt
+    if(s_modeBeforeTool == WIFI_MODE_AP || s_modeBeforeTool == WIFI_MODE_NULL) {
+        WiFi.mode(s_modeBeforeTool);
+    } else if(staTouched && strlen(g_systemSettings->externalSSID) > 0) {
+        g_wifiTracker->staConfigValid = false;
+        s_retryCount = 0;
+        beginSta(s_staIdx); // gespeichertes Netz wieder verbinden (GOT_IP setzt den Status)
+    }
+    s_toolQuietUntilMs = millis() + 1500;
+    s_toolActive = false;
+}
+
+// Übernimmt die Scan-Ergebnisse: ohne leere SSIDs, doppelte Namen nur mit dem stärksten Signal,
+// sortiert nach Signalstärke
+static void collectScanResults(int found) {
+    ScanEntry tmp[SCAN_MAX_RESULTS];
+    uint8_t n = 0;
+    for(int i = 0; i < found; i++) {
+        String ssid = WiFi.SSID(i);
+        if(ssid.isEmpty())
+            continue;
+        int8_t rssi = (int8_t)WiFi.RSSI(i);
+        bool secure = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
+        int idx = -1;
+        for(uint8_t k = 0; k < n; k++)
+            if(strcmp(tmp[k].ssid, ssid.c_str()) == 0)
+                idx = k;
+        if(idx >= 0) {
+            if(rssi > tmp[idx].rssi)
+                tmp[idx].rssi = rssi;
+            continue;
+        }
+        if(n < SCAN_MAX_RESULTS) {
+            strlcpy(tmp[n].ssid, ssid.c_str(), sizeof(tmp[n].ssid));
+            tmp[n].rssi = rssi;
+            tmp[n].secure = secure;
+            n++;
+        } else {
+            // Liste voll: schwächsten Eintrag ersetzen, falls dieses Netz stärker ist
+            uint8_t weakest = 0;
+            for(uint8_t k = 1; k < n; k++)
+                if(tmp[k].rssi < tmp[weakest].rssi)
+                    weakest = k;
+            if(rssi > tmp[weakest].rssi) {
+                strlcpy(tmp[weakest].ssid, ssid.c_str(), sizeof(tmp[weakest].ssid));
+                tmp[weakest].rssi = rssi;
+                tmp[weakest].secure = secure;
+            }
+        }
+    }
+    // Einfügesortierung absteigend nach RSSI (höchstens 20 Einträge)
+    for(uint8_t i = 1; i < n; i++) {
+        ScanEntry e = tmp[i];
+        int j = i - 1;
+        while(j >= 0 && tmp[j].rssi < e.rssi) {
+            tmp[j + 1] = tmp[j];
+            j--;
+        }
+        tmp[j + 1] = e;
+    }
+    xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+    memcpy(s_scanResults, tmp, sizeof(tmp));
+    s_scanCount = n;
+    s_scanFailed = false;
+    s_scanState = TOOL_DONE;
+    xSemaphoreGive(s_toolMutex);
+}
+
+// Setzt das Testergebnis und beendet den Test
+static void finishTest(const char* result) {
+    endTool(true);
+    xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+    s_testResult = result;
+    s_testState = TOOL_DONE;
+    xSemaphoreGive(s_toolMutex);
+    char buf[52];
+    snprintf(buf, sizeof(buf), "WiFi test: %s", result);
+    logEvent(buf);
+}
+
+// Hauptthread: führt Suche und Test schrittweise aus (blockiert nie)
+static void wifiToolsLoop() {
+    // --- Suche ---
+    if(s_scanState == TOOL_REQUESTED) {
+        beginTool();
+        // Läuft gerade nur ein Verbindungsaufbau (nicht verbunden), schlägt der Scan fehl →
+        // STA-Versuch anhalten und nach dem Scan neu verbinden
+        s_scanNeedsReconnect = !s_staWasConnected && s_modeBeforeTool != WIFI_MODE_AP
+                               && s_modeBeforeTool != WIFI_MODE_NULL;
+        if(s_scanNeedsReconnect)
+            WiFi.disconnect(false);
+        int r = WiFi.scanNetworks(true, false); // asynchron, ohne versteckte Netze
+        s_toolStartMs = millis();
+        xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+        s_scanState = TOOL_RUNNING;
+        xSemaphoreGive(s_toolMutex);
+        if(r == WIFI_SCAN_FAILED)
+            s_toolStartMs -= SCAN_TIMEOUT_MS; // im nächsten Durchlauf als fehlgeschlagen behandeln
+        logEvent("WiFi scan started");
+    } else if(s_scanState == TOOL_RUNNING) {
+        int n = WiFi.scanComplete();
+        if(n >= 0) {
+            collectScanResults(n);
+            WiFi.scanDelete();
+            endTool(s_scanNeedsReconnect);
+        } else if(n == WIFI_SCAN_FAILED || millis() - s_toolStartMs >= SCAN_TIMEOUT_MS) {
+            WiFi.scanDelete();
+            endTool(s_scanNeedsReconnect);
+            xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+            s_scanCount = 0;
+            s_scanFailed = true;
+            s_scanState = TOOL_DONE;
+            xSemaphoreGive(s_toolMutex);
+            logEvent("WiFi scan failed");
+        }
+    }
+
+    // --- Verbindungstest ---
+    if(s_testState == TOOL_REQUESTED) {
+        beginTool();
+        // Maske = gespeichertes Passwort des Feldes
+        const char* pw = s_testPw;
+        if(strcmp(s_testPw, PASSWORD_MASK) == 0)
+            pw = s_testSlot == 2 ? g_systemSettings->externalPW2 : g_systemSettings->externalPW;
+        WiFi.disconnect(false);
+        s_lastDisconnectReason = 0;
+        WiFi.begin(s_testSsid, pw[0] ? pw : nullptr);
+        s_toolStartMs = millis();
+        xSemaphoreTake(s_toolMutex, portMAX_DELAY);
+        s_testState = TOOL_RUNNING;
+        xSemaphoreGive(s_toolMutex);
+        char buf[52];
+        snprintf(buf, sizeof(buf), "WiFi test: %.36s", s_testSsid);
+        logEvent(buf);
+    } else if(s_testState == TOOL_RUNNING) {
+        uint8_t reason = s_lastDisconnectReason;
+        unsigned long elapsed = millis() - s_toolStartMs;
+        if(WiFi.status() == WL_CONNECTED) {
+            finishTest("ok");
+        } else if(reason == WIFI_REASON_AUTH_FAIL || reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT
+                  || reason == WIFI_REASON_HANDSHAKE_TIMEOUT || reason == WIFI_REASON_MIC_FAILURE) {
+            finishTest("wrong_password");
+        } else if(reason == WIFI_REASON_NO_AP_FOUND && elapsed >= 5000) {
+            // Netz nicht gefunden: dem Stack ein paar Sekunden für weitere Versuche lassen
+            finishTest("not_found");
+        } else if(elapsed >= WIFI_TEST_TIMEOUT_MS) {
+            finishTest(reason == WIFI_REASON_NO_AP_FOUND ? "not_found" : (reason ? "failed" : "timeout"));
+        }
     }
 }

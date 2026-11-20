@@ -205,18 +205,18 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     return jsonResponse;
 }
 
-// Prüft/übernimmt ein Passwortfeld: leer oder Maske = unverändert, sonst muss die Länge 8–63 sein (WPA).
-// `clear` (clearXxxPW) leert das Passwort explizit. Gibt false bei ungültiger Länge zurück.
-static bool applyPassword(JsonVariantConst value, bool clear, char* dst, size_t dstSize) {
-    const char* src = value.is<const char*>() ? value.as<const char*>() : "";
-    if(src[0] != '\0' && strcmp(src, PASSWORD_MASK) != 0) {
-        size_t len = strlen(src);
-        if(len < 8 || len > 63 || len >= dstSize)
-            return false;
-        strlcpy(dst, src, dstSize);
-    }
-    if(clear)
-        dst[0] = '\0'; // explizites Entfernen gewinnt gegenüber einem mitgesendeten Wert
+// Prüft/übernimmt ein Passwortfeld: fehlt das Feld oder ist es die Maske = unverändert,
+// leer = Passwort löschen, sonst muss die Länge 8–63 sein (WPA). Gibt false bei ungültiger Länge zurück.
+static bool applyPassword(JsonVariantConst value, char* dst, size_t dstSize) {
+    if(!value.is<const char*>())
+        return true;
+    const char* src = value.as<const char*>();
+    if(strcmp(src, PASSWORD_MASK) == 0)
+        return true;
+    size_t len = strlen(src);
+    if(len > 0 && (len < 8 || len > 63 || len >= dstSize))
+        return false;
+    strlcpy(dst, src, dstSize);
     return true;
 }
 
@@ -233,9 +233,8 @@ static bool applySsid(JsonVariantConst value, char* dst, size_t dstSize, size_t 
 }
 
 // Parst /set_system_config auf einer Kopie; Felder die fehlen behalten ihren Wert.
-// Regeln: AP-SSID 1–32 Zeichen; AP-Passwort leer(=unverändert) oder 8–63; externe SSID 0–32,
-// externe Passwörter leer(=unverändert) oder 8–63.
-// Optionale Boolean-Felder zum Entfernen von Passwörtern: "clearInternalPW", "clearExternalPW", "clearExternalPW2".
+// Regeln: AP-SSID 1–32 Zeichen; externe SSID 0–32; Passwörter: Maske "******" = unverändert,
+// leer = kein Passwort (Hotspot dann offen), sonst 8–63 Zeichen.
 bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSettings, String* error) {
     JsonDocument doc;
 
@@ -248,17 +247,17 @@ bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSetti
 
     if(!applySsid(doc["internalSSID"], tmp.internalSSID, sizeof(tmp.internalSSID), 1))
         return fail(error, "Hotspot-Name muss 1–32 Zeichen lang sein.");
-    if(!applyPassword(doc["internalPW"], doc["clearInternalPW"] | false, tmp.internalPW, sizeof(tmp.internalPW)))
+    if(!applyPassword(doc["internalPW"], tmp.internalPW, sizeof(tmp.internalPW)))
         return fail(error, "Hotspot-Passwort muss leer oder 8–63 Zeichen lang sein.");
 
     if(!applySsid(doc["externalSSID"], tmp.externalSSID, sizeof(tmp.externalSSID), 0))
         return fail(error, "WLAN-Name (extern) darf höchstens 32 Zeichen lang sein.");
-    if(!applyPassword(doc["externalPW"], doc["clearExternalPW"] | false, tmp.externalPW, sizeof(tmp.externalPW)))
+    if(!applyPassword(doc["externalPW"], tmp.externalPW, sizeof(tmp.externalPW)))
         return fail(error, "WLAN-Passwort (extern) muss leer oder 8–63 Zeichen lang sein.");
 
     if(!applySsid(doc["externalSSID2"], tmp.externalSSID2, sizeof(tmp.externalSSID2), 0))
         return fail(error, "WLAN-Name 2 darf höchstens 32 Zeichen lang sein.");
-    if(!applyPassword(doc["externalPW2"], doc["clearExternalPW2"] | false, tmp.externalPW2, sizeof(tmp.externalPW2)))
+    if(!applyPassword(doc["externalPW2"], tmp.externalPW2, sizeof(tmp.externalPW2)))
         return fail(error, "WLAN-Passwort 2 muss leer oder 8–63 Zeichen lang sein.");
 
     tmp.warningsEnabled  = doc["warningsEnabled"]  | tmp.warningsEnabled;

@@ -307,6 +307,50 @@ static void handleGetRtcCrystal(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getRtcCrystalStatusJson());
 }
 
+// POST /trigger_wifi_scan: WLAN-Suche starten (Ergebnis über GET /get_wifi_scan abholen)
+static void handleTriggerWifiScan(AsyncWebServerRequest* request, const String&) {
+    if(!requestWifiScan()) {
+        sendError(request, 409, "WLAN ist gerade beschäftigt.");
+        return;
+    }
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+static void handleGetWifiScan(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getWifiScanJson());
+}
+
+// POST /test_wifi {"slot": 1|2, "ssid": "...", "password": "..."}: Verbindungstest starten.
+// password "******" = gespeichertes Passwort des Feldes. Ergebnis über GET /get_wifi_test.
+static void handleTestWifi(AsyncWebServerRequest* request, const String& body) {
+    JsonDocument doc;
+    if(body.isEmpty() || deserializeJson(doc, body) || !doc["ssid"].is<const char*>()) {
+        sendError(request, 400, "Ungültiges JSON: ssid erforderlich.");
+        return;
+    }
+    const char* ssid = doc["ssid"];
+    const char* pw = doc["password"] | "";
+    uint8_t slot = doc["slot"] | 1;
+    size_t ssidLen = strlen(ssid), pwLen = strlen(pw);
+    if(ssidLen < 1 || ssidLen > 32) {
+        sendError(request, 400, "WLAN-Name muss 1–32 Zeichen lang sein.");
+        return;
+    }
+    if(pwLen > 63 || (pwLen > 0 && pwLen < 8 && strcmp(pw, PASSWORD_MASK) != 0)) {
+        sendError(request, 400, "Passwort muss leer oder 8–63 Zeichen lang sein.");
+        return;
+    }
+    if(!requestWifiTest(slot == 2 ? 2 : 1, ssid, pw)) {
+        sendError(request, 409, "WLAN ist gerade beschäftigt.");
+        return;
+    }
+    request->send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+static void handleGetWifiTest(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getWifiTestJson());
+}
+
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback) {
@@ -335,5 +379,9 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/get_rds_clock", HTTP_GET, handleGetRdsClock},
             {"/get_rtc_crystal", HTTP_GET, handleGetRtcCrystal},
             {"/trigger_ntp_sync", HTTP_POST, handleTriggerNtpSync},
+            {"/trigger_wifi_scan", HTTP_POST, handleTriggerWifiScan},
+            {"/get_wifi_scan", HTTP_GET, handleGetWifiScan},
+            {"/test_wifi", HTTP_POST, handleTestWifi},
+            {"/get_wifi_test", HTTP_GET, handleGetWifiTest},
             {"/factory_reset", HTTP_POST, handleFactoryReset}};
 }

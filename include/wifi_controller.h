@@ -34,4 +34,11 @@ void initClock();             // Zeitzone setzen, Uhr aus NVS falls leer (früh 
 void syncTimeWithNTP();       // SNTP-Sync neu starten; Drift wird im Callback berechnet
 void updateTelemetryWiFiStatus(); // minütlich: NTP-Alter (24 h) prüfen, alle 30 min Zeit in NVS sichern
 
+// WLAN-Suche und Verbindungstest (Einstellungen → WLAN). request… legt nur einen Auftrag ab (aus dem
+// Webserver-Task erlaubt), false = beschäftigt; ausgeführt wird in wifiLoop().
+bool requestWifiScan();
+bool requestWifiTest(uint8_t slot, const char* ssid, const char* password); // "******" = gespeichertes PW
+String getWifiScanJson(); // {"status":"idle|running|done|failed","networks":[{ssid,rssi,secure}]}
+String getWifiTestJson(); // {"status":"idle|running|done","result":"ok|wrong_password|not_found|timeout|failed"}
+
 #endif // WIFI_CONTROLLER_H

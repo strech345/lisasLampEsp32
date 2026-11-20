@@ -21,7 +21,7 @@ bool parseConfigJson(const String& jsonString, FullConfig& config, String* error
 String createSystemConfigJson(const SystemSettings& systemSettings);
 
 // Deserialisiert JSON in SystemSettings; Passwörter werden nur übernommen wenn nicht Maske.
-// Prüft SSID-/Passwortlängen; Passwörter entfernen über clearInternalPW/clearExternalPW/clearExternalPW2 (bool).
+// Prüft SSID-/Passwortlängen; Passwort "******" = unverändert, leer = Passwort entfernen.
 // Bei Fehler false + deutsche Meldung in *error.
 bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSettings, String* error = nullptr);
 
