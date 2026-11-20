@@ -382,17 +382,18 @@ void stopWifi() {
     serialPrint("stopWifi: All WiFi services stopped");
 }
 
-// Blinkzahl der Status-LED je WLAN-Zustand: 1 = WLAN aus, 2 = nur Heim-WLAN (STA, kein Hotspot),
-// 3 = Hotspot an (AP oder APSTA)
+// Blinkmuster der Status-LED je WLAN-Zustand: 0 = WLAN aus (langsam blinken), 1 = nur Heimnetz (STA),
+// 2 = nur Hotspot (AP), 3 = Heimnetz und Hotspot (APSTA)
 uint8_t wifiStatusBlinkCount() {
     switch(WiFi.getMode()) {
     case WIFI_MODE_STA:
-        return 2;
+        return 1;
     case WIFI_MODE_AP:
+        return 2;
     case WIFI_MODE_APSTA:
         return 3;
     default:
-        return 1;
+        return 0;
     }
 }
 

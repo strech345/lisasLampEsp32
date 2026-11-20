@@ -22,7 +22,7 @@ void handleClientRequests();  // DNS-Captive-Portal-Anfragen verarbeiten
 void checkWifiStart();        // Automatischer Start nach START_WIFI_AFTER_MS
 void checkWifiStop();         // Automatischer Stop nach STOP_WIFI_AFTER_MS ohne Client
 bool isWiFiActive();
-uint8_t wifiStatusBlinkCount(); // Status-LED: 1 = WLAN aus, 2 = nur Heim-WLAN, 3 = Hotspot an
+uint8_t wifiStatusBlinkCount(); // Status-LED: 0 = WLAN aus, 1 = Heimnetz, 2 = Hotspot, 3 = beides
 bool hasWifiClients();        // Gibt true zurück wenn mindestens ein Gerät verbunden ist
 
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info); // Intern: reagiert auf STA-Verbindungsereignisse

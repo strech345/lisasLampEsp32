@@ -13,7 +13,7 @@ void startCelebrationEffect();
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();
-void statusLedTick(uint8_t blinkCount); // blinkCount× kurz aufblinken, Pause, von vorn (aus loop())
+void statusLedTick(uint8_t blinkCount); // 0 = langsam blinken, 1–3 = so oft kurz, Pause (aus loop())
 
 // Blendet kurz alle LEDs in color ein und stellt danach den vorherigen Zustand wieder her
 void flashLeds(uint32_t color, unsigned long durationMs = 200);

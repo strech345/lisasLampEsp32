@@ -155,15 +155,23 @@ void statusLedOff() {
 #define STATUS_BLINK_GAP_MS 200  // Abstand zwischen zwei Blinks
 #define STATUS_PAUSE_MS 2000     // Pause nach der Blinkfolge
 
-// Blinkt die Status-LED blinkCount-mal kurz auf, macht eine Pause und beginnt von vorn
-// (Bedeutung siehe wifiStatusBlinkCount()). Muss aus loop() aufgerufen werden.
+#define STATUS_SLOW_ON_MS 2000   // WLAN aus: lang an ...
+#define STATUS_SLOW_OFF_MS 4000  // ... und lang aus
+
+// Status-LED (Bedeutung siehe wifiStatusBlinkCount()). Muss aus loop() aufgerufen werden.
+// blinkCount 0: langsam blinken (2 s an, 4 s aus); 1–3: so oft kurz aufblinken, Pause, von vorn.
 // Die Position im Muster ergibt sich direkt aus millis() — kein eigener Zustand nötig.
 void statusLedTick(uint8_t blinkCount) {
     static bool ledOn = false;
-    const unsigned long step = STATUS_BLINK_ON_MS + STATUS_BLINK_GAP_MS;
-    const unsigned long blinkPart = (unsigned long)blinkCount * step;
-    unsigned long pos = millis() % (blinkPart + STATUS_PAUSE_MS);
-    bool on = pos < blinkPart && (pos % step) < STATUS_BLINK_ON_MS;
+    bool on;
+    if(blinkCount == 0) {
+        on = millis() % (STATUS_SLOW_ON_MS + STATUS_SLOW_OFF_MS) < STATUS_SLOW_ON_MS;
+    } else {
+        const unsigned long step = STATUS_BLINK_ON_MS + STATUS_BLINK_GAP_MS;
+        const unsigned long blinkPart = (unsigned long)blinkCount * step;
+        unsigned long pos = millis() % (blinkPart + STATUS_PAUSE_MS);
+        on = pos < blinkPart && (pos % step) < STATUS_BLINK_ON_MS;
+    }
     if(on != ledOn) { // nur bei Änderung schreiben
         ledOn = on;
         on ? statusLedOn() : statusLedOff();
