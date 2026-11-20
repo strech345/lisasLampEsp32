@@ -13,20 +13,14 @@ void checkToSave();
 // Vor Deep Sleep und vor ESP.restart() aufrufen.
 void flushPendingSave();
 
-// Lädt FullConfig aus NVS; gibt false zurück wenn kein gültiger Eintrag vorhanden
-bool loadFullConfig(FullConfig& config);
-
 // Liefert FullConfig mit Standardwerten
 FullConfig getDefaultFullConfig();
 
 // Setzt FullConfig in NVS auf Standardwerte zurück
 bool resetFullConfig();
 
-// Stellt sicher dass FullConfig in NVS existiert, sonst resetFullConfig()
-bool ensureConfigExistsAndResetIfNot();
-
+// Speichert SystemSettings sofort in NVS
 bool saveSystemSettings(const SystemSettings& settings);
-bool loadSystemSettings(SystemSettings& settings);
 
 // Liefert SystemSettings mit Standardwerten
 SystemSettings getDefaultSystemSettings();
@@ -34,8 +28,9 @@ SystemSettings getDefaultSystemSettings();
 // Setzt SystemSettings in NVS auf Standardwerte zurück
 bool resetSystemSettings();
 
-// Stellt sicher dass SystemSettings in NVS existiert, sonst resetSystemSettings()
-bool ensureSystemSettingsExistsAndResetIfNot();
+// Laden mit Fallback: fehlt der Eintrag oder passt die Größe nicht, werden Standardwerte gespeichert
+void loadFullConfigOrDefault(FullConfig& config);
+void loadSystemSettingsOrDefault(SystemSettings& settings);
 
 // Speichert letzten bekannten Unix-Timestamp für Wiederherstellung nach Neustart
 void saveLastKnownTime(time_t t);

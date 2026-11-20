@@ -85,7 +85,7 @@ void flushPendingSave() {
 }
 
 // Lädt die gespeicherte Konfiguration aus dem Flash-Speicher
-bool loadFullConfig(FullConfig& config) {
+static bool loadFullConfig(FullConfig& config) {
     if(!preferences.begin(PREF_NAMESPACE, true)) {
         serialPrint("Failed to open preferences for reading");
         return false;
@@ -152,7 +152,7 @@ static bool ensureStructExists(const char* key, size_t expectedSize, bool (*rese
 }
 
 // Stellt sicher dass eine gültige FullConfig im Flash vorhanden ist
-bool ensureConfigExistsAndResetIfNot() {
+static bool ensureConfigExistsAndResetIfNot() {
     serialPrint("Checking if FullConfig exists...");
     return ensureStructExists(CONFIG_KEY, sizeof(FullConfig), resetFullConfig);
 }
@@ -184,7 +184,7 @@ bool saveSystemSettings(const SystemSettings& settings) {
 }
 
 // Lädt die Systemeinstellungen aus dem Flash-Speicher
-bool loadSystemSettings(SystemSettings& settings) {
+static bool loadSystemSettings(SystemSettings& settings) {
     if(!preferences.begin(PREF_NAMESPACE, true)) {
         serialPrint("Failed to open preferences for reading");
         return false;
@@ -242,7 +242,7 @@ uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount) {
 }
 
 // Stellt sicher dass gültige SystemSettings im Flash vorhanden sind
-bool ensureSystemSettingsExistsAndResetIfNot() {
+static bool ensureSystemSettingsExistsAndResetIfNot() {
     serialPrint("Checking if SystemSettings exists...");
     return ensureStructExists(SYSTEM_SETTINGS_KEY, sizeof(SystemSettings), resetSystemSettings);
 }
@@ -264,4 +264,23 @@ time_t loadLastKnownTime() {
     uint64_t t = preferences.getULong64(LAST_TIME_KEY, 0);
     preferences.end();
     return (time_t)t;
+}
+
+// Lädt die Lampen-Konfiguration; fehlt sie oder passt die gespeicherte Größe nicht (Firmware-Update),
+// werden Standardwerte gespeichert und geliefert
+void loadFullConfigOrDefault(FullConfig& config) {
+    ensureConfigExistsAndResetIfNot();
+    if(!loadFullConfig(config)) {
+        serialPrint("Using default configuration");
+        config = getDefaultFullConfig();
+    }
+}
+
+// Lädt die Systemeinstellungen; sonst wie loadFullConfigOrDefault() Standardwerte
+void loadSystemSettingsOrDefault(SystemSettings& settings) {
+    ensureSystemSettingsExistsAndResetIfNot();
+    if(!loadSystemSettings(settings)) {
+        serialPrint("Using default system settings");
+        settings = getDefaultSystemSettings();
+    }
 }

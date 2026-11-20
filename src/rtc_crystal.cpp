@@ -28,6 +28,7 @@ static uint32_t calcFreqFromCal(uint32_t cal) {
 // Schreibt in den Flash nur, wenn sich rtcCrystalAvailable gegenüber dem gespeicherten Stand geändert hat.
 void initRtcCrystal(SystemSettings* settings) {
     g_settings = settings;
+    serialPrint("RTC-Takt beim Start: " + String(rtc_clk_slow_freq_get_hz()) + " Hz");
     const bool previousAvailable = settings->rtcCrystalAvailable; // Stand vor diesem Boot
 
     if(!settings->rtcCrystalEnabled) {

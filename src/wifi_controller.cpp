@@ -30,6 +30,7 @@
 #define MAX_CLIENTS 4
 #define WIFI_AP_TX_POWER WIFI_POWER_17dBm
 #define DNS_INTERVAL 30             // DNS-Anfragen alle 30ms verarbeiten
+#define TIMEZONE "CET-1CEST,M3.5.0,M10.5.0/3" // Mitteleuropäische Zeit mit Sommerzeit
 #define MIN_VALID_EPOCH 1577836800L // 2020-01-01: alles davor gilt als "Uhrzeit unbekannt"
 
 static int s_wifiChannel = 1; // wird in initWiFiController() per Scan gesetzt
@@ -162,7 +163,7 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
     s_msgQueue = xQueueCreate(8, sizeof(WifiMsg));
 
     // Zeitzone: Mitteleuropäische Zeit mit Sommerzeit
-    configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
+    configTzTime(TIMEZONE, "pool.ntp.org", "time.nist.gov");
     sntp_set_time_sync_notification_cb(ntpSyncCallback);
     WiFi.onEvent(WiFiEvent);
     WiFi.persistent(false); // keine Credentials in NVS speichern
@@ -390,6 +391,25 @@ bool isWiFiActive() {
 // Gibt true zurück wenn mindestens ein Gerät mit dem eigenen Hotspot verbunden ist
 bool hasWifiClients() {
     return WiFi.softAPgetStationNum() > 0;
+}
+
+// Setzt Zeitzone und — falls die Uhr noch leer ist (Einschalten/Reset) — die Systemzeit aus dem NVS.
+// Nach Deep Sleep läuft die Uhr weiter und bleibt unverändert. Früh in setup() aufrufen, vor Weckern
+// und WLAN, damit Weckzeiten von Anfang an in Ortszeit berechnet werden.
+void initClock() {
+    setenv("TZ", TIMEZONE, 1);
+    tzset();
+    if(time(nullptr) >= MIN_VALID_EPOCH) {
+        return; // Uhr läuft bereits (z. B. nach Deep Sleep)
+    }
+    time_t saved = loadLastKnownTime();
+    if(saved > 0) {
+        struct timeval tv = {.tv_sec = saved, .tv_usec = 0};
+        settimeofday(&tv, nullptr);
+        serialPrint("Uhrzeit aus NVS wiederhergestellt: " + String((unsigned long)saved));
+    } else {
+        serialPrint("Keine Uhrzeit bekannt (noch nie synchronisiert)");
+    }
 }
 
 // Merkt sich die aktuelle RTC-Zeit und startet SNTP-Sync neu (Drift wird im Callback berechnet)
