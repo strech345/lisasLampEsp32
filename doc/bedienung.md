@@ -77,7 +77,7 @@ hinzufügen, ändern und löschen (mindestens eine bleibt).
 | Warmweiß | ca. 2700 K |
 | Neutralweiß | ca. 4000 K, nur die weiße LED |
 | Kaltweiß | ca. 6000 K |
-| Eigene Farbe | frei wählbar (ohne Boost auf Stufe 7) |
+| Eigene Farbe | frei wählbar: Eintrag „Eigene Farbe“ anklicken öffnet den Farbwähler; der Rand zeigt die Farbe (ohne Boost auf Stufe 7) |
 
 | Animation | Wirkung |
 |---|---|

@@ -18,6 +18,34 @@
     return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
   }
 
+  // Versteckte Farbwähler je Szene (für showPicker())
+  let pickers = [];
+
+  // Lichtfarbe gewählt. "pick" = Eintrag "Eigene Farbe" angeklickt (auch wenn schon eigene Farbe aktiv):
+  // Farbwähler öffnen. Bei eigener Farbe steht intern ein versteckter Eintrag "custom" mit gleicher
+  // Beschriftung aktiv, damit ein erneuter Klick auf "Eigene Farbe" ein change-Ereignis auslöst.
+  function handleColorModeChange(i, event) {
+    const value = event.target.value;
+    if (value === "pick") {
+      event.target.value = "custom"; // Anzeige bleibt "Eigene Farbe"
+      if (sets[i].colorMode !== 3) configStore.updateSet(i, { colorMode: 3 });
+      openPicker(i);
+      return;
+    }
+    configStore.updateSet(i, { colorMode: parseInt(value) });
+  }
+
+  // Öffnet den nativen Farbwähler der Szene i
+  function openPicker(i) {
+    const el = pickers[i];
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.click(); // ältere Browser ohne showPicker()
+    }
+  }
+
   // "#RRGGBB" → RGB-Objekt
   function hexToRgb(hex) {
     return {
@@ -40,27 +68,36 @@
         on:change={() => configStore.setActiveSet(i)}
       />
 
-      <!-- Lichtfarbe (+ Farbfeld bei "Eigene Farbe") in einer Spalte → Animation bleibt überall gleich breit -->
+      <!-- Lichtfarbe; bei "Eigene Farbe" zeigt der Rand die Farbe, der Farbwähler öffnet sich
+           über den Eintrag "Eigene Farbe" in der Liste -->
       <div class="color-cell">
-      <select
-        aria-label={$t("sets.ariaColor", { n: i + 1 })}
-        value={set.colorMode}
-        on:change={(e) => configStore.updateSet(i, { colorMode: parseInt(e.target.value) })}
-      >
-        {#each colorModes as mode}
-          <option value={mode.id}>{$t("color." + mode.id)}</option>
-        {/each}
-      </select>
-
-      {#if set.colorMode === 3}
+        <select
+          aria-label={$t("sets.ariaColor", { n: i + 1 })}
+          class:custom={set.colorMode === 3}
+          style={set.colorMode === 3 ? `--custom-color: ${rgbToHex(set.color)}` : ""}
+          value={set.colorMode === 3 ? "custom" : String(set.colorMode)}
+          on:change={(e) => handleColorModeChange(i, e)}
+        >
+          {#each colorModes as mode}
+            {#if mode.id === 3}
+              <option value="pick">{$t("color.3")}</option>
+            {:else}
+              <option value={String(mode.id)}>{$t("color." + mode.id)}</option>
+            {/if}
+          {/each}
+          <!-- versteckter Eintrag, der bei eigener Farbe angezeigt wird -->
+          <option value="custom" hidden>{$t("color.3")}</option>
+        </select>
+        <!-- unsichtbarer Farbwähler (wird per showPicker() geöffnet) -->
         <input
           type="color"
-          class="color-input"
+          class="hidden-picker"
+          tabindex="-1"
           aria-label={$t("sets.ariaCustom", { n: i + 1 })}
+          bind:this={pickers[i]}
           value={rgbToHex(set.color)}
-          on:change={(e) => configStore.updateSet(i, { color: hexToRgb(e.target.value) })}
+          on:change={(e) => configStore.updateSet(i, { colorMode: 3, color: hexToRgb(e.target.value) })}
         />
-      {/if}
       </div>
 
       <select
@@ -128,9 +165,28 @@
   }
 
   .color-cell {
+    position: relative; /* Bezug für den unsichtbaren Farbwähler (Popup erscheint dort) */
     display: flex;
-    gap: var(--row-gap);
     min-width: 0;
+  }
+
+  /* Eigene Farbe: Rand in der gewählten Farbe */
+  select.custom {
+    border: 3px solid var(--custom-color) !important;
+  }
+
+  /* Farbwähler unsichtbar über der Auswahlliste, nur zum Öffnen des nativen Dialogs */
+  .hidden-picker {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    padding: 0;
+    margin: 0;
+    border: 0;
   }
 
   select {
@@ -144,15 +200,6 @@
     text-overflow: ellipsis;
   }
 
-  /* Quadratisch: Breite = einheitliche Feldhöhe (--control-h, siehe Main.svelte) */
-  .color-input {
-    flex: 0 0 var(--control-h);
-    width: var(--control-h) !important;
-    height: var(--control-h) !important;
-    aspect-ratio: 1 / 1;
-    padding: 0.2rem !important;
-    margin: 0 !important;
-  }
 
 
   .add {
