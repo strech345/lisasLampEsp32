@@ -64,7 +64,7 @@ struct TsfEntry {
 };
 
 // Art der Zustandsänderung / des Auftrags vom Webserver an die loop().
-// Der Callback onStateUpdatedFromWifi (main.cpp) läuft im async_tcp-Task und legt nur einen Auftrag
+// Der Callback queueWebCommand (web_commands.cpp) läuft im async_tcp-Task und legt nur einen Auftrag
 // ab; ausgeführt wird er in loop(). Datentyp von `data` je Eintrag in Klammern.
 enum StateChangeType {
     STATE_CHANGE_CONFIG,        // (const FullConfig*) neue Lampenkonfiguration
