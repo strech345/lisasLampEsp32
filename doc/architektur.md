@@ -99,7 +99,7 @@ checkToGoSleep()           Deep Sleep prüfen (alle 10 s)
 
 | Schlüssel | Inhalt |
 |---|---|
-| `fullConfig` | `FullConfig`: Farbe, Modi, Helligkeit, 10 Wecker, Dauern |
+| `fullConfig` | `FullConfig`: bis zu 6 Licht-Sets + aktives Set, Helligkeit, 10 Wecker, Dauern |
 | `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz, LED-Anzahl |
 | `tsfData` | bis zu 16 TSF-Referenzen |
 | `lastKnownTime` | letzte gültige Uhrzeit (alle 30 min bei gültigem NTP) |

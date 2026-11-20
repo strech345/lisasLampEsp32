@@ -7,6 +7,7 @@
 #include "alerts.h"
 #include "alarm.h"
 #include "good_night.h"
+#include "store.h"
 #include "celebration.h"
 #include "debug_utils.h"
 #include "event_log.h"
@@ -331,6 +332,46 @@ bool dismissApAnimation() {
     stopAccessPoint();
     *s_lampState = s_stateBeforeAlert;
     return true;
+}
+
+// Wechselt das Licht-Set um delta Schritte (zyklisch) — Drehen bei gedrückter Taste.
+// Ist die Lampe aus (Sleep oder Helligkeit 0), geht sie auf Stufe 1 an; Gute Nacht, Sleep und
+// Systemwarnung wechseln in den Normalbetrieb. Ein wartender Hotspot wird abgebrochen.
+void switchLightSet(int delta) {
+    FullConfig& cfg = *s_appConfig;
+    if(cfg.setCount == 0 || delta == 0)
+        return;
+    dismissApAnimation();
+    int n = cfg.setCount;
+    cfg.activeSet = (uint8_t)((((int)cfg.activeSet + delta) % n + n) % n);
+
+    bool wasOff = *s_lampState == LAMP_STATE_SLEEP || cfg.brightnessMode == 0;
+    if(wasOff)
+        cfg.brightnessMode = 1;
+    switch(*s_lampState) {
+    case LAMP_STATE_GOOD_NIGHT:
+        stopGoodNightMode();
+        *s_lampState = LAMP_STATE_DEFAULT;
+        break;
+    case LAMP_STATE_SLEEP:
+    case LAMP_STATE_SYS_WARNING:
+    case LAMP_STATE_SYS_ERROR:
+        *s_lampState = LAMP_STATE_DEFAULT;
+        break;
+    default:
+        break;
+    }
+    // Sofort anzeigen: im Normalbetrieb Set + Helligkeit, beim Wecker nur das Set
+    if(*s_lampState == LAMP_STATE_DEFAULT) {
+        checkAndApplyColorMode(cfg);
+        setBrightnessLevel(cfg.brightnessMode);
+    } else if(*s_lampState == LAMP_STATE_ALARM) {
+        checkAndApplyColorMode(cfg);
+    }
+    saveFullConfig(cfg, true);
+    char buf[24];
+    snprintf(buf, sizeof(buf), "Licht-Set %u", cfg.activeSet + 1);
+    logEvent(buf);
 }
 
 // Reagiert auf kurzen Drucktaster-Druck: je nach Zustand stoppen oder Gute-Nacht starten

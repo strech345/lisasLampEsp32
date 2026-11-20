@@ -25,7 +25,14 @@ Die Lampe hat zwei Bedienelemente: den **Drehknopf** (KY-040, drehen und drücke
   die Lampe in den Normalbetrieb. Ein laufender **Wecker** und kurze Hinweise bleiben unverändert.
 - Die Weboberfläche ändert die Helligkeit nie, der Drehknopf ist dafür allein zuständig.
 
-## Drehknopf kurz drücken
+## Drehknopf gedrückt halten und drehen
+
+- Wechselt das **Licht-Set** (nächstes/vorheriges, rundum), die Helligkeit bleibt.
+- Ist die Lampe aus (Sleep oder Helligkeit 0), geht sie auf Stufe 1 an. Gute Nacht, Sleep und
+  Systemwarnung wechseln in den Normalbetrieb; ein laufender Wecker übernimmt das neue Set.
+- Wurde gedreht, löst das Loslassen weder einen kurzen Druck noch den Hotspot aus.
+
+## Drehknopf kurz drücken (unter 3 s, ohne Drehen)
 
 Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.md)):
 
@@ -38,9 +45,10 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 | Feier-Modus läuft | Feier-Modus beenden (für heute) | roter Blitz |
 | Normalbetrieb | **Gute-Nacht-Modus starten** | grüner Blitz |
 
-## Drehknopf lang drücken (≥ 1 s)
+## Drehknopf lang drücken (3 s halten, ohne Drehen)
 
-- Hotspot einschalten (Weboberfläche erreichbar). Das ist der **einzige** Weg zum Hotspot — beim
+- Hotspot einschalten (Weboberfläche erreichbar); er startet noch während des Haltens nach 3 s.
+  Das ist der **einzige** Weg zum Hotspot — beim
   Start verbindet sich die Lampe nur mit dem Heim-WLAN.
 - Ist die Lampe gerade mit dem Heim-WLAN verbunden, kommt der Hotspot dazu (beides gleichzeitig).
 - Kurzer gelber Blitz als Bestätigung, danach läuft ein **blauer Komet** über die Pixel, bis sich ein
@@ -49,7 +57,17 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 - **Abbrechen:** Kurzer Druck während der Animation schaltet Hotspot und Animation aus, sonst nichts.
   Drehen bricht ebenfalls ab und ändert zusätzlich die Helligkeit. Ein verbundenes Heimnetz bleibt.
 
-## Lichtfarbe und Animation (Hauptseite der Weboberfläche)
+## Licht-Sets (Hauptseite der Weboberfläche)
+
+Ein Set ist eine Kombination aus Lichtfarbe und Animation. Es gibt bis zu **6 Sets**; eines ist aktiv
+(in der Weboberfläche auswählen oder am Drehknopf: gedrückt halten + drehen). Sets lassen sich
+hinzufügen, ändern und löschen (mindestens eines bleibt).
+
+| Standard-Set | Lichtfarbe | Animation |
+|---|---|---|
+| 1 | Neutralweiß | Statisch |
+| 2 (aktiv) | Warmweiß | Atmen |
+| 3 | Kerzenlicht | Flamme |
 
 | Lichtfarbe | Ton |
 |---|---|

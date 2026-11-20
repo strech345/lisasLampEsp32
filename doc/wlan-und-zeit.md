@@ -14,7 +14,7 @@ externes WLAN; ohne WLAN helfen **gespeicherte Zeit**, **TSF-Fallback** (WLAN-Be
 | Modus | Wann | Hotspot sichtbar |
 |---|---|---|
 | **STA** | Einschalten/Aufwachen und automatischer Zeitabgleich alle 5 h (nur mit eingetragenem Heim-WLAN) | nein |
-| **APSTA** | langer Tastendruck, während Heim-WLAN eingetragen ist (läuft STA schon, kommt der AP dazu) | ja |
+| **APSTA** | langer Tastendruck (3 s), während Heim-WLAN eingetragen ist (läuft STA schon, kommt der AP dazu) | ja |
 | **AP** | langer Tastendruck ohne eingetragenes Heim-WLAN | ja |
 
 Der Hotspot startet **nur** per langem Tastendruck (bzw. nach dem Speichern von WLAN-Einstellungen, weil

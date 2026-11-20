@@ -25,4 +25,7 @@ void onShortPress();
 // sonst ohne Wirkung
 bool dismissApAnimation(); // true wenn abgebrochen wurde
 
+// Wechselt das Licht-Set um delta Schritte (zyklisch); Drehen bei gedrückter Taste
+void switchLightSet(int delta);
+
 #endif // LAMP_STATE_H

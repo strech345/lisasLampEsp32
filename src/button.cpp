@@ -24,7 +24,11 @@ static WiFiTestTracker* s_wifiTracker = nullptr;
 #define ROTARY_ENCODER_STEPS 4
 
 const unsigned long shortPressAfterMiliseconds = 50;
-const unsigned long longPressAfterMiliseconds = 1000;
+const unsigned long longPressAfterMiliseconds = 1000;      // Boot-Taste: Werksreset
+const unsigned long rotaryLongPressMs = 3000;              // Drehknopf: Hotspot (nur ohne Drehen)
+
+// Wurde während des aktuellen Drückens am Drehknopf gedreht? (Set-Wechsel → kein kurzer/langer Druck)
+static bool s_rotatedWhileHeld = false;
 
 static RotaryEncoderCallback _rotaryEncoderCallback;
 
@@ -54,13 +58,19 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         onShortPress();
         break;
     case RotaryEncoderEventType::LongClick:
-        // Langer Druck: WiFi einschalten mit gelbem Warnsignal als visuelles Feedback
+        // Langer Druck (3 s, ohne Drehen): Hotspot einschalten, gelber Blitz als Bestätigung
         serialPrint("LongClick Event!");
         logEvent("WiFi started (long press)");
         startAlert(ALERT_WARNING, 200);
         startWifi();
         break;
     case RotaryEncoderEventType::Rotate: {
+        // Drehen bei gedrückter Taste: Licht-Set wechseln (statt Helligkeit), kein Hotspot für diesen Druck
+        if(rotaryEncoder.isEncoderButtonDown()) {
+            s_rotatedWhileHeld = true;
+            switchLightSet(value);
+            break;
+        }
         // Bedienung hat Vorrang vor der Hotspot-Animation
         dismissApAnimation();
         // Helligkeit ändern (0–7) mit relativer Steuerung, sofort speichern und anwenden
@@ -152,15 +162,20 @@ struct LampButtonState {
     bool longPressHandled = false;
 };
 
-// Allgemeine Drucktaster-Logik: erkennt kurzen und langen Druck, verhindert Doppelauslösung
+// Allgemeine Drucktaster-Logik: erkennt kurzen und langen Druck (ab longMs, noch während des Haltens),
+// verhindert Doppelauslösung. rotated != nullptr: wurde währenddessen gedreht, entfällt beides.
 void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent,
-                    RotaryEncoderEventType longEvent, unsigned long currentMillis) {
+                    RotaryEncoderEventType longEvent, unsigned long currentMillis, unsigned long longMs,
+                    bool* rotated = nullptr) {
     if(isDown) {
         if(!state.wasButtonDown) {
             // Taste frisch gedrückt → Zeitstempel merken
             state.lastTimeButtonDown = currentMillis;
             state.longPressHandled = false;
-        } else if(!state.longPressHandled && (currentMillis - state.lastTimeButtonDown >= longPressAfterMiliseconds)) {
+            if(rotated)
+                *rotated = false;
+        } else if(!state.longPressHandled && !(rotated && *rotated)
+                  && (currentMillis - state.lastTimeButtonDown >= longMs)) {
             // Langer Druck erkannt → einmal auslösen
             if(_rotaryEncoderCallback) {
                 _rotaryEncoderCallback(longEvent, 0);
@@ -171,8 +186,8 @@ void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType 
         return;
     }
 
-    // Taste losgelassen: kurzer Druck wenn kein langer Druck stattfand
-    if(state.wasButtonDown && !state.longPressHandled) {
+    // Taste losgelassen: kurzer Druck wenn kein langer Druck stattfand und nicht gedreht wurde
+    if(state.wasButtonDown && !state.longPressHandled && !(rotated && *rotated)) {
         if(currentMillis - state.lastTimeButtonDown >= shortPressAfterMiliseconds) {
             if(_rotaryEncoderCallback) {
                 _rotaryEncoderCallback(shortEvent, 0);
@@ -185,13 +200,13 @@ void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType 
 void handle_rotary_button(unsigned long currentMillis) {
     static LampButtonState rotaryState;
     process_button(rotaryEncoder.isEncoderButtonDown(), rotaryState, RotaryEncoderEventType::ShortClick,
-                   RotaryEncoderEventType::LongClick, currentMillis);
+                   RotaryEncoderEventType::LongClick, currentMillis, rotaryLongPressMs, &s_rotatedWhileHeld);
 }
 
 void handle_boot_button(unsigned long currentMillis) {
     static LampButtonState bootState;
     process_button(digitalRead(PIN_BOOT_BUTTON) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
-                   RotaryEncoderEventType::LongBootClick, currentMillis);
+                   RotaryEncoderEventType::LongBootClick, currentMillis, longPressAfterMiliseconds);
 }
 
 // Wertet Drehungen rastungsgenau aus: Erst wenn der Knopf wieder in einer Rastung steht (beide Pins

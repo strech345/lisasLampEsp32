@@ -80,5 +80,6 @@ Wecker deaktiviert oder zeitlich geändert wurde.
 | Hotspot wartet | Hotspot abbrechen → vorheriger Zustand (sonst keine Aktion) | Hotspot abbrechen + Helligkeit ändern |
 | Systemwarnung/-fehler | → Gute Nacht | → Normalbetrieb mit neuer Helligkeit |
 
-Langer Druck schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis, danach der
+Gedrückt halten + drehen wechselt in jedem Zustand das Licht-Set (siehe [bedienung.md](bedienung.md)).
+Langer Druck (3 s, ohne Drehen) schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis, danach der
 blaue Komet bis sich ein Gerät verbindet). „Hotspot abbrechen“ lässt das Heimnetz verbunden.
