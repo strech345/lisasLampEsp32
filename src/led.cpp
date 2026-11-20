@@ -202,6 +202,11 @@ void setBrightnessLevel(uint8_t level) {
 void startApWaitingEffect() {
     setBrightnessLevel(AP_ANIM_LEVEL);
     setLedColor(AP_ANIM_COLOR);
+    // Erst alle Pixel blau: der Komet blendet vorhandene Pixel nur langsam aus — sonst blieben sie
+    // kurz in der alten Farbe stehen
+    for(uint16_t n = 0; n < ws2812fx.getLength(); n++)
+        ws2812fx.setPixelColor(n, AP_ANIM_COLOR);
+    ws2812fx.show();
     ws2812fx.setMode(FX_MODE_COMET);
     ws2812fx.setSpeed(AP_ANIM_CYCLE_MS);
     ws2812fx.setOptions(0, FADE_MEDIUM); // Schweif über etwa 2–3 Pixel

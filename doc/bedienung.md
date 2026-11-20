@@ -34,7 +34,7 @@ Die Lampe hat zwei Bedienelemente: den **Drehknopf** (KY-040, drehen und drücke
 
 ## Drehknopf kurz drücken (höchstens 0,5 s, ohne Drehen)
 
-Länger gehalten, aber vor 3 s losgelassen, löst keine Aktion aus.
+Länger gehalten, aber vor 2 s losgelassen, löst keine Aktion aus.
 
 Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.md)):
 
@@ -47,9 +47,9 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 | Feier-Modus läuft | Feier-Modus beenden (für heute) | roter Blitz |
 | Normalbetrieb | **Gute-Nacht-Modus starten** | grüner Blitz |
 
-## Drehknopf lang drücken (3 s halten, ohne Drehen)
+## Drehknopf lang drücken (2 s halten, ohne Drehen)
 
-- Hotspot einschalten (Weboberfläche erreichbar); er startet noch während des Haltens nach 3 s.
+- Hotspot einschalten (Weboberfläche erreichbar); er startet noch während des Haltens nach 2 s.
   Das ist der **einzige** Weg zum Hotspot — beim
   Start verbindet sich die Lampe nur mit dem Heim-WLAN.
 - Ist die Lampe gerade mit dem Heim-WLAN verbunden, kommt der Hotspot dazu (beides gleichzeitig).

@@ -81,5 +81,5 @@ Wecker deaktiviert oder zeitlich geändert wurde.
 | Systemwarnung/-fehler | → Gute Nacht | → Normalbetrieb mit neuer Helligkeit |
 
 Gedrückt halten + drehen wechselt in jedem Zustand das Szene (siehe [bedienung.md](bedienung.md)).
-Langer Druck (3 s, ohne Drehen) schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis, danach der
+Langer Druck (2 s, ohne Drehen) schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis, danach der
 blaue Komet bis sich ein Gerät verbindet). „Hotspot abbrechen“ lässt das Heimnetz verbunden.

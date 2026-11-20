@@ -24,9 +24,9 @@ static WiFiTestTracker* s_wifiTracker = nullptr;
 #define ROTARY_ENCODER_STEPS 4
 
 const unsigned long shortPressAfterMiliseconds = 50;   // kürzer = Prellen, kein Klick
-const unsigned long shortPressMaxMs = 500;             // länger gehalten = kein Klick (bis 3 s: gar nichts)
+const unsigned long shortPressMaxMs = 500;             // länger gehalten = kein Klick (bis 2 s: gar nichts)
 const unsigned long longPressAfterMiliseconds = 1000;      // Boot-Taste: Werksreset
-const unsigned long rotaryLongPressMs = 3000;              // Drehknopf: Hotspot (nur ohne Drehen)
+const unsigned long rotaryLongPressMs = 2000;              // Drehknopf: Hotspot (nur ohne Drehen)
 
 // Wurde während des aktuellen Drückens am Drehknopf gedreht? (Set-Wechsel → kein kurzer/langer Druck)
 static bool s_rotatedWhileHeld = false;
@@ -59,7 +59,7 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         onShortPress();
         break;
     case RotaryEncoderEventType::LongClick:
-        // Langer Druck (3 s, ohne Drehen): Hotspot einschalten, gelber Blitz als Bestätigung
+        // Langer Druck (2 s, ohne Drehen): Hotspot einschalten, gelber Blitz als Bestätigung
         serialPrint("LongClick Event!");
         logEvent("WiFi started (long press)");
         startAlert(ALERT_WARNING, 200);

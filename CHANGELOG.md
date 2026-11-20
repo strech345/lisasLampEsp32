@@ -18,7 +18,7 @@
 - **Licht-Sets:** bis zu 6 Kombinationen aus Lichtfarbe und Animation, in der Weboberfläche
   verwaltbar; Standard: Neutralweiß statisch, Warmweiß atmend (aktiv), Kerzenlicht als Flamme.
   Das Update setzt die Lampen-Konfiguration (inkl. Wecker) einmalig zurück.
-- **Drehknopf:** gedrückt halten + drehen wechselt das Set; Hotspot jetzt nach 3 s Halten (ohne Drehen).
+- **Drehknopf:** gedrückt halten + drehen wechselt das Set; Hotspot jetzt nach 2 s Halten (ohne Drehen).
 - **Animation „Flamme“:** jedes Pixel flackert unabhängig, Töne aus der gewählten Lichtfarbe abgeleitet
   (dunkler = röter).
 - **Lichtfarben:** Warm- und Neutralweiß klar unterscheidbar (weiße LED für warme/kalte Töne

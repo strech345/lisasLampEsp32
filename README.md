@@ -3,7 +3,7 @@
 Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über einen eigenen WLAN-Hotspot.
 
 - **Drehknopf:** Helligkeit in 8 Stufen, gedrückt halten + drehen = Szene wechseln, kurzer Druck =
-  Gute Nacht / Wecker aus, 3 s halten = Hotspot
+  Gute Nacht / Wecker aus, 2 s halten = Hotspot
 - **Szenen:** bis zu 6 Kombinationen aus Lichtfarbe und Animation (z. B. Kerze mit Flammen-Effekt)
 - **Wecker:** bis zu 16 Wecker — wöchentlich (Wochentag) oder als einmaliger Termin (Datum); Licht wird langsam heller
 - **Uhrzeit:** NTP über das Heim-WLAN, ohne Internet per WLAN-Beacons (TSF) oder UKW-RDS
@@ -29,8 +29,8 @@ Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über ein
 | **WLAN-Passwort** | **`Erdmaennchen`** |
 | Weboberfläche | http://4.3.2.1 (öffnet sich als Captive Portal meist automatisch) |
 
-- Der Hotspot startet **nur per langem Druck auf den Drehknopf** (3 s halten, ohne zu drehen) und geht wieder aus, sobald 1 Minute kein Gerät verbunden ist **oder** 10 Minuten lang niemand die Weboberfläche bedient hat (auch wenn ein Handy noch verbunden ist). Beim Einschalten verbindet sich die Lampe nur mit dem Heim-WLAN (falls eingetragen), ohne Hotspot.
-- **Ersteinrichtung:** Lampe einschalten, Drehknopf 3 s gedrückt halten, mit `Lizas-Lamp` verbinden, unter **Einstellungen → WLAN** das Heim-WLAN eintragen.
+- Der Hotspot startet **nur per langem Druck auf den Drehknopf** (2 s halten, ohne zu drehen) und geht wieder aus, sobald 1 Minute kein Gerät verbunden ist **oder** 10 Minuten lang niemand die Weboberfläche bedient hat (auch wenn ein Handy noch verbunden ist). Beim Einschalten verbindet sich die Lampe nur mit dem Heim-WLAN (falls eingetragen), ohne Hotspot.
+- **Ersteinrichtung:** Lampe einschalten, Drehknopf 2 s gedrückt halten, mit `Lizas-Lamp` verbinden, unter **Einstellungen → WLAN** das Heim-WLAN eintragen.
 - Das Passwort ist bewusst ohne Umlaut geschrieben („ae“ statt „ä“): WPA2 erlaubt nur ASCII-Zeichen, Umlaute funktionieren auf vielen Handys nicht.
 - Name und Passwort lassen sich in der Weboberfläche unter **Einstellungen → WLAN** ändern (Passwort 8–63 Zeichen oder per „Passwort entfernen“ offen).
 - Der Standardwert gilt nach der Erstinstallation und nach einem **Werksreset**. Geräte, die schon vorher eingerichtet waren, behalten ihre gespeicherten Einstellungen (bisher: offener Hotspot ohne Passwort).
