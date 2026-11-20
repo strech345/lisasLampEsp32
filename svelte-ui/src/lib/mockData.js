@@ -84,7 +84,7 @@ export const mockFetch = (url, options) => {
       } else if (url.includes("/get_event_log")) {
         resolve({ ok: true, json: () => Promise.resolve({ uptimeMs: 60000, unixTime: 0, events: [] }) });
       } else if (/\/get_(tsf_fallback|rds_clock|rtc_crystal)/.test(url)) {
-        resolve({ ok: true, json: () => Promise.resolve({ enabled: false }) });
+        resolve({ ok: true, json: () => Promise.resolve({ enabled: false, present: false, available: false }) });
       } else {
         resolve({
           ok: false,

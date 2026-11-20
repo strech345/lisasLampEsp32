@@ -71,14 +71,16 @@ void setup() {
 
     // --- Uhr und RTC-Quarz ---
     initClock(); // Zeitzone + Uhrzeit aus NVS, vor den Weckern
-    initRtcCrystal(&systemSettings); // Taktquelle nur beim Boot umschaltbar
+    // Hardware-Prüfungen (Quarz, RDS-Modul) nur beim Einschalten, nicht nach Deep Sleep
+    bool fromDeepSleep = esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED;
+    initRtcCrystal(&systemSettings, fromDeepSleep); // Taktquelle nur beim Boot umschaltbar
 
     // --- Module mit Zeigern auf den globalen Zustand ---
     initLampState(&lampState, &systemSettings.warningsEnabled, &appConfig, &wifiTracker);
     initSleepManager(&systemSettings.deepSleepEnabled, &lampState, &appConfig);
     initButtonCallbacks(&appConfig, &lampState, &wifiTracker);
     initTsfClock(&systemSettings, &wifiTracker);
-    initRdsClock(&systemSettings, &wifiTracker);
+    initRdsClock(&systemSettings, &wifiTracker, fromDeepSleep);
     setAlarms(appConfig.alarms); // nächste Auslösezeit berechnen
 
     // --- Webserver und WLAN ---

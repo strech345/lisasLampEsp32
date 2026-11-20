@@ -126,6 +126,8 @@ DONE       → Modul aus; nach 24 h erneuter Abgleich
 NO_SIGNAL  → Modul aus; nach 1 h neuer Versuch
 ```
 
+- Beim Einschalten (nicht nach Deep Sleep) wird das Modul kurz eingeschaltet und per I²C angefragt.
+  Antwortet es nicht, läuft RDS nicht und der Schalter in der Weboberfläche ist gesperrt.
 - Läuft nur ohne NTP und ohne externe WLAN-Verbindung; pausiert im APSTA-Modus.
 - Der zuletzt gute Sender wird gespeichert und beim nächsten Mal zuerst versucht.
 - Schalter: **RDS-Uhrzeit** (Standard aus).

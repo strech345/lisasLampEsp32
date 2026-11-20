@@ -7,7 +7,8 @@
 #include <Arduino.h>
 
 // Initialisiert I2C-Bus und Power-Pin; letzter bekannter Kanal aus SystemSettings wird bevorzugt
-void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker);
+// fromDeepSleep = false (Einschalten/Reset): prüft ob das RDA5807M-Modul antwortet
+void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker, bool fromDeepSleep);
 // Muss in loop() aufgerufen werden: steuert die RDS-Zustandsmaschine (Ein/Aus, Scan, Lock, Zeitsetzung)
 void rdsClockLoop();
 // Gibt den aktuellen RDS-Status (Kanal, RSSI, Zustand, letzte Synchronisation) als JSON zurück

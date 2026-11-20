@@ -8,7 +8,8 @@
 #include <Arduino.h>
 
 // Initialisiert: falls enabled, Quarz einschalten und testen; speichert Ergebnis in SystemSettings
-void initRtcCrystal(SystemSettings* settings);
+// fromDeepSleep = false (Einschalten/Reset): Quarz wird immer auf Vorhandensein geprüft
+void initRtcCrystal(SystemSettings* settings, bool fromDeepSleep);
 
 // Liefert true, wenn der externe Quarz erkannt wurde und als RTC-Takt aktiv ist
 bool isRtcCrystalActive();

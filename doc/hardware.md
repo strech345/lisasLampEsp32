@@ -85,7 +85,8 @@ müssen deshalb dort liegen. CLK weckt nur, wenn der Pin vor dem Schlaf HIGH ist
 | Interner RC-Oszillator | ca. 1–2 % (bei 5 h Deep Sleep einige Minuten) |
 | Externer 32k-Quarz | ca. 20–100 ppm (wenige Sekunden pro Tag) |
 
-`src/rtc_crystal.cpp` prüft beim Boot per `rtc_clk_cal()`, ob der Quarz schwingt (32.000–33.000 Hz),
-und fällt sonst auf den RC-Oszillator zurück. Ein- und ausschalten über die Weboberfläche
+`src/rtc_crystal.cpp` prüft bei **jedem Einschalten** (nicht nach Deep Sleep) per `rtc_clk_cal()`, ob ein
+Quarz schwingt (32.000–33.000 Hz) — auch wenn er deaktiviert ist. Ohne erkannten Quarz ist der Schalter
+in der Weboberfläche gesperrt; ist er aktiviert, aber nicht vorhanden, bleibt der RC-Oszillator aktiv. Ein- und ausschalten über die Weboberfläche
 (Einstellungen → Energie & Uhr); die Umschaltung erfordert einen Neustart.
 Der Deep-Sleep-Vorlauf rechnet mit 1,5 % (RC) bzw. 100 ppm (Quarz) Abweichung.

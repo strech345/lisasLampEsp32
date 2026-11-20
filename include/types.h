@@ -69,7 +69,7 @@ struct SystemSettings {
     bool rdsClockEnabled;
     uint16_t rdsLastChannel; // Frequenz in 10kHz-Einheiten, z.B. 1011 = 101.1 MHz; 0 = nicht gesetzt
     bool rtcCrystalEnabled;  // Benutzer-Einstellung: externen 32-kHz-Quarz verwenden
-    bool rtcCrystalAvailable; // Letzter Boot-Befund: Quarz war messbar (wird intern gesetzt)
+    bool rtcCrystalAvailable; // Quarz vorhanden (bei jedem Einschalten gemessen, intern gesetzt)
     uint8_t ledCount;         // Anzahl der LEDs im Streifen (1–MAX_LED_COUNT)
 };
 

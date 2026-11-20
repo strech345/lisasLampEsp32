@@ -424,7 +424,13 @@
 
         <section class="warnings-section group">
           <label class="warnings-label">
-            <input type="checkbox" bind:checked={rtcCrystalEnabled} on:change={handleRtcCrystalToggle} />
+            <!-- Nur aktivierbar, wenn beim Einschalten ein Quarz erkannt wurde (ausschalten geht immer) -->
+            <input
+              type="checkbox"
+              bind:checked={rtcCrystalEnabled}
+              disabled={!rtcCrystalEnabled && !(rtcCrystalStatus && rtcCrystalStatus.available)}
+              on:change={handleRtcCrystalToggle}
+            />
             Externer 32kHz RTC-Quarz
           </label>
           <small>Genauerer Schlaf-Timer (GPIO0/1 = XTAL_32K). Änderung erfordert Neustart.</small>
@@ -433,10 +439,8 @@
               {#if rtcCrystalStatus.available}
                 <span style="color: #22c55e;">Quarz erkannt ✓</span>
                 {#if rtcCrystalStatus.freqHz > 0}<span>· {rtcCrystalStatus.freqHz} Hz</span>{/if}
-              {:else if rtcCrystalEnabled}
-                <span>Wird beim nächsten Start geprüft</span>
               {:else}
-                <span>Quarz nicht gefunden</span>
+                <span>Kein Quarz erkannt (wird bei jedem Einschalten geprüft)</span>
               {/if}
             </div>
           {/if}
@@ -476,10 +480,19 @@
 
         <section class="warnings-section group">
           <label class="warnings-label">
-            <input type="checkbox" bind:checked={rdsClockEnabled} on:change={handleRdsToggle} />
+            <!-- Nur aktivierbar, wenn das Modul beim Einschalten gefunden wurde (ausschalten geht immer) -->
+            <input
+              type="checkbox"
+              bind:checked={rdsClockEnabled}
+              disabled={!rdsClockEnabled && !(rdsStatus && rdsStatus.present)}
+              on:change={handleRdsToggle}
+            />
             RDS-Zeitfallback (RDA5807M)
           </label>
           <small>FM-Modul empfängt RDS-Zeitstempel (CT) wenn kein NTP erreichbar ist.</small>
+          {#if rdsStatus && !rdsStatus.present}
+            <div class="fallback-status"><span>Kein RDS-Modul gefunden (wird bei jedem Einschalten geprüft)</span></div>
+          {/if}
           {#if rdsClockEnabled && rdsStatus}
             <div class="fallback-status">
               {#if rdsStatus.status !== "off"}

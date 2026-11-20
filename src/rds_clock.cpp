@@ -8,6 +8,7 @@
 #include "system_utils.h"
 #include "event_log.h"
 #include <Wire.h>
+#include <esp_attr.h>
 #include <WiFi.h>
 #include <sys/time.h>
 #include <time.h>
@@ -52,7 +53,10 @@ static uint16_t      g_currentCh   = 0;
 static uint16_t      g_scanStartCh = 0;
 static unsigned long g_stateMs     = 0;
 static unsigned long g_lastSyncMs  = 0;
-static unsigned long g_idleSinceMs = 0; // Zeitpunkt des Wechsels nach DONE/NO_SIGNAL
+static unsigned long g_idleSinceMs = 0;
+
+// Modul vorhanden? Beim Einschalten per I2C geprüft; im RTC-Speicher, übersteht so den Deep Sleep
+RTC_DATA_ATTR static bool s_modulePresent = false; // Zeitpunkt des Wechsels nach DONE/NO_SIGNAL
 
 #define RDS_RETRY_NO_SIGNAL_MS (60UL * 60UL * 1000UL)       // nach "kein Signal": in 1 h erneut versuchen
 #define RDS_RESYNC_AFTER_DONE_MS (24UL * 60UL * 60UL * 1000UL) // nach Erfolg: nach 24 h neu abgleichen
@@ -205,7 +209,7 @@ static void saveChannel(uint16_t ch) {
 }
 
 // Initialisiert I2C-Bus, Power-Pin (LOW = aus) und gibt den letzten bekannten Kanal aus
-void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
+void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker, bool fromDeepSleep) {
     g_settings = settings;
     g_tracker  = tracker;
 
@@ -213,6 +217,16 @@ void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
     digitalWrite(PIN_RDS_POWER, LOW);
 
     Wire.begin(PIN_RDS_SDA, PIN_RDS_SCL);
+
+    if(!fromDeepSleep) {
+        // Modul kurz einschalten und fragen ob es auf seiner I2C-Adresse antwortet (ACK)
+        digitalWrite(PIN_RDS_POWER, HIGH);
+        delay(POWER_UP_MS);
+        Wire.beginTransmission(RDA5807M_ADDR);
+        s_modulePresent = Wire.endTransmission() == 0;
+        digitalWrite(PIN_RDS_POWER, LOW);
+        serialPrint(s_modulePresent ? "RDS: Modul gefunden" : "RDS: kein Modul gefunden");
+    }
 
     uint16_t ch = settings->rdsLastChannel;
     serialPrint(ch > 0
@@ -223,7 +237,8 @@ void initRdsClock(const SystemSettings* settings, WiFiTestTracker* tracker) {
 // Zustandsmaschine: schaltet Modul ein, scannt Kanäle, wartet auf RDS-CT-Paket;
 // stoppt sobald Uhrzeit gesetzt oder WiFi-Verbindung vorhanden ist
 void rdsClockLoop() {
-    if (g_settings == nullptr || !g_settings->rdsClockEnabled) {
+    // Ohne Modul (oder ausgeschaltet) nichts tun
+    if (g_settings == nullptr || !g_settings->rdsClockEnabled || !s_modulePresent) {
         if (g_state != RDS_STATE_OFF && g_state != RDS_STATE_DONE) {
             digitalWrite(PIN_RDS_POWER, LOW);
             g_state = RDS_STATE_OFF;
@@ -338,6 +353,7 @@ void rdsClockLoop() {
 String getRdsStatusJson() {
     JsonDocument doc;
     doc["enabled"] = g_settings != nullptr && g_settings->rdsClockEnabled;
+    doc["present"] = s_modulePresent; // Modul beim Einschalten per I2C gefunden
     doc["channel"] = g_currentCh;
 
     char mhzBuf[8];
