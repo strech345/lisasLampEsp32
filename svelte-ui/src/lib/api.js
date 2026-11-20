@@ -52,3 +52,17 @@ export async function postJson(url, body = {}) {
     return "";
   }
 }
+
+// Prüft ob die Lampe erreichbar ist (GET /ping, max. 5 s); true/false, wirft nie
+export async function ping() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  try {
+    await request("/ping", { signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}

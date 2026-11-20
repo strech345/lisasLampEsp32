@@ -77,6 +77,8 @@ export const mockFetch = (url, options) => {
           ok: true,
           text: () => Promise.resolve("Mock save successful"),
         });
+      } else if (url.includes("/ping")) {
+        resolve({ ok: true, text: () => Promise.resolve("pong") });
       } else if (url.includes("/get_status")) {
         resolve({ ok: true, json: () => Promise.resolve({ clockSynced: true, staConfigValid: false, timeSinceLastSucceededTestMs: 120000, systemTime: Math.floor(Date.now() / 1000) }) });
       } else if (url.includes("/get_event_log")) {

@@ -96,6 +96,10 @@ Bis zu **16 Wecker**, je Zeile: Ein/Aus, Wochentag bzw. Datum, Uhrzeit, Löschen
 
 ## Einstellungen in der Weboberfläche
 
+Die Weboberfläche prüft alle 10 s die Verbindung zur Lampe (`/ping`). Ist sie nicht erreichbar, erscheint
+„Verbindung zur Lampe verloren“ und **alle Felder und Knöpfe sind gesperrt** (nur ⚙ und „Zurück“ bleiben
+bedienbar); kommt die Verbindung zurück, wird die Konfiguration neu geladen.
+
 Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;
 die Änderung wirkt sofort. Weitere Einstellungen: WLAN, Energie & Uhr, Warnungen, Ereignisprotokoll.
 

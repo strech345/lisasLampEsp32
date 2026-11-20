@@ -5,6 +5,7 @@
 - **Wecker:** bis zu 16, zusätzlich **einmalige Termine** mit Datum (Auswahl „Datum“ in der Zeile); Weckzeit über
   die Sommer-/Winterzeit-Umstellung hinweg korrigiert. Das Update setzt die Lampen-Konfiguration
   einmalig zurück.
+- **Weboberfläche ohne Verbindung:** alle Eingaben gesperrt, bis die Lampe wieder erreichbar ist.
 - **Weboberfläche:** Licht-Sets, Wecker und Dauer je einzeilig mit gleich großen Feldern; Lösch-Knöpfe
   quadratisch wie der Einstellungs-Knopf mit kräftigem ✕.
 - **Licht-Sets:** bis zu 6 Kombinationen aus Lichtfarbe und Animation, in der Weboberfläche

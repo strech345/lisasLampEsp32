@@ -1,6 +1,7 @@
 <!-- Hauptseite: Farbe, Gute-Nacht-/Wecker-Dauer und Alarmliste. -->
 <script>
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
+  import { online } from "./stores/connectionStore.js";
   import AlarmTable from "./components/AlarmTable.svelte";
   import LightSets from "./components/LightSets.svelte";
   import MessageAlert from "./components/MessageAlert.svelte";
@@ -50,48 +51,8 @@
     if (value !== null) configStore.updateDuration("alarmDuration", value);
   }
 
-  let isOffline = false;
-  let pingInterval;
-
-  async function checkConnectivity() {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    try {
-      const response = await fetch("/ping", { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        if (isOffline) {
-          isOffline = false;
-          messageStore.hide();
-          console.log("Wieder mit der Lampe verbunden.");
-          // Daten neu laden, wenn die Verbindung wieder da ist
-          configStore.load();
-        }
-      } else {
-        throw new Error("Ping failed");
-      }
-    } catch (error) {
-      if (!isOffline) {
-        isOffline = true;
-        messageStore.showPersistent("error", "Verbindung zur Lampe verloren...");
-        console.error("Lampe nicht erreichbar:", error);
-      }
-    }
-  }
-
   onMount(() => {
     configStore.load();
-
-    // Verbindung alle 10 s prüfen
-    pingInterval = setInterval(checkConnectivity, 10000);
-  });
-
-  onDestroy(() => {
-    if (pingInterval) {
-      clearInterval(pingInterval);
-    }
   });
 
   // Prop: Navigation zur Einstellungsseite
@@ -120,6 +81,8 @@
 
     <MessageAlert />
 
+    <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt (fieldset sperrt alle Felder/Knöpfe) -->
+    <fieldset class="plain" disabled={!$online}>
     <section aria-labelledby="section-general">
       <h3 id="section-general">Licht-Sets</h3>
       <LightSets />
@@ -158,6 +121,7 @@
         <span class="unit">min</span>
       </div>
     </section>
+    </fieldset>
   </div>
 </main>
 
@@ -165,6 +129,20 @@
   :global(.btn-blue:hover) {
     background-color: #0052a3 !important;
     border-color: #0052a3 !important;
+  }
+
+  /* Fieldset nur als Sperr-Container, ohne eigene Optik */
+  :global(fieldset.plain) {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+
+  /* Gesperrte Icon-Knöpfe (z. B. Löschen ohne Verbindung) blass */
+  :global(.icon-btn:disabled) {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   :global(.btn-blue:disabled) {

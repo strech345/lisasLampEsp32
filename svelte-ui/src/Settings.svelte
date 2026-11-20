@@ -5,6 +5,7 @@
   import { systemStore } from "./stores/systemStore.js";
   import { getJson, postJson } from "./lib/api.js";
   import EventLog from "./components/EventLog.svelte";
+  import { online } from "./stores/connectionStore.js";
   import MessageAlert from "./components/MessageAlert.svelte";
 
   const MASK = "******"; // Platzhalter, mit dem das Gerät gespeicherte Passwörter zurückliefert
@@ -332,6 +333,8 @@
   <!-- Meldungen (Erfolg/Fehler) auch auf der Einstellungsseite anzeigen -->
   <MessageAlert />
 
+  <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt -->
+  <fieldset class="plain" disabled={!$online}>
   <div class="acc-scroll">
   <!-- Accordion: WLAN -->
   <div class="acc-item" class:open={openSection === "wifi"}>
@@ -583,6 +586,7 @@
   </div>
 
   </div> <!-- /acc-scroll -->
+  </fieldset>
 </main>
 
 <style>
