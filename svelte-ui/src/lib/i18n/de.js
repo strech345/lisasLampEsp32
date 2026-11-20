@@ -142,6 +142,8 @@ export default {
   // --- Einstellungen: WLAN ---
   "set.wifi.hotspotSsid": "Hotspot SSID",
   "set.wifi.hotspotPw": "Hotspot Passwort",
+  "set.wifi.pwShort": "Zu kurz ({n} Zeichen): mindestens 8 – oder leer lassen für kein Passwort.",
+  "set.wifi.pwLong": "Zu lang: höchstens 63 Zeichen.",
   "set.wifi.find": "WLANs in der Nähe suchen",
   "set.wifi.test": "Verbindung testen",
   "set.wifi.pick": "Netz wählen ({n} gefunden)",

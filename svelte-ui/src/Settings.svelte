@@ -310,6 +310,16 @@
     return new TextEncoder().encode(str).length;
   }
 
+  // Prüft ein Passwortfeld beim Tippen: leer (= kein Passwort) und Maske sind ok, sonst 8–63 Bytes.
+  // Gibt den Hinweistext oder "" zurück.
+  function pwProblem(pw) {
+    if (!pw || pw === MASK) return "";
+    const len = byteLength(pw);
+    if (len < 8) return $t("set.wifi.pwShort", { n: len });
+    if (len > 63) return $t("set.wifi.pwLong");
+    return "";
+  }
+
   // Prüft die Systemeinstellungen wie die Firmware; gibt Fehlertext oder null zurück
   function validateSystemSettings(s) {
     if (byteLength(s.internalSSID) < 1 || byteLength(s.internalSSID) > 32) {
@@ -336,6 +346,15 @@
 
   // Speichert die Systemeinstellungen nach Prüfung; das Gerät startet danach den Hotspot neu
   async function handleSave() {
+    // Passwortfehler stehen schon unter dem Feld → nur dorthin springen, keine Meldung oben
+    for (const field of ["internalPW", "externalPW", "externalPW2"]) {
+      if (pwProblem($systemStore[field])) {
+        const el = document.getElementById(field);
+        el?.scrollIntoView({ block: "center", behavior: "smooth" });
+        el?.focus();
+        return;
+      }
+    }
     const problem = validateSystemSettings($systemStore);
     if (problem) {
       messageStore.show("error", problem);
@@ -359,6 +378,7 @@
   let testBusy = false;
   let testSlot = 0;
   let testResult = "";       // running | ok | wrong_password | not_found | timeout | failed | error
+  let testError = "";        // Fehlertext der Lampe (z. B. ungültige Eingabe), erscheint unter dem Feld
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -416,14 +436,15 @@
   async function startTest(slot, ssidField, pwField) {
     testSlot = slot;
     testResult = "running";
+    testError = "";
     testBusy = true;
     try {
       await postJson("/test_wifi", { slot, ssid: $systemStore[ssidField], password: $systemStore[pwField] || "" });
       const data = await pollUntilDone("/get_wifi_test", 30000);
       testResult = data ? data.result : "error";
     } catch (e) {
-      testResult = "";
-      showError($t("set.wifi.testFailed"), e);
+      testResult = "error";
+      testError = e.message;
     }
     testBusy = false;
   }
@@ -566,6 +587,7 @@
             <input autocomplete="off" type={pwFocus.internalPW ? "text" : "password"} id="internalPW" value={$systemStore.internalPW}
               on:focus={() => pwFocus.internalPW = true} on:blur={() => pwFocus.internalPW = false}
               on:input={(e) => handleFieldChange("internalPW", e)} />
+            {#if pwProblem($systemStore.internalPW)}<small class="test-result bad">{pwProblem($systemStore.internalPW)}</small>{/if}
           </div>
 
           <div class="group">
@@ -593,12 +615,13 @@
                 on:focus={() => pwFocus.externalPW = true} on:blur={() => pwFocus.externalPW = false}
                 on:input={(e) => handleFieldChange("externalPW", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
-                disabled={scanBusy || testBusy || !$systemStore.externalSSID} on:click={() => startTest(1, "externalSSID", "externalPW")}>
+                disabled={scanBusy || testBusy || !$systemStore.externalSSID || !!pwProblem($systemStore.externalPW)} on:click={() => startTest(1, "externalSSID", "externalPW")}>
                 {#if testBusy && testSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4.5 12.5 L10 18 L19.5 6.5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>{/if}
               </button>
             </div>
+            {#if pwProblem($systemStore.externalPW)}<small class="test-result bad">{pwProblem($systemStore.externalPW)}</small>{/if}
             {#if testSlot === 1 && testResult}
-              <small class="test-result {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{$t("set.wifi.result." + testResult)}</small>
+              <small class="test-result {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
             {/if}
           </div>
 
@@ -627,12 +650,13 @@
                 on:focus={() => pwFocus.externalPW2 = true} on:blur={() => pwFocus.externalPW2 = false}
                 on:input={(e) => handleFieldChange("externalPW2", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
-                disabled={scanBusy || testBusy || !$systemStore.externalSSID2} on:click={() => startTest(2, "externalSSID2", "externalPW2")}>
+                disabled={scanBusy || testBusy || !$systemStore.externalSSID2 || !!pwProblem($systemStore.externalPW2)} on:click={() => startTest(2, "externalSSID2", "externalPW2")}>
                 {#if testBusy && testSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4.5 12.5 L10 18 L19.5 6.5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>{/if}
               </button>
             </div>
+            {#if pwProblem($systemStore.externalPW2)}<small class="test-result bad">{pwProblem($systemStore.externalPW2)}</small>{/if}
             {#if testSlot === 2 && testResult}
-              <small class="test-result {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{$t("set.wifi.result." + testResult)}</small>
+              <small class="test-result {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
             {/if}
           </div>
 

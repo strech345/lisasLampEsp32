@@ -11,8 +11,20 @@
 {/if}
 
 <style>
+  /* Immer fest oben am Bildschirm, unabhängig vom Scrollen (überlagert den Inhalt) */
   #message {
-    margin-bottom: 1rem;
+    position: fixed;
+    top: 0.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(calc(100% - 2rem), 34rem);
+    z-index: 1000;
+    margin: 0;
+  }
+
+  #message article {
+    margin: 0;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   }
   
   .error {
