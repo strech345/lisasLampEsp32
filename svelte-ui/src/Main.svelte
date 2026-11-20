@@ -185,6 +185,23 @@
     --pico-form-element-spacing-vertical: 0.35rem;
     --pico-form-element-spacing-horizontal: 0.75rem;
     --pico-font-size: 1rem;
+    --control-h: 2.4rem; /* einheitliche Feldhöhe in Licht-Sets, Weckern und Dauer */
+  }
+
+  /* Alle Eingabefelder der Zeilen gleich hoch (Zeitfelder sind sonst höher als Auswahllisten) */
+  :global(.set-row select),
+  :global(.set-row input[type="color"]),
+  :global(.set-row button),
+  :global(.alarm-row select),
+  :global(.alarm-row input[type="time"]),
+  :global(.alarm-row button),
+  :global(.duration-grid input[type="number"]) {
+    height: var(--control-h) !important;
+    min-height: var(--control-h) !important;
+    box-sizing: border-box;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: calc(var(--control-h) - 2px);
   }
 
   .app-header {
