@@ -137,11 +137,9 @@ export default {
   "set.val.pw": "{label}: Das Passwort muss leer sein oder 8 bis 63 Zeichen haben.",
   "set.val.pwHotspot": "Hotspot-Passwort",
   "set.val.pwExt": "Passwort des externen WLANs",
-  "set.val.pwFallback": "Fallback-Passwort",
+  "set.val.pwFallback": "Passwort des externen WLAN-Fallbacks",
 
   // --- Einstellungen: WLAN ---
-  "set.wifi.hotspotSsid": "Hotspot SSID",
-  "set.wifi.hotspotPw": "Hotspot Passwort",
   "set.wifi.pwShort": "Zu kurz ({n} Zeichen): mindestens 8 – oder leer lassen für kein Passwort.",
   "set.wifi.pwLong": "Zu lang: höchstens 63 Zeichen.",
   "set.wifi.find": "WLANs in der Nähe suchen",
@@ -157,13 +155,14 @@ export default {
   "set.wifi.result.timeout": "✗ Keine Verbindung (Zeitüberschreitung)",
   "set.wifi.result.failed": "✗ Verbindung fehlgeschlagen",
   "set.wifi.result.error": "✗ Keine Antwort von der Lampe",
-  "set.wifi.extSsid": "Externes WLAN SSID",
-  "set.wifi.extPw": "Externes WLAN Passwort",
-  "set.wifi.fbSsid": "Fallback SSID",
-  "set.wifi.fbPw": "Fallback Passwort",
+  "set.wifi.secHotspot": "Hotspot",
+  "set.wifi.secExt": "Externes WLAN",
+  "set.wifi.secFb": "Externes WLAN Fallback",
+  "set.wifi.ssid": "SSID",
+  "set.wifi.pw": "Passwort",
   "set.wifi.optional": "optional",
   "set.wifi.optionalParen": "(optional)",
-  "set.wifi.hint": "Hinweis: Nach dem Speichern startet das Gerät den Hotspot neu. Das Handy muss sich danach neu verbinden. SSID: 1–32 Zeichen, Passwörter: leer (= kein Passwort, Hotspot offen) oder 8–63 Zeichen. „******“ steht für das gespeicherte Passwort. Lupe: WLANs in der Nähe suchen, Stecker: Verbindung testen.",
+  "set.wifi.hint": "Hinweis: Nach dem Speichern startet das Gerät den Hotspot neu. Das Handy muss sich danach neu verbinden. SSID: 1–32 Zeichen, Passwörter: leer (= kein Passwort, Hotspot offen) oder 8–63 Zeichen. „******“ steht für das gespeicherte Passwort. Lupe: WLANs in der Nähe suchen, gestrichelter Haken: Verbindung testen (leeres Passwort = offenes Netz).",
   "set.wifi.save": "Speichern",
 
   // --- Einstellungen: Energie & Uhr ---

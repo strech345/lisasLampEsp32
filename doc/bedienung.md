@@ -112,12 +112,12 @@ Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, 
 die Änderung wirkt sofort. Weitere Einstellungen: WLAN, Energie & Uhr, Warnungen, Ereignisprotokoll.
 
 **WLAN:** `******` im Passwortfeld steht für das gespeicherte Passwort. Wer das Feld leert, löscht das
-Passwort beim Speichern (Hotspot dann offen). Hinter den Feldern für externes WLAN und Fallback:
+Passwort beim Speichern (Hotspot dann offen). Die Sektion ist in die Rubriken **Hotspot**, **Externes WLAN** und **Externes WLAN Fallback** gegliedert, je eine Zeile SSID und Passwort. Hinter den Feldern der beiden externen WLANs:
 
 | Knopf | Wirkung |
 |---|---|
 | Lupe (hinter SSID) | Lampe sucht WLANs in der Nähe; Auswahlliste mit Signalstärke und 🔒, Auswahl übernimmt die SSID |
-| Stecker (hinter Passwort) | Lampe verbindet sich testweise mit SSID + Passwort aus den Feldern (auch ungespeichert); Meldung: erfolgreich, Passwort falsch, Netz nicht gefunden oder Zeitüberschreitung |
+| gestrichelter Haken (hinter Passwort) | Lampe verbindet sich testweise mit SSID + Passwort aus den Feldern (auch ungespeichert; leeres Passwort = offenes Netz); Meldung: erfolgreich, Passwort falsch, Netz nicht gefunden oder Zeitüberschreitung |
 
 Suche und Test dauern einige Sekunden (Test höchstens 15 s). Danach stellt die Lampe ihre gespeicherte
 Verbindung wieder her. Während des Tests kann der Hotspot kurz den Kanal wechseln; das Handy verbindet

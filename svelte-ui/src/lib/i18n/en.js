@@ -137,11 +137,9 @@ export default {
   "set.val.pw": "{label}: The password must be empty or 8 to 63 characters long.",
   "set.val.pwHotspot": "Hotspot password",
   "set.val.pwExt": "External Wi-Fi password",
-  "set.val.pwFallback": "Fallback password",
+  "set.val.pwFallback": "External Wi-Fi fallback password",
 
   // --- Einstellungen: WLAN ---
-  "set.wifi.hotspotSsid": "Hotspot SSID",
-  "set.wifi.hotspotPw": "Hotspot password",
   "set.wifi.pwShort": "Too short ({n} characters): at least 8 – or leave empty for no password.",
   "set.wifi.pwLong": "Too long: at most 63 characters.",
   "set.wifi.find": "Search nearby Wi-Fi",
@@ -157,13 +155,14 @@ export default {
   "set.wifi.result.timeout": "✗ No connection (timeout)",
   "set.wifi.result.failed": "✗ Connection failed",
   "set.wifi.result.error": "✗ No answer from the lamp",
-  "set.wifi.extSsid": "External Wi-Fi SSID",
-  "set.wifi.extPw": "External Wi-Fi password",
-  "set.wifi.fbSsid": "Fallback SSID",
-  "set.wifi.fbPw": "Fallback password",
+  "set.wifi.secHotspot": "Hotspot",
+  "set.wifi.secExt": "External Wi-Fi",
+  "set.wifi.secFb": "External Wi-Fi fallback",
+  "set.wifi.ssid": "SSID",
+  "set.wifi.pw": "Password",
   "set.wifi.optional": "optional",
   "set.wifi.optionalParen": "(optional)",
-  "set.wifi.hint": "Note: After saving, the device restarts its hotspot and your phone has to reconnect. SSID: 1–32 characters, passwords: empty (= no password, open hotspot) or 8–63 characters. “******” stands for the stored password. Magnifier: search nearby Wi-Fi, plug: test connection.",
+  "set.wifi.hint": "Note: After saving, the device restarts its hotspot and your phone has to reconnect. SSID: 1–32 characters, passwords: empty (= no password, open hotspot) or 8–63 characters. “******” stands for the stored password. Magnifier: search nearby Wi-Fi, dashed check mark: test connection (empty password = open network).",
   "set.wifi.save": "Save",
 
   // --- Einstellungen: Energie & Uhr ---

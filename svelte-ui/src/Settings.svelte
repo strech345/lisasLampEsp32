@@ -579,85 +579,88 @@
         <fieldset class="plain" disabled={!$online}>
         <form on:submit|preventDefault={handleSave}>
           <div class="group">
-            <label for="internalSSID">{$t("set.wifi.hotspotSsid")}</label>
-            <input type="text" id="internalSSID" value={$systemStore.internalSSID}
-              on:input={(e) => handleFieldChange("internalSSID", e)} />
+            <div class="rubric">{$t("set.wifi.secHotspot")}</div>
+            <div class="wrow">
+              <label for="internalSSID">{$t("set.wifi.ssid")}</label>
+              <input type="text" id="internalSSID" value={$systemStore.internalSSID}
+                on:input={(e) => handleFieldChange("internalSSID", e)} />
+              <span></span>
 
-            <label for="internalPW">{$t("set.wifi.hotspotPw")}</label>
-            <input autocomplete="off" type={pwFocus.internalPW ? "text" : "password"} id="internalPW" value={$systemStore.internalPW}
-              on:focus={() => pwFocus.internalPW = true} on:blur={() => pwFocus.internalPW = false}
-              on:input={(e) => handleFieldChange("internalPW", e)} />
-            {#if pwProblem($systemStore.internalPW)}<small class="test-result bad">{pwProblem($systemStore.internalPW)}</small>{/if}
+              <label for="internalPW">{$t("set.wifi.pw")}</label>
+              <input autocomplete="off" type={pwFocus.internalPW ? "text" : "password"} id="internalPW" value={$systemStore.internalPW}
+                on:focus={() => pwFocus.internalPW = true} on:blur={() => pwFocus.internalPW = false}
+                on:input={(e) => handleFieldChange("internalPW", e)} />
+              <span></span>
+              {#if pwProblem($systemStore.internalPW)}<small class="test-result bad wrow-under">{pwProblem($systemStore.internalPW)}</small>{/if}
+            </div>
           </div>
 
           <div class="group">
-            <label for="externalSSID">{$t("set.wifi.extSsid")}</label>
-            <div class="field-btn">
+            <div class="rubric">{$t("set.wifi.secExt")}</div>
+            <div class="wrow">
+              <label for="externalSSID">{$t("set.wifi.ssid")}</label>
               <input type="text" id="externalSSID" value={$systemStore.externalSSID}
                 on:input={(e) => handleFieldChange("externalSSID", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.find")} aria-label={$t("set.wifi.find")}
                 disabled={scanBusy || testBusy} on:click={() => startScan(1)}>
                 {#if scanBusy && scanSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="2.8" fill="none" /><path d="M15 15 L20 20" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" /></svg>{/if}
               </button>
-            </div>
-            {#if scanSlot === 1 && !scanBusy && scanResults}
-              <select class="scan-list" on:change={(e) => pickNetwork("externalSSID", e)}>
-                <option value="">{scanResults.length ? $t("set.wifi.pick", { n: scanResults.length }) : $t("set.wifi.noneFound")}</option>
-                {#each scanResults as net}
-                  <option value={net.ssid}>{net.ssid} · {signalText(net.rssi)}{net.secure ? " 🔒" : ""}</option>
-                {/each}
-              </select>
-            {/if}
+              {#if scanSlot === 1 && !scanBusy && scanResults}
+                <select class="scan-list wrow-under" on:change={(e) => pickNetwork("externalSSID", e)}>
+                  <option value="">{scanResults.length ? $t("set.wifi.pick", { n: scanResults.length }) : $t("set.wifi.noneFound")}</option>
+                  {#each scanResults as net}
+                    <option value={net.ssid}>{net.ssid} · {signalText(net.rssi)}{net.secure ? " 🔒" : ""}</option>
+                  {/each}
+                </select>
+              {/if}
 
-            <label for="externalPW">{$t("set.wifi.extPw")}</label>
-            <div class="field-btn">
+              <label for="externalPW">{$t("set.wifi.pw")}</label>
               <input autocomplete="off" type={pwFocus.externalPW ? "text" : "password"} id="externalPW" value={$systemStore.externalPW}
                 on:focus={() => pwFocus.externalPW = true} on:blur={() => pwFocus.externalPW = false}
                 on:input={(e) => handleFieldChange("externalPW", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
                 disabled={scanBusy || testBusy || !$systemStore.externalSSID || !!pwProblem($systemStore.externalPW)} on:click={() => startTest(1, "externalSSID", "externalPW")}>
-                {#if testBusy && testSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12l5 5l-1.5 1.5a3.536 3.536 0 1 1 -5 -5l1.5 -1.5z" /><path d="M17 12l-5 -5l1.5 -1.5a3.536 3.536 0 1 1 5 5l-1.5 1.5z" /><path d="M3 21l2.5 -2.5" /><path d="M18.5 5.5l2.5 -2.5" /><path d="M10 11l-2 2" /><path d="M13 14l-2 2" /></svg>{/if}
+                {#if testBusy && testSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="2 1.4"><path d="M2.8 12.6 L5 10.4 L9.9 15.3 L18.9 4.6 L21.3 6.6 L10.1 19.9 Z" /></svg>{/if}
               </button>
+              {#if pwProblem($systemStore.externalPW)}<small class="test-result bad wrow-under">{pwProblem($systemStore.externalPW)}</small>{/if}
+              {#if testSlot === 1 && testResult}
+                <small class="test-result wrow-under {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
+              {/if}
             </div>
-            {#if pwProblem($systemStore.externalPW)}<small class="test-result bad">{pwProblem($systemStore.externalPW)}</small>{/if}
-            {#if testSlot === 1 && testResult}
-              <small class="test-result {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
-            {/if}
           </div>
 
           <div class="group">
-            <label for="externalSSID2">{$t("set.wifi.fbSsid")} <span class="optional">{$t("set.wifi.optionalParen")}</span></label>
-            <div class="field-btn">
+            <div class="rubric">{$t("set.wifi.secFb")} <span class="optional">{$t("set.wifi.optionalParen")}</span></div>
+            <div class="wrow">
+              <label for="externalSSID2">{$t("set.wifi.ssid")}</label>
               <input type="text" id="externalSSID2" value={$systemStore.externalSSID2} placeholder={$t("set.wifi.optional")}
                 on:input={(e) => handleFieldChange("externalSSID2", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.find")} aria-label={$t("set.wifi.find")}
                 disabled={scanBusy || testBusy} on:click={() => startScan(2)}>
                 {#if scanBusy && scanSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" stroke="currentColor" stroke-width="2.8" fill="none" /><path d="M15 15 L20 20" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" /></svg>{/if}
               </button>
-            </div>
-            {#if scanSlot === 2 && !scanBusy && scanResults}
-              <select class="scan-list" on:change={(e) => pickNetwork("externalSSID2", e)}>
-                <option value="">{scanResults.length ? $t("set.wifi.pick", { n: scanResults.length }) : $t("set.wifi.noneFound")}</option>
-                {#each scanResults as net}
-                  <option value={net.ssid}>{net.ssid} · {signalText(net.rssi)}{net.secure ? " 🔒" : ""}</option>
-                {/each}
-              </select>
-            {/if}
+              {#if scanSlot === 2 && !scanBusy && scanResults}
+                <select class="scan-list wrow-under" on:change={(e) => pickNetwork("externalSSID2", e)}>
+                  <option value="">{scanResults.length ? $t("set.wifi.pick", { n: scanResults.length }) : $t("set.wifi.noneFound")}</option>
+                  {#each scanResults as net}
+                    <option value={net.ssid}>{net.ssid} · {signalText(net.rssi)}{net.secure ? " 🔒" : ""}</option>
+                  {/each}
+                </select>
+              {/if}
 
-            <label for="externalPW2">{$t("set.wifi.fbPw")}</label>
-            <div class="field-btn">
+              <label for="externalPW2">{$t("set.wifi.pw")}</label>
               <input autocomplete="off" type={pwFocus.externalPW2 ? "text" : "password"} id="externalPW2" value={$systemStore.externalPW2} placeholder={$t("set.wifi.optional")}
                 on:focus={() => pwFocus.externalPW2 = true} on:blur={() => pwFocus.externalPW2 = false}
                 on:input={(e) => handleFieldChange("externalPW2", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
                 disabled={scanBusy || testBusy || !$systemStore.externalSSID2 || !!pwProblem($systemStore.externalPW2)} on:click={() => startTest(2, "externalSSID2", "externalPW2")}>
-                {#if testBusy && testSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12l5 5l-1.5 1.5a3.536 3.536 0 1 1 -5 -5l1.5 -1.5z" /><path d="M17 12l-5 -5l1.5 -1.5a3.536 3.536 0 1 1 5 5l-1.5 1.5z" /><path d="M3 21l2.5 -2.5" /><path d="M18.5 5.5l2.5 -2.5" /><path d="M10 11l-2 2" /><path d="M13 14l-2 2" /></svg>{/if}
+                {#if testBusy && testSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="2 1.4"><path d="M2.8 12.6 L5 10.4 L9.9 15.3 L18.9 4.6 L21.3 6.6 L10.1 19.9 Z" /></svg>{/if}
               </button>
+              {#if pwProblem($systemStore.externalPW2)}<small class="test-result bad wrow-under">{pwProblem($systemStore.externalPW2)}</small>{/if}
+              {#if testSlot === 2 && testResult}
+                <small class="test-result wrow-under {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
+              {/if}
             </div>
-            {#if pwProblem($systemStore.externalPW2)}<small class="test-result bad">{pwProblem($systemStore.externalPW2)}</small>{/if}
-            {#if testSlot === 2 && testResult}
-              <small class="test-result {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
-            {/if}
           </div>
 
           <small class="hint">{$t("set.wifi.hint")}</small>
@@ -1113,7 +1116,7 @@
     padding: 0.65rem 0;
     text-align: left;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 1.15rem;
     font-weight: 600;
     color: inherit;
     display: flex;
@@ -1157,19 +1160,37 @@
   }
   /* Sprachauswahl steht außerhalb des fieldsets → Trennlinie nach unten statt über .group + .group */
   /* Eingabefeld mit quadratischem Icon-Knopf dahinter (Finden / Testen) */
-  .field-btn {
+  /* WLAN-Zeilen: Bezeichnung | Feld | Knopf (Finden/Testen) — alle Zeilen im selben Raster */
+  .wrow {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 2rem;
+    grid-template-columns: 4.5rem minmax(0, 1fr) 2rem;
     gap: 0.5rem;
     align-items: center;
   }
 
-  .field-btn input {
+  .wrow > label {
     margin: 0;
   }
 
+  .wrow input,
+  .wrow select {
+    margin: 0;
+  }
+
+  /* Hinweise und Netzauswahl unter Feld + Knopf (nicht unter der Bezeichnung) */
+  .wrow-under {
+    grid-column: 2 / -1;
+    margin-top: -0.25rem !important;
+  }
+
+  /* Rubrik innerhalb einer Sektion (Hotspot, Externes WLAN, …) */
+  .rubric {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
   .scan-list {
-    margin: 0.4rem 0 0;
+    margin: 0;
   }
 
   .test-result {

@@ -3,7 +3,7 @@
 ## November 2026 — Nach der Bereinigung
 
 - **Einstellungen → WLAN:** Checkboxen „Passwort entfernen“ entfallen — leeres Passwortfeld = kein
-  Passwort. Neue Icon-Knöpfe: **Lupe** sucht WLANs in der Nähe (Auswahlliste), **Stecker** testet die
+  Passwort. Neue Icon-Knöpfe: **Lupe** sucht WLANs in der Nähe (Auswahlliste), **gestrichelter Haken** testet die
   Verbindung mit den eingegebenen Daten (erfolgreich / Passwort falsch / Netz nicht gefunden).
 - **Einstellungen → Persönlich:** Name der Lampe (Titel der Seite, Standard „Liza“) und bis zu 8
   **Party-Tage** frei wählbar; Standardwerte aus `include/secrets.h` (`SECRET_LAMP_NAME`,
