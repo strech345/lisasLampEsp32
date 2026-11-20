@@ -163,7 +163,7 @@ export default {
   "set.wifi.fbPw": "Fallback Passwort",
   "set.wifi.optional": "optional",
   "set.wifi.optionalParen": "(optional)",
-  "set.wifi.hint": "Hinweis: Nach dem Speichern startet das Gerät den Hotspot neu. Das Handy muss sich danach neu verbinden. SSID: 1–32 Zeichen, Passwörter: leer (= kein Passwort, Hotspot offen) oder 8–63 Zeichen. „******“ steht für das gespeicherte Passwort. Lupe: WLANs in der Nähe suchen, Haken: Verbindung testen.",
+  "set.wifi.hint": "Hinweis: Nach dem Speichern startet das Gerät den Hotspot neu. Das Handy muss sich danach neu verbinden. SSID: 1–32 Zeichen, Passwörter: leer (= kein Passwort, Hotspot offen) oder 8–63 Zeichen. „******“ steht für das gespeicherte Passwort. Lupe: WLANs in der Nähe suchen, Stecker: Verbindung testen.",
   "set.wifi.save": "Speichern",
 
   // --- Einstellungen: Energie & Uhr ---

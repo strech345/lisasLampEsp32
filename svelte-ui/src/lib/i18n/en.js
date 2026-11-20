@@ -163,7 +163,7 @@ export default {
   "set.wifi.fbPw": "Fallback password",
   "set.wifi.optional": "optional",
   "set.wifi.optionalParen": "(optional)",
-  "set.wifi.hint": "Note: After saving, the device restarts its hotspot and your phone has to reconnect. SSID: 1–32 characters, passwords: empty (= no password, open hotspot) or 8–63 characters. “******” stands for the stored password. Magnifier: search nearby Wi-Fi, check mark: test connection.",
+  "set.wifi.hint": "Note: After saving, the device restarts its hotspot and your phone has to reconnect. SSID: 1–32 characters, passwords: empty (= no password, open hotspot) or 8–63 characters. “******” stands for the stored password. Magnifier: search nearby Wi-Fi, plug: test connection.",
   "set.wifi.save": "Save",
 
   // --- Einstellungen: Energie & Uhr ---

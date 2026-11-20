@@ -616,7 +616,7 @@
                 on:input={(e) => handleFieldChange("externalPW", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
                 disabled={scanBusy || testBusy || !$systemStore.externalSSID || !!pwProblem($systemStore.externalPW)} on:click={() => startTest(1, "externalSSID", "externalPW")}>
-                {#if testBusy && testSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4.5 12.5 L10 18 L19.5 6.5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>{/if}
+                {#if testBusy && testSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12l5 5l-1.5 1.5a3.536 3.536 0 1 1 -5 -5l1.5 -1.5z" /><path d="M17 12l-5 -5l1.5 -1.5a3.536 3.536 0 1 1 5 5l-1.5 1.5z" /><path d="M3 21l2.5 -2.5" /><path d="M18.5 5.5l2.5 -2.5" /><path d="M10 11l-2 2" /><path d="M13 14l-2 2" /></svg>{/if}
               </button>
             </div>
             {#if pwProblem($systemStore.externalPW)}<small class="test-result bad">{pwProblem($systemStore.externalPW)}</small>{/if}
@@ -651,7 +651,7 @@
                 on:input={(e) => handleFieldChange("externalPW2", e)} />
               <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
                 disabled={scanBusy || testBusy || !$systemStore.externalSSID2 || !!pwProblem($systemStore.externalPW2)} on:click={() => startTest(2, "externalSSID2", "externalPW2")}>
-                {#if testBusy && testSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4.5 12.5 L10 18 L19.5 6.5" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" fill="none" /></svg>{/if}
+                {#if testBusy && testSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12l5 5l-1.5 1.5a3.536 3.536 0 1 1 -5 -5l1.5 -1.5z" /><path d="M17 12l-5 -5l1.5 -1.5a3.536 3.536 0 1 1 5 5l-1.5 1.5z" /><path d="M3 21l2.5 -2.5" /><path d="M18.5 5.5l2.5 -2.5" /><path d="M10 11l-2 2" /><path d="M13 14l-2 2" /></svg>{/if}
               </button>
             </div>
             {#if pwProblem($systemStore.externalPW2)}<small class="test-result bad">{pwProblem($systemStore.externalPW2)}</small>{/if}
