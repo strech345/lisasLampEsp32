@@ -9,6 +9,8 @@
 - **Hotspot nur per langem Tastendruck:** Beim Start verbindet sich die Lampe nur mit dem Heimnetz.
 - **Status-LED:** langsam = WLAN aus, 1× Heimnetz, 2× Hotspot, 3× beides.
 - **Hotspot schaltet nach 10 min ohne Bedienung ab**, auch wenn ein Gerät verbunden bleibt.
+- **Hotspot-Animation:** blauer Komet, solange der Hotspot auf ein Gerät wartet; Vorrang vor dem
+  Wecker; Drücken/Drehen bricht den Hotspot ab.
 - **Ereignisprotokoll** lieferte ungültiges JSON (ArduinoJson 7 leert den Ziel-String) — behoben.
 - **`main.cpp` aufgeräumt** (373 → 121 Zeilen, Auftragsablage in `web_commands.cpp`); Zeitzone und
   gespeicherte Uhrzeit werden jetzt vor den Weckern gesetzt.

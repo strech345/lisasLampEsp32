@@ -17,6 +17,7 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
 // withAP=false → nur STA: stiller NTP-Sync ohne sichtbaren Hotspot
 void startWifi(bool withAP = true);
 void stopWifi();
+void stopAccessPoint(); // nur Hotspot aus; Heimnetz (APSTA → STA) bleibt verbunden
 
 void handleClientRequests();  // DNS-Captive-Portal-Anfragen verarbeiten
 void checkWifiStart();        // Automatischer Start nach START_WIFI_AFTER_MS
@@ -24,6 +25,7 @@ void checkWifiStop();         // Automatischer Stop nach STOP_WIFI_AFTER_MS ohne
 bool isWiFiActive();
 void noteWebActivity();       // echte Bedienung der Weboberfläche: Hotspot-Laufzeit (10 min) neu starten
 uint8_t wifiStatusBlinkCount(); // Status-LED: 0 = WLAN aus, 1 = Heimnetz, 2 = Hotspot, 3 = beides
+bool isApWaitingForClient();  // Hotspot an, aber noch kein Gerät verbunden
 bool hasWifiClients();        // Gibt true zurück wenn mindestens ein Gerät verbunden ist
 
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info); // Intern: reagiert auf STA-Verbindungsereignisse

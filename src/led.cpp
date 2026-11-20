@@ -91,7 +91,10 @@ void setLedColors(uint32_t baseColor, uint32_t boostColor) {
     applyColorForLevel();
 }
 
+// Animationsmodus für Farben: 1 = Atmen, sonst statisch. Setzt auch Effekt-Optionen zurück
+// (z. B. die Schweif-Länge der Hotspot-Animation).
 void setAnimationMode(uint8_t mode) {
+    ws2812fx.setOptions(0, NO_OPTIONS);
     if(mode == 1) {
         ws2812fx.setMode(FX_MODE_BREATH);
     } else {
@@ -127,6 +130,19 @@ void setBrightnessLevel(uint8_t level) {
         ws2812fx.trigger();
         ws2812fx.service();
     }
+}
+
+// Hotspot-Warte-Animation: blauer Lichtpunkt läuft von vorn nach hinten, Schweif wird nach hinten
+// dunkler (WS2812FX-Komet). Ein Durchlauf über alle Pixel dauert AP_ANIM_CYCLE_MS.
+#define AP_ANIM_COLOR 0x000060FF  // angenehmes Blau (0xWWRRGGBB)
+#define AP_ANIM_CYCLE_MS 1200     // nicht zu schnell, nicht zu träge
+#define AP_ANIM_LEVEL 5           // feste Helligkeitsstufe, damit sie auch bei ausgeschalteter Lampe sichtbar ist
+void startApWaitingEffect() {
+    setBrightnessLevel(AP_ANIM_LEVEL);
+    setLedColor(AP_ANIM_COLOR);
+    ws2812fx.setMode(FX_MODE_COMET);
+    ws2812fx.setSpeed(AP_ANIM_CYCLE_MS);
+    ws2812fx.setOptions(0, FADE_MEDIUM); // Schweif über etwa 2–3 Pixel
 }
 
 // Startet den Regenbogen-Effekt für den Feier-Modus

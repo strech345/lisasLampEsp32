@@ -18,8 +18,10 @@ _Stand: November 2026 · Code: `src/lamp_state.cpp`, Enum `LampState` in `includ
 | `LAMP_STATE_CELEBRATION` | 7 | Feier-Modus | Regenbogen, Helligkeit 7 |
 | `LAMP_STATE_SYS_ERROR` | 8 | Systemfehler: keine gültige Uhrzeit | ganze Lampe rot, Nutzer-Helligkeit |
 | `LAMP_STATE_SYS_WARNING` | 9 | Systemwarnung: Zeit veraltet | ganze Lampe gelb, Nutzer-Helligkeit |
+| `LAMP_STATE_AP_WAITING` | 10 | Hotspot an, noch kein Gerät verbunden | blauer Komet (läuft von vorn nach hinten, Schweif wird dunkler), Stufe 5 |
 
-Kurze Hinweise nutzen die Nutzer-Helligkeit, bei ausgeschalteter Lampe Stufe 7 (damit sie sichtbar sind).
+Kurze Hinweise nutzen die Nutzer-Helligkeit, bei ausgeschalteter Lampe Stufe 7 (damit sie sichtbar sind),
+und werden wie Systemwarnungen immer statisch angezeigt (ohne „Atmen“).
 Wecker- und Gute-Nacht-Helligkeit werden alle 5 s nachgeführt.
 
 ---
@@ -28,12 +30,14 @@ Wecker- und Gute-Nacht-Helligkeit werden alle 5 s nachgeführt.
 
 ```
 1. Kurzer Hinweis      — merkt sich den Zustand davor und stellt ihn danach wieder her
-2. Wecker              — endet der Wecker → Sleep
-3. Gute Nacht          — endet die Dauer → Sleep
-4. Feier-Modus
-5. Sleep               — bleibt, bis die Lampe bedient wird
-6. Systemwarnung       — nur wenn „Warnungen“ an UND Helligkeit > 0
-7. Normalbetrieb
+2. Hotspot wartet      — ebenso; Vorrang vor dem Wecker (per Bedienung ausgelöst), der im
+                         Hintergrund weiterläuft
+3. Wecker              — endet der Wecker → Sleep
+4. Gute Nacht          — endet die Dauer → Sleep
+5. Feier-Modus
+6. Sleep               — bleibt, bis die Lampe bedient wird
+7. Systemwarnung       — nur wenn „Warnungen“ an UND Helligkeit > 0
+8. Normalbetrieb
 ```
 
 Eine ausgeschaltete Lampe (Sleep oder Helligkeit 0) wird nie durch eine Systemwarnung eingeschaltet.
@@ -73,6 +77,8 @@ Wecker deaktiviert oder zeitlich geändert wurde.
 | Gute Nacht | beenden → Normalbetrieb (roter Blitz) | beenden → Normalbetrieb mit neuer Helligkeit |
 | Feier-Modus | für heute beenden → Normalbetrieb (roter Blitz) | Helligkeit ändern |
 | Hinweis | Hinweis beenden → vorheriger Zustand | Helligkeit ändern |
+| Hotspot wartet | Hotspot abbrechen → vorheriger Zustand (sonst keine Aktion) | Hotspot abbrechen + Helligkeit ändern |
 | Systemwarnung/-fehler | → Gute Nacht | → Normalbetrieb mit neuer Helligkeit |
 
-Langer Druck schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis).
+Langer Druck schaltet in jedem Zustand das WLAN mit Hotspot ein (kurzer gelber Hinweis, danach der
+blaue Komet bis sich ein Gerät verbindet). „Hotspot abbrechen“ lässt das Heimnetz verbunden.

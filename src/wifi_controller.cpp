@@ -387,6 +387,19 @@ void startWifi(bool withAP) {
     }
 }
 
+// Schaltet nur den Hotspot ab: bei APSTA bleibt das Heimnetz verbunden, bei reinem AP geht das WLAN aus
+void stopAccessPoint() {
+    wifi_mode_t mode = WiFi.getMode();
+    if(mode == WIFI_MODE_APSTA) {
+        dnsServer.stop();
+        WiFi.mode(WIFI_MODE_STA);
+        logEvent("Hotspot aus (Bedienung)");
+    } else if(mode == WIFI_MODE_AP) {
+        logEvent("Hotspot aus (Bedienung)");
+        stopWifi();
+    }
+}
+
 // Stoppt alle WiFi-Dienste (AP, STA, DNS)
 void stopWifi() {
     serialPrint("stopWifi: Stopping all WiFi services");
@@ -415,6 +428,12 @@ uint8_t wifiStatusBlinkCount() {
     default:
         return 0;
     }
+}
+
+// Hotspot läuft, aber noch kein Gerät verbunden (Lampe zeigt dann die Warte-Animation)
+bool isApWaitingForClient() {
+    wifi_mode_t mode = WiFi.getMode();
+    return (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) && WiFi.softAPgetStationNum() == 0;
 }
 
 // Gibt true zurück wenn WiFi in irgendeinem Modus aktiv ist

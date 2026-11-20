@@ -43,7 +43,11 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 - Hotspot einschalten (Weboberfläche erreichbar). Das ist der **einzige** Weg zum Hotspot — beim
   Start verbindet sich die Lampe nur mit dem Heim-WLAN.
 - Ist die Lampe gerade mit dem Heim-WLAN verbunden, kommt der Hotspot dazu (beides gleichzeitig).
-- Kurzer gelber Blitz als Bestätigung; danach ist die Lampe wieder im vorherigen Zustand.
+- Kurzer gelber Blitz als Bestätigung, danach läuft ein **blauer Komet** über die Pixel, bis sich ein
+  Gerät verbindet. Dann kehrt die Lampe in ihren vorherigen Zustand zurück (aus bleibt aus).
+- Die Animation hat Vorrang vor einem Wecker; der läuft im Hintergrund weiter.
+- **Abbrechen:** Kurzer Druck während der Animation schaltet Hotspot und Animation aus, sonst nichts.
+  Drehen bricht ebenfalls ab und ändert zusätzlich die Helligkeit. Ein verbundenes Heimnetz bleibt.
 
 ## Boot-Taste
 

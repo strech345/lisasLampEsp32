@@ -10,6 +10,7 @@ void setAnimationMode(uint8_t mode);
 void setAnimationSpeed(uint16_t speed);
 void setBrightnessLevel(uint8_t level);
 void startCelebrationEffect();
+void startApWaitingEffect();   // blauer Komet: Hotspot wartet auf ein Gerät
 void statusLedInit();
 void statusLedOn();
 void statusLedOff();

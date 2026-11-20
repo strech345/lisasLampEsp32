@@ -61,6 +61,8 @@ void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
         startWifi();
         break;
     case RotaryEncoderEventType::Rotate: {
+        // Bedienung hat Vorrang vor der Hotspot-Animation
+        dismissApAnimation();
         // Helligkeit ändern (0–7) mit relativer Steuerung, sofort speichern und anwenden
         int currentBrightness = s_appConfig->brightnessMode;
         int newBrightness = currentBrightness + value;

@@ -91,7 +91,8 @@ enum LampState {
     LAMP_STATE_SLEEP       = 6, // Lampe aus, wartet auf Nutzer-Eingriff
     LAMP_STATE_CELEBRATION = 7,
     LAMP_STATE_SYS_ERROR   = 8, // Dauerhaft (nur bei Lampe an): keine Systemzeit — Lampe rot
-    LAMP_STATE_SYS_WARNING = 9  // Dauerhaft (nur bei Lampe an): Zeitquelle > 24 h alt — Lampe gelb
+    LAMP_STATE_SYS_WARNING = 9, // Dauerhaft (nur bei Lampe an): Zeitquelle > 24 h alt — Lampe gelb
+    LAMP_STATE_AP_WAITING  = 10 // Hotspot an, noch kein Gerät verbunden — blauer Komet
 };
 
 // Status-Snapshot für die Web-API

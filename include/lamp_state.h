@@ -21,4 +21,8 @@ void updateLed();
 // Kurzer Tastendruck: schaltet Lampe ein/aus oder beendet aktive Modi
 void onShortPress();
 
+// Bricht den wartenden Hotspot bei einer Bedienung (Drücken/Drehen) ab: Animation und Hotspot aus;
+// sonst ohne Wirkung
+bool dismissApAnimation(); // true wenn abgebrochen wurde
+
 #endif // LAMP_STATE_H

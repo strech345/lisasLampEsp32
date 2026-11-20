@@ -10,6 +10,7 @@
 #include "celebration.h"
 #include "debug_utils.h"
 #include "event_log.h"
+#include "wifi_controller.h"
 
 // Farben für Hinweise, Warnungen und Tasten-Aufblitzen (0x00RRGGBB)
 #define COLOR_GREEN 0x0000FF00
@@ -24,6 +25,7 @@ static WiFiTestTracker* s_wifiTracker = nullptr;
 
 // Interner Zustand des Moduls
 static LampState s_stateBeforeAlert = LAMP_STATE_DEFAULT; // wird nach einem Hinweis wiederhergestellt
+static bool s_apAnimationDismissed = false; // Nutzer hat während der Hotspot-Animation bedient
 static uint32_t s_pendingFlash = 0; // Farbe für kurzes Aufblitzen (Tasten-Feedback), 0 = keins
 
 // Initialisiert das Modul mit Zeigern auf die globalen Variablen aus main.cpp
@@ -93,8 +95,14 @@ static bool isAlertState(LampState s) {
     return s == LAMP_STATE_ERROR || s == LAMP_STATE_WARNING || s == LAMP_STATE_SUCCESS;
 }
 
+// Überlagernde Zustände: legen sich vorübergehend über den eigentlichen Zustand, der danach
+// wiederhergestellt wird (kurze Hinweise und die Hotspot-Warte-Animation)
+static bool isOverlayState(LampState s) {
+    return isAlertState(s) || s == LAMP_STATE_AP_WAITING;
+}
+
 // Bestimmt den aktuellen Lampenzustand anhand der aktiven Modi — Priorität von oben nach unten:
-// Alert > Alarm > Good Night > Celebration > Sleep > Systemwarnung > Default
+// Alert > Hotspot wartet > Alarm > Good Night > Celebration > Sleep > Systemwarnung > Default
 void checkLampState() {
     // --- Kurzzeit-Alerts (höchste Priorität) ---
     LampState alertState = LAMP_STATE_DEFAULT;
@@ -111,16 +119,27 @@ void checkLampState() {
     default:
         break;
     }
-    if(alertState != LAMP_STATE_DEFAULT) {
-        // Beim Alert-Beginn den Zustand davor merken (nicht bei Alert → Alert)
-        if(!isAlertState(*s_lampState)) {
+    // --- Hotspot wartet auf ein Gerät: Vorrang auch vor dem Wecker (per Bedienung ausgelöst);
+    //     ein laufender Wecker läuft im Hintergrund weiter und erscheint danach wieder ---
+    // Bedienung hat Vorrang: nach Drücken/Drehen bleibt die Animation für diesen Hotspot-Durchgang aus
+    // (zurückgesetzt sobald der Hotspot nicht mehr wartet — Gerät verbunden oder Hotspot aus)
+    bool apWaiting = isApWaitingForClient();
+    if(!apWaiting)
+        s_apAnimationDismissed = false;
+    LampState overlay = alertState;
+    if(overlay == LAMP_STATE_DEFAULT && apWaiting && !s_apAnimationDismissed) {
+        overlay = LAMP_STATE_AP_WAITING;
+    }
+    if(overlay != LAMP_STATE_DEFAULT) {
+        // Beim Beginn einer Überlagerung den Zustand davor merken (nicht bei Überlagerung → Überlagerung)
+        if(!isOverlayState(*s_lampState)) {
             s_stateBeforeAlert = *s_lampState;
         }
-        *s_lampState = alertState;
+        *s_lampState = overlay;
         return;
     }
-    if(isAlertState(*s_lampState)) {
-        // Alert gerade beendet → Zustand von vor dem Alert wiederherstellen und normal weiter prüfen;
+    if(isOverlayState(*s_lampState)) {
+        // Überlagerung beendet → Zustand davor wiederherstellen und normal weiter prüfen;
         // updateLed() setzt die LEDs beim Zustandswechsel passend neu
         *s_lampState = s_stateBeforeAlert;
     }
@@ -198,6 +217,7 @@ static const char* lampStateName(LampState s) {
     case LAMP_STATE_CELEBRATION: return "Celebration";
     case LAMP_STATE_SYS_ERROR:   return "SysError: no time";
     case LAMP_STATE_SYS_WARNING: return "SysWarning: stale NTP";
+    case LAMP_STATE_AP_WAITING:  return "Hotspot wartet";
     default:                     return "Unknown";
     }
 }
@@ -221,23 +241,28 @@ static void applyStateEntry(LampState state) {
     case LAMP_STATE_SUCCESS:
         setBrightnessLevel(alertBrightness());
         setLedColor(COLOR_GREEN);
+        setAnimationMode(0); // statisch
         break;
     case LAMP_STATE_ERROR:
         setBrightnessLevel(alertBrightness());
         setLedColor(COLOR_RED);
+        setAnimationMode(0); // statisch
         break;
     case LAMP_STATE_WARNING:
         setBrightnessLevel(alertBrightness());
         setLedColor(COLOR_YELLOW);
+        setAnimationMode(0); // statisch
         break;
     case LAMP_STATE_SYS_ERROR:
         // Nutzer-Helligkeit: Systemwarnungen treten nur bei eingeschalteter Lampe auf
         setBrightnessLevel(s_appConfig->brightnessMode);
         setLedColor(COLOR_RED);
+        setAnimationMode(0); // statisch
         break;
     case LAMP_STATE_SYS_WARNING:
         setBrightnessLevel(s_appConfig->brightnessMode);
         setLedColor(COLOR_YELLOW);
+        setAnimationMode(0); // statisch
         break;
     case LAMP_STATE_ALARM:
         checkAndApplyColorMode(*s_appConfig);
@@ -250,6 +275,9 @@ static void applyStateEntry(LampState state) {
         break;
     case LAMP_STATE_SLEEP:
         setBrightnessLevel(0); // Lampe ausschalten
+        break;
+    case LAMP_STATE_AP_WAITING:
+        startApWaitingEffect();
         break;
     }
 }
@@ -291,8 +319,23 @@ void updateLed() {
     }
 }
 
+// Bedienung (Drücken/Drehen) während der Hotspot-Animation bricht den Hotspot ab: Animation beenden,
+// Hotspot ausschalten (Heimnetz bleibt) und den eigentlichen Zustand wiederherstellen.
+// Rückgabe: true wenn abgebrochen wurde (der Aufrufer entscheidet, ob die Bedienung weiterwirkt).
+bool dismissApAnimation() {
+    if(*s_lampState != LAMP_STATE_AP_WAITING)
+        return false;
+    s_apAnimationDismissed = true;
+    stopAccessPoint();
+    *s_lampState = s_stateBeforeAlert;
+    return true;
+}
+
 // Reagiert auf kurzen Drucktaster-Druck: je nach Zustand stoppen oder Gute-Nacht starten
 void onShortPress() {
+    // Druck während der Hotspot-Animation: nur abbrechen, keine weitere Aktion (kein Blitz)
+    if(dismissApAnimation())
+        return;
     if(getActiveAlertType() != ALERT_NONE) {
         serialPrint("Clearing alert via button");
         stopAlert();
