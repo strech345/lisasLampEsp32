@@ -8,7 +8,8 @@ _Stand: November 2026_
 
 | Datei | Aufgabe |
 |---|---|
-| `src/main.cpp` | `setup()`/`loop()`, globaler Zustand, Auftragsablage Web → `loop()` |
+| `src/main.cpp` | `setup()`/`loop()` und globaler Zustand — nur Reihenfolge, keine Logik |
+| `src/web_commands.cpp` | Auftragsablage Web → `loop()`: `queueWebCommand()`, `processWebCommands()` |
 | `src/lamp_state.cpp` | Zustandsmaschine: aktiven Modus bestimmen, LEDs beim Zustandswechsel setzen |
 | `src/led.cpp` | WS2812FX-Treiber: Farbe, Helligkeitsstufen 0–7, Animation, Blitz, Status-LED |
 | `src/button.cpp` | Drehknopf und Boot-Taste: rastungsgenaues Drehen, kurzer/langer Druck |
@@ -47,9 +48,9 @@ Diese Stellen laufen außerhalb von `loop()`:
 | lwIP-Task | SNTP-Callback | nur Drift berechnen, Nachricht in die Queue |
 | WiFi-Task (Promiscuous) | Beacon-Callback (TSF) | nur in Puffer schreiben, Speicherbarriere vor dem Zähler |
 
-**Auftragsablage (`main.cpp`):** Ein Handler ruft `onStateUpdatedFromWifi(type, data)` auf. Das kopiert
+**Auftragsablage (`web_commands.cpp`):** Ein Handler ruft `queueWebCommand(type, data)` auf. Das kopiert
 die Daten unter einem Mutex in `s_pending` (pro Auftragstyp ein Platz, der letzte gewinnt).
-`processPendingCommands()` läuft als Erstes in `loop()` und führt alles aus: Config übernehmen,
+`processWebCommands()` läuft als Erstes in `loop()` und führt alles aus: Config übernehmen,
 speichern, WLAN neu starten (nur wenn SSID/Passwort geändert), Neustart/Werksreset (ca. 500 ms
 verzögert, damit die HTTP-Antwort noch rausgeht). LEDs, WLAN, NVS und `ESP.restart()` werden damit nur
 aus `loop()` angefasst.
@@ -58,14 +59,15 @@ aus `loop()` angefasst.
 
 ## Boot (`setup()`)
 
-1. Serial (UART0), LittleFS, `FullConfig` aus NVS laden
-2. **Aufwachgrund** auswerten: Taster → Normalbetrieb mit Helligkeit 1; Timer → Sleep
+1. `debugInit()` (Serial über UART0), LittleFS, `loadFullConfigOrDefault()`
+2. **Aufwachgrund** (`applyWakeupReason()`): Taster → Normalbetrieb mit Helligkeit 1; Timer → Sleep
 3. **LEDs sofort** setzen (Farbe, Helligkeit; bei Timer-Wakeup aus) — vor allem Langsamen
-4. `SystemSettings` laden, RTC-Quarz prüfen (Taktquelle nur beim Boot umschaltbar)
-5. Module initialisieren (Zeiger auf den globalen Zustand), Wecker übernehmen
-6. WLAN-Controller (Kanal aus RTC-Speicher oder Scan), Webserver, `startWifi()` —
+4. `initClock()`: Zeitzone setzen, Uhrzeit aus NVS falls leer — vor den Weckern
+5. `loadSystemSettingsOrDefault()`, RTC-Quarz prüfen (Taktquelle nur beim Boot umschaltbar)
+6. Module initialisieren (Zeiger auf den globalen Zustand), Wecker übernehmen
+7. Auftragsablage, Routen, WLAN-Controller (Kanal aus RTC-Speicher oder Scan), `startWifi()` —
    bei Timer-Wakeup ohne Hotspot
-7. Encoder (Ruhepegel lernen), Systemzeit ggf. aus NVS wiederherstellen
+8. Drehknopf (Ruhepegel lernen)
 
 Gemessen: Licht nach ca. 60 ms, einsatzbereit nach ca. 0,35 s (Deep-Sleep-Wakeup) bzw. 3,5 s
 (Einschalten mit Kanal-Scan).
@@ -73,7 +75,7 @@ Gemessen: Licht nach ca. 60 ms, einsatzbereit nach ca. 0,35 s (Deep-Sleep-Wakeup
 ## Hauptschleife (`loop()`)
 
 ```
-processPendingCommands()   Aufträge vom Webserver ausführen
+processWebCommands()       Aufträge vom Webserver ausführen
 wifiLoop()                 Events, DNS, Auto-Start/-Stopp, NTP-Status, Wiederverbinden
 tsfClockLoop()             TSF-Snapshot/-Fallback
 rdsClockLoop()             RDS-Zustandsmaschine

@@ -14,7 +14,7 @@ Kurzorientierung. Ausführlich: [README](../README.md) und `doc/`.
 - **Pins** nur in `include/pins.h`, **Zugangsdaten** nur in `include/secrets.h` (gitignored,
   Vorlage `secrets.example.h`), rechnerspezifische Ports in `platformio_override.ini` (gitignored).
 - **Thread-Sicherheit:** HTTP-Handler (async_tcp-Task) prüfen nur, legen über
-  `onStateUpdatedFromWifi()` einen Auftrag ab und antworten. LEDs, WLAN, NVS, `delay()` und
+  `queueWebCommand()` (`web_commands.cpp`) einen Auftrag ab und antworten. LEDs, WLAN, NVS, `delay()` und
   `ESP.restart()` nur aus `loop()`. WiFi-Events und SNTP-Callback posten nur in die Queue.
 - **API:** POSTs nur `application/json`; neue Schalter über `/set_option` und `OPTIONS[]` in
   `route_handlers.cpp`; UI-Requests über `svelte-ui/src/lib/api.js`.
