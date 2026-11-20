@@ -32,7 +32,9 @@ Die Lampe hat zwei Bedienelemente: den **Drehknopf** (KY-040, drehen und drücke
   Systemwarnung wechseln in den Normalbetrieb; ein laufender Wecker übernimmt das neue Set.
 - Wurde gedreht, löst das Loslassen weder einen kurzen Druck noch den Hotspot aus.
 
-## Drehknopf kurz drücken (unter 3 s, ohne Drehen)
+## Drehknopf kurz drücken (höchstens 0,5 s, ohne Drehen)
+
+Länger gehalten, aber vor 3 s losgelassen, löst keine Aktion aus.
 
 Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.md)):
 

@@ -23,7 +23,8 @@ static WiFiTestTracker* s_wifiTracker = nullptr;
 // (Rohflanken); das Umrechnen auf Rastungen passiert in handleRotation().
 #define ROTARY_ENCODER_STEPS 4
 
-const unsigned long shortPressAfterMiliseconds = 50;
+const unsigned long shortPressAfterMiliseconds = 50;   // kürzer = Prellen, kein Klick
+const unsigned long shortPressMaxMs = 500;             // länger gehalten = kein Klick (bis 3 s: gar nichts)
 const unsigned long longPressAfterMiliseconds = 1000;      // Boot-Taste: Werksreset
 const unsigned long rotaryLongPressMs = 3000;              // Drehknopf: Hotspot (nur ohne Drehen)
 
@@ -188,7 +189,10 @@ void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType 
 
     // Taste losgelassen: kurzer Druck wenn kein langer Druck stattfand und nicht gedreht wurde
     if(state.wasButtonDown && !state.longPressHandled && !(rotated && *rotated)) {
-        if(currentMillis - state.lastTimeButtonDown >= shortPressAfterMiliseconds) {
+        // Nur ein wirklich kurzer Klick (50–500 ms) löst eine Aktion aus; länger gehalten, aber vor dem
+        // langen Druck losgelassen → keine Aktion
+        unsigned long held = currentMillis - state.lastTimeButtonDown;
+        if(held >= shortPressAfterMiliseconds && held <= shortPressMaxMs) {
             if(_rotaryEncoderCallback) {
                 _rotaryEncoderCallback(shortEvent, 0);
             }
