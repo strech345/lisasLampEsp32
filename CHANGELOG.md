@@ -2,6 +2,10 @@
 
 ## November 2026 — Nach der Bereinigung
 
+- **Wecker:** bis zu 16, zusätzlich **einmalige Termine** mit Datum („Termin hinzufügen“); Weckzeit über
+  die Sommer-/Winterzeit-Umstellung hinweg korrigiert. Das Update setzt die Lampen-Konfiguration
+  einmalig zurück.
+- **Weboberfläche:** Licht-Sets, Wecker und Dauer je einzeilig mit gleich großen Feldern.
 - **Licht-Sets:** bis zu 6 Kombinationen aus Lichtfarbe und Animation, in der Weboberfläche
   verwaltbar; Standard: Neutralweiß statisch, Warmweiß atmend (aktiv), Kerzenlicht als Flamme.
   Das Update setzt die Lampen-Konfiguration (inkl. Wecker) einmalig zurück.

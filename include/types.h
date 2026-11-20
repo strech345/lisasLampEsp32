@@ -11,15 +11,20 @@ struct RGB {
     byte b;
 };
 
-// Ein Wecker-Eintrag: Wochentag 1–7 (Mo–So), Uhrzeit, aktiv/inaktiv
+// Ein Wecker-Eintrag: wöchentlich (Wochentag) oder einmalig (Datum), Uhrzeit, aktiv/inaktiv.
+// Ein Platz ist belegt, wenn day > 0 (wöchentlich) oder once (einmalig).
 struct Alarm {
-    byte day;    // 1–7 (Montag–Sonntag), 0 = nicht gesetzt
+    byte day;    // wöchentlich: 1–7 (Montag–Sonntag); 0 = kein wöchentlicher Wecker
     byte hour;
     byte minute;
     bool active;
+    bool once;          // true = einmaliger Termin am Datum unten (day wird ignoriert)
+    byte onceDay;       // 1–31
+    byte onceMonth;     // 1–12
+    uint16_t onceYear;  // z. B. 2026
 };
 
-#define MAX_ALARMS 10
+#define MAX_ALARMS 16
 
 // Anzahl der LEDs im Streifen (in der Weboberfläche einstellbar, gespeichert in SystemSettings)
 #define DEFAULT_LED_COUNT 4

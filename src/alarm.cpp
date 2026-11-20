@@ -11,6 +11,9 @@ struct TimeInfo {
     int minute;
     int dayOfWeek; // 1–7 (Mo–So)
     int day;       // Tag des Jahres (0–365), zur Entdopplung genutzt
+    int year;      // z. B. 2026
+    int month;     // 1–12
+    int mday;      // 1–31
 };
 
 TimeInfo getCurrentTimeInfo();
@@ -43,7 +46,9 @@ long msToNextAlarm = -1;
 void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
     for(int i = 0; i < MAX_ALARMS; i++) {
         bool timeChanged = alarms[i].day != newAlarms[i].day || alarms[i].hour != newAlarms[i].hour
-            || alarms[i].minute != newAlarms[i].minute;
+            || alarms[i].minute != newAlarms[i].minute || alarms[i].once != newAlarms[i].once
+            || alarms[i].onceDay != newAlarms[i].onceDay || alarms[i].onceMonth != newAlarms[i].onceMonth
+            || alarms[i].onceYear != newAlarms[i].onceYear;
         bool changed = timeChanged || alarms[i].active != newAlarms[i].active;
         if(changed) {
             last_triggered_day_for_alarm[i] = -1; // Eintrag geändert → darf heute wieder auslösen
@@ -112,9 +117,13 @@ void checkAlarmStates(uint16_t durationMinutes) {
     }
     int nowMinutes = currentTimeInfo.hour * 60 + currentTimeInfo.minute;
     for(int i = 0; i < MAX_ALARMS; i++) {
-        // Überspringen wenn: anderer Alarm aktiv, Alarm deaktiviert, heute schon ausgelöst oder falscher Wochentag
-        if(i == activeAlarmId || !alarms[i].active || alarms[i].day != currentTimeInfo.dayOfWeek
-           || currentTimeInfo.day == last_triggered_day_for_alarm[i]) {
+        // Überspringen wenn: anderer Alarm aktiv, Alarm deaktiviert, heute schon ausgelöst oder falscher Tag
+        // (wöchentlich: Wochentag; einmalig: genaues Datum inkl. Jahr → feuert nie ein zweites Mal)
+        const Alarm& a = alarms[i];
+        bool today = a.once ? (a.onceYear == currentTimeInfo.year && a.onceMonth == currentTimeInfo.month
+                               && a.onceDay == currentTimeInfo.mday)
+                            : (a.day == currentTimeInfo.dayOfWeek);
+        if(i == activeAlarmId || !a.active || !today || currentTimeInfo.day == last_triggered_day_for_alarm[i]) {
             continue;
         }
         int sinceAlarmMin = nowMinutes - (alarms[i].hour * 60 + alarms[i].minute); // Minuten seit Alarmzeit (heute)
@@ -170,6 +179,9 @@ TimeInfo getCurrentTimeInfo() {
     // tm_wday: 0=Sonntag → umrechnen auf 1=Montag bis 7=Sonntag
     info.dayOfWeek = ptm->tm_wday == 0 ? 7 : ptm->tm_wday;
     info.day = ptm->tm_yday;
+    info.year = ptm->tm_year + 1900;
+    info.month = ptm->tm_mon + 1;
+    info.mday = ptm->tm_mday;
     return info;
 }
 
@@ -186,39 +198,55 @@ void calculateMillisToNextAlarm() {
     time_t now = tv.tv_sec;
     struct tm* ptm = localtime(&now);
 
-    long minMillis = -1;
+    // Obergrenze: weiter entfernte Termine spielen für den Deep Sleep (max. 5 h) keine Rolle;
+    // verhindert einen Überlauf von long (32 Bit, ~24 Tage in ms)
+    const int64_t MAX_MS = 7LL * 24 * 60 * 60 * 1000;
+
+    int64_t minMillis = -1;
     for(int i = 0; i < MAX_ALARMS; i++) {
         const Alarm& alarm = alarms[i];
-        if(!alarm.active || alarm.day == 0)
+        if(!alarm.active || (alarm.day == 0 && !alarm.once))
             continue;
 
         struct tm target = *ptm;
         target.tm_hour = alarm.hour;
         target.tm_min = alarm.minute;
         target.tm_sec = 0;
+        target.tm_isdst = -1; // Sommer-/Winterzeit am Zieltag selbst bestimmen (sonst ggf. 1 h daneben)
 
-        // Tage bis zum nächsten Auslösetag berechnen (0 = heute)
-        int currentDoW = ptm->tm_wday == 0 ? 7 : ptm->tm_wday;
-        int daysDelta = alarm.day - currentDoW;
-        if(daysDelta < 0)
-            daysDelta += 7;
-
-        target.tm_mday += daysDelta;
-        time_t alarmEpoch = mktime(&target);
-
-        // Wenn Alarmzeit heute bereits vorbei ist → auf nächste Woche schieben
-        if(alarmEpoch <= now) {
-            target.tm_mday += 7;
+        time_t alarmEpoch;
+        if(alarm.once) {
+            // Einmaliger Termin: festes Datum; liegt es in der Vergangenheit, zählt er nicht mehr
+            target.tm_year = alarm.onceYear - 1900;
+            target.tm_mon = alarm.onceMonth - 1;
+            target.tm_mday = alarm.onceDay;
             alarmEpoch = mktime(&target);
+            if(alarmEpoch <= now)
+                continue;
+        } else {
+            // Wöchentlich: Tage bis zum nächsten Auslösetag (0 = heute)
+            int currentDoW = ptm->tm_wday == 0 ? 7 : ptm->tm_wday;
+            int daysDelta = alarm.day - currentDoW;
+            if(daysDelta < 0)
+                daysDelta += 7;
+            target.tm_mday += daysDelta;
+            alarmEpoch = mktime(&target);
+            // Wenn Alarmzeit heute bereits vorbei ist → auf nächste Woche schieben
+            if(alarmEpoch <= now) {
+                target.tm_mday += 7;
+                target.tm_isdst = -1;
+                alarmEpoch = mktime(&target);
+            }
         }
 
-        long diffMs = (alarmEpoch - now) * 1000L - (tv.tv_usec / 1000);
-
+        int64_t diffMs = (int64_t)(alarmEpoch - now) * 1000LL - (tv.tv_usec / 1000);
+        if(diffMs > MAX_MS)
+            diffMs = MAX_MS;
         if(minMillis == -1 || diffMs < minMillis) {
             minMillis = diffMs;
         }
     }
-    msToNextAlarm = minMillis;
+    msToNextAlarm = (long)minMillis;
 }
 
 // Gibt den berechneten Wert zurück (-1 = kein Alarm gesetzt, 0 = Alarm läuft gerade)

@@ -83,6 +83,16 @@ hinzufügen, ändern und löschen (mindestens eines bleibt).
 | Atmen | langsames Auf- und Abschwellen |
 | Flamme | jedes Pixel flackert unabhängig; dunkle Phasen werden röter (Glut). Die Farbe kommt aus der Lichtfarbe — Kerzenlicht = Kerze, Blau = Gasflamme |
 
+## Wecker (Hauptseite der Weboberfläche)
+
+Bis zu **16 Wecker**, je Zeile: Ein/Aus, Wochentag bzw. Datum, Uhrzeit, Löschen.
+
+- **Wecker hinzufügen:** wöchentlicher Wecker (Wochentag wählbar, Start Montag 7:00).
+- **Termin hinzufügen:** einmaliger Wecker an einem **Datum** (Start morgen 7:00). Er feuert nur an
+  diesem Tag; danach bleibt er blass als „vorbei“ in der Liste, bis man ihn löscht.
+- Ob ein Eintrag wöchentlich oder einmalig ist, wird beim Anlegen festgelegt.
+- Beim Maximum sind beide Knöpfe ausgegraut.
+
 ## Einstellungen in der Weboberfläche
 
 Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;
@@ -129,7 +139,7 @@ Kurzes Blinken: 0,1 s an, 0,2 s Abstand, danach 2 s Pause (`statusLedTick()` in 
 | WLAN aus, 5 h vergangen | WLAN kurz ohne Hotspot an (Uhrzeit per NTP) |
 | Lampe aus (Sleep oder Helligkeit 0), WLAN aus, Deep Sleep aktiviert | Deep Sleep bis zum nächsten Wecker/WLAN-Sync (wacht ca. 5 min plus erwartete Uhrabweichung vorher auf) |
 | Wecker in weniger als 5 min | kein Deep Sleep |
-| Wecker-Zeit erreicht (bis 10 min verspätet) | Wecker startet: Nutzerfarbe, Helligkeit steigt von 1 auf 7 |
+| Wecker-Zeit erreicht (bis 10 min verspätet) | Wecker startet: Farbe des aktiven Sets, Helligkeit steigt von 1 auf 7 |
 | Wecker-Dauer abgelaufen | Lampe geht aus (Sleep) |
 | Gute-Nacht-Dauer abgelaufen | Lampe geht aus (Sleep) |
 | 1.1., 8.8., 2.9., 24.12. ab 7:00 | Feier-Modus (Regenbogen) |

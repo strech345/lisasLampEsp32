@@ -3,7 +3,10 @@ import { get, writable } from "svelte/store";
 import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
 
-const MAX_ALARMS = 10;
+export const MAX_ALARMS = 16; // muss zur Firmware passen (include/types.h)
+
+// Freier Wecker-Platz: weder wöchentlich (day > 0) noch einmalig (once)
+const EMPTY_ALARM = { day: 0, hour: 0, minute: 0, active: false, once: false };
 export const MAX_LIGHT_SETS = 6; // muss zur Firmware passen (include/types.h)
 
 // Neues Set beim Hinzufügen: Neutralweiß, statisch
@@ -20,10 +23,7 @@ const defaultConfig = {
   alarms: Array(MAX_ALARMS)
     .fill(null)
     .map(() => ({
-      day: 0,
-      hour: 0,
-      minute: 0,
-      active: false,
+      ...EMPTY_ALARM,
     })),
   goodNightDuration: 30,
   alarmDuration: 30,
@@ -115,12 +115,16 @@ function createConfigStore() {
       this.post();
     },
 
-    addAlarm() {
+    // Neuer Wecker im ersten freien Platz: ohne Datum wöchentlich (Montag 7:00),
+    // mit Datum ("JJJJ-MM-TT") ein einmaliger Termin um 7:00
+    addAlarm(date = null) {
       update((config) => {
         const alarms = [...config.alarms];
         for (let i = 0; i < MAX_ALARMS; i++) {
-          if (alarms[i].day === 0) {
-            alarms[i] = { day: 1, hour: 7, minute: 0, active: true };
+          if (alarms[i].day === 0 && !alarms[i].once) {
+            alarms[i] = date
+              ? { day: 0, hour: 7, minute: 0, active: true, once: true, date }
+              : { day: 1, hour: 7, minute: 0, active: true, once: false };
             return { ...config, alarms };
           }
         }
@@ -142,7 +146,7 @@ function createConfigStore() {
     removeAlarm(index) {
       update((config) => {
         const alarms = [...config.alarms];
-        alarms[index] = { day: 0, hour: 0, minute: 0, active: false };
+        alarms[index] = { ...EMPTY_ALARM };
         return { ...config, alarms };
       });
       this.post();

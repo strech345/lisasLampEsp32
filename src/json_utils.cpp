@@ -28,6 +28,14 @@ String createConfigJson(const FullConfig& config) {
         alarmObj["hour"] = config.alarms[i].hour;
         alarmObj["minute"] = config.alarms[i].minute;
         alarmObj["active"] = config.alarms[i].active;
+        alarmObj["once"] = config.alarms[i].once;
+        if(config.alarms[i].once) {
+            // Datum im Format des HTML-Datumsfelds (JJJJ-MM-TT)
+            char date[16]; // 10 Zeichen + Reserve (Compiler-Warnung bei Extremwerten)
+            snprintf(date, sizeof(date), "%04u-%02u-%02u", config.alarms[i].onceYear, config.alarms[i].onceMonth,
+                     config.alarms[i].onceDay);
+            alarmObj["date"] = date;
+        }
     }
 
     String jsonResponse;
@@ -118,6 +126,23 @@ bool parseConfigJson(const String& jsonString, FullConfig& config, String* error
             if(!readIntRange(alarmObj["minute"], tmp.alarms[i].minute, 0, 59, v)) return fail(error, "Wecker-Minute muss 0–59 sein.");
             tmp.alarms[i].minute = v;
             tmp.alarms[i].active = alarmObj["active"] | tmp.alarms[i].active;
+            // Einmaliger Termin: "once": true + "date": "JJJJ-MM-TT"
+            tmp.alarms[i].once = alarmObj["once"] | false;
+            if(tmp.alarms[i].once) {
+                const char* date = alarmObj["date"] | "";
+                unsigned y = 0, m = 0, d = 0;
+                if(sscanf(date, "%4u-%2u-%2u", &y, &m, &d) != 3 || y < 2020 || y > 2099 || m < 1 || m > 12 || d < 1
+                   || d > 31)
+                    return fail(error, "Wecker-Datum ungültig (JJJJ-MM-TT).");
+                tmp.alarms[i].onceYear = y;
+                tmp.alarms[i].onceMonth = m;
+                tmp.alarms[i].onceDay = d;
+                tmp.alarms[i].day = 0; // Wochentag spielt bei einmaligen Weckern keine Rolle
+            } else {
+                tmp.alarms[i].onceYear = 0;
+                tmp.alarms[i].onceMonth = 0;
+                tmp.alarms[i].onceDay = 0;
+            }
             i++;
         }
     }

@@ -52,7 +52,7 @@ wird danach wieder Sleep.
 |---|---|---|
 | Aufwecken per Taster/Drehen | Normalbetrieb, Helligkeit 1 | `main.cpp` |
 | Aufwecken per Timer | Sleep | `main.cpp` |
-| Wecker-Zeit erreicht (bis 10 min verspätet, gültige Uhrzeit) | Wecker | `alarm.cpp` |
+| Wecker-Zeit erreicht (Wochentag bzw. Datum passt, bis 10 min verspätet, gültige Uhrzeit) | Wecker | `alarm.cpp` |
 | Wecker-Dauer abgelaufen | Sleep | `lamp_state.cpp` |
 | Kurzer Druck im Normalbetrieb | Gute Nacht | `lamp_state.cpp` (`onShortPress`) |
 | Gute-Nacht-Dauer abgelaufen | Sleep | `good_night.cpp` |

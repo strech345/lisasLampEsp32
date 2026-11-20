@@ -194,6 +194,7 @@
   :global(.set-row button),
   :global(.alarm-row select),
   :global(.alarm-row input[type="time"]),
+  :global(.alarm-row input[type="date"]),
   :global(.alarm-row button),
   :global(.duration-grid input[type="number"]) {
     height: var(--control-h) !important;

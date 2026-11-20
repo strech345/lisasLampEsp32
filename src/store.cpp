@@ -117,7 +117,7 @@ FullConfig getDefaultFullConfig() {
     defaultConfig.brightnessMode = 7; // Maximale Helligkeit
 
     for(int i = 0; i < MAX_ALARMS; ++i) {
-        defaultConfig.alarms[i] = {0, 0, 0, false};
+        defaultConfig.alarms[i] = {0, 0, 0, false, false, 0, 0, 0};
     }
     defaultConfig.goodNightDuration = 30;
     defaultConfig.alarmDuration = 30;
