@@ -18,11 +18,10 @@
                          (month === 8 && day === 2) || // Sep 2 
                          (month === 11 && day === 24); // 24. Dez (getMonth ist 0-basiert)
   
-  // Winter: 15. Nov. bis 15. Feb. (Monate 0-basiert: 10 = Nov, 11 = Dez, 0 = Jan, 1 = Feb)
-  const isWinter = (month === 10 && day >= 15) || // 15.-30. Nov
-                   (month === 11) ||              // Dezember
+  // Winter (Schneefall): 15. Dez. bis 15. Feb. (Monate 0-basiert: 11 = Dez, 0 = Jan, 1 = Feb)
+  const isWinter = (month === 11 && day >= 15) || // 15.–31. Dezember
                    (month === 0) ||               // Januar
-                   (month === 1 && day <= 15);    // 1.-15. Feb
+                   (month === 1 && day <= 15);    // 1.–15. Februar
 
   $: goodNightDuration = $configStore.goodNightDuration || 30;
   $: alarmDuration = $configStore.alarmDuration || 30;
