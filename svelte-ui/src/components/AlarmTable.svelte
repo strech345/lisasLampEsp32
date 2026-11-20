@@ -52,91 +52,118 @@
     .filter(alarm => alarm.day > 0);
 </script>
 
-<div class="table-container">
-  <table class="alarm-table" id="alarmsContainer" aria-live="polite">
-    <thead>
-      <tr>
-        <th>Aktiv</th>
-        <th>Tag</th>
-        <th>Zeit</th>
-        <th>Löschen</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each activeAlarms as alarm (alarm.index)}
-        <tr id="alarm-row-{alarm.index}">
-          <td class="center-cell">
-            <input type="checkbox" 
-                   role="switch" 
-                   checked={alarm.active} 
-                   on:change={(e) => handleActiveChange(alarm.index, e)}>
-          </td>
-          <td>
-            <select class="table-select" use:initSelect={alarm.day} on:change={(e) => handleDayChange(alarm.index, e)}>
-              <option value="0">Nicht gesetzt</option>
-              {#each Object.entries(dayNames) as [value, name]}
-                <option value={value}>{name}</option>
-              {/each}
-            </select>
-          </td>
-          <td>
-            <input class="table-time" type="time" 
-                   value="{pad2(alarm.hour)}:{pad2(alarm.minute)}" 
-                   on:change={(e) => handleTimeChange(alarm.index, e)}>
-          </td>
-          <td class="center-cell">
-            <button class="table-button square btn-blue" type="button" 
-                    on:click={() => removeAlarm(alarm.index)}
-                    aria-label="Wecker entfernen {alarm.index}">
-              ×
-            </button>
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
-</div>
+<!-- Ein Wecker = immer genau eine Zeile (gleicher Aufbau wie die Licht-Sets) -->
+<div class="alarms" aria-live="polite">
+  {#each activeAlarms as alarm (alarm.index)}
+    <div class="alarm-row" id="alarm-row-{alarm.index}" class:inactive={!alarm.active}>
+      <input
+        type="checkbox"
+        role="switch"
+        aria-label="Wecker {alarm.index + 1} aktiv"
+        checked={alarm.active}
+        on:change={(e) => handleActiveChange(alarm.index, e)}
+      />
+      <select
+        aria-label="Wochentag Wecker {alarm.index + 1}"
+        use:initSelect={alarm.day}
+        on:change={(e) => handleDayChange(alarm.index, e)}
+      >
+        {#each Object.entries(dayNames) as [value, name]}
+          <option value={value}>{name}</option>
+        {/each}
+      </select>
+      <input
+        type="time"
+        aria-label="Uhrzeit Wecker {alarm.index + 1}"
+        value="{pad2(alarm.hour)}:{pad2(alarm.minute)}"
+        on:change={(e) => handleTimeChange(alarm.index, e)}
+      />
+      <button
+        class="btn-small remove"
+        type="button"
+        on:click={() => removeAlarm(alarm.index)}
+        aria-label="Wecker {alarm.index + 1} löschen">×</button
+      >
+    </div>
+  {/each}
 
-<div style="display: flex; justify-content: space-between; align-items: center">
-  <p><small>Maximal 10 Wecker.</small></p>
-  <button class="btn-small btn-blue" type="button" on:click={addAlarm}>Wecker hinzufügen</button>
+  {#if activeAlarms.length < 10}
+    <button class="btn-small btn-blue add" type="button" on:click={addAlarm}>Wecker hinzufügen</button>
+  {/if}
+  <p class="hint">Maximal 10 Wecker.</p>
 </div>
 
 <style>
-  .table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  .alarm-table {
-    width: 100%;
-    font-size: 0.9rem;
-    border-collapse: collapse;
-  }
-  
-  .alarm-table th,
-  .alarm-table td {
-    padding: 0.5rem;
-    vertical-align: middle;
-    text-align: left;
-  }
-  
-  .center-cell {
-    text-align: center;
+  .alarms {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
   }
 
-  
-  .table-time {
-    padding: 0.5rem;
-    min-width: 100px;
-  }
-  
-  .table-button {
-    width: 2.5rem;
-    padding: 0 !important;
+  /* Gleicher Zeilenaufbau wie LightSets.svelte: nie umbrechen, Tag und Uhrzeit teilen sich den Platz */
+  .alarm-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-size: 1rem !important;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    padding: 0.3rem 0.4rem;
+    border-radius: 6px;
+    border: 1px solid transparent;
+  }
+
+  .alarm-row.inactive {
+    opacity: 0.6;
+  }
+
+  input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0 !important;
+  }
+
+  select,
+  input[type="time"] {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    margin: 0 !important;
+    padding-left: 0.5rem !important;
+  }
+
+  select {
+    padding-right: 1.6rem !important;
+    text-overflow: ellipsis;
+  }
+
+  .remove {
+    flex: 0 0 2rem;
+    width: 2rem;
+    padding: 0.2rem !important;
+    margin: 0 !important;
+  }
+
+  .add {
+    align-self: flex-start;
+  }
+
+  .hint {
+    font-size: 0.85rem;
+    opacity: 0.75;
+    margin: 0;
+  }
+
+  @media (max-width: 420px) {
+    .alarm-row {
+      gap: 0.25rem;
+      padding: 0.25rem 0.3rem;
+    }
+    select,
+    input[type="time"] {
+      font-size: 0.85rem;
+      padding-left: 0.35rem !important;
+    }
+    select {
+      padding-right: 1.2rem !important;
+      background-position: right 0.25rem center !important;
+    }
   }
 </style>

@@ -40,15 +40,14 @@
 <div class="sets">
   {#each sets as set, i}
     <div class="set-row" class:active={i === activeSet}>
-      <label class="set-select" title="Dieses Set aktivieren">
-        <input
-          type="radio"
-          name="activeSet"
-          checked={i === activeSet}
-          on:change={() => configStore.setActiveSet(i)}
-        />
-        Set {i + 1}
-      </label>
+      <input
+        type="radio"
+        name="activeSet"
+        aria-label="Set {i + 1} aktivieren"
+        title="Dieses Set aktivieren"
+        checked={i === activeSet}
+        on:change={() => configStore.setActiveSet(i)}
+      />
 
       <select
         aria-label="Lichtfarbe Set {i + 1}"
@@ -103,15 +102,17 @@
   .sets {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.4rem;
   }
 
+  /* Ein Set = immer genau eine Zeile, auch bei schmalen Bildschirmen: die beiden Auswahllisten
+     teilen sich den Platz und dürfen schrumpfen, alles andere hat eine feste kleine Breite */
   .set-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    padding: 0.35rem 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    padding: 0.3rem 0.4rem;
     border-radius: 6px;
     border: 1px solid transparent;
   }
@@ -120,30 +121,34 @@
     border-color: var(--pico-primary, #0066cc);
   }
 
-  .set-select {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-bottom: 0;
-    white-space: nowrap;
-    min-width: 4.5rem;
+  input[type="radio"] {
+    flex: 0 0 auto;
+    margin: 0 !important;
   }
 
   select {
+    flex: 1 1 0;
+    min-width: 0;
     width: auto;
-    min-width: 8rem;
-    flex: 1 1 8rem;
+    margin: 0 !important;
+    padding-left: 0.5rem !important;
+    padding-right: 1.6rem !important;
+    text-overflow: ellipsis;
   }
 
   .color-input {
-    width: 2.75rem;
-    height: 2.25rem;
-    padding: 0.2rem;
+    flex: 0 0 2.2rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    padding: 0.15rem;
+    margin: 0 !important;
   }
 
   .remove {
+    flex: 0 0 2rem;
     width: 2rem;
     padding: 0.2rem !important;
+    margin: 0 !important;
   }
 
   .add {
@@ -154,5 +159,19 @@
     font-size: 0.85rem;
     opacity: 0.75;
     margin: 0;
+  }
+
+  /* Schmale Bildschirme: kleinere Schrift und weniger Platz für den Pfeil → mehr Text sichtbar */
+  @media (max-width: 420px) {
+    .set-row {
+      gap: 0.25rem;
+      padding: 0.25rem 0.3rem;
+    }
+    select {
+      font-size: 0.85rem;
+      padding-left: 0.35rem !important;
+      padding-right: 1.2rem !important;
+      background-position: right 0.25rem center !important;
+    }
   }
 </style>

@@ -239,6 +239,12 @@
     padding-top: var(--pico-spacing);
   }
 
+  /* Mehr Abstand zwischen Abschnittstitel und dem Inhalt darüber */
+  section > h3 {
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+
   .duration-container {
     display: flex;
     gap: 1rem;
