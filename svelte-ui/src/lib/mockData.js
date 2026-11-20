@@ -2,8 +2,13 @@
 // To enable mocking, add ?mock=true to the URL
 
 export const mockConfig = {
-  override_color: { r: 120, g: 80, b: 200 },
-  colorMode: 3, // Always set to custom mode
+  sets: [
+    { colorMode: 1, animationMode: 0, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 2, animationMode: 1, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 4, animationMode: 2, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 3, animationMode: 0, color: { r: 120, g: 80, b: 200 } },
+  ],
+  activeSet: 1,
   alarms: [
     { day: 1, hour: 7, minute: 30, active: true },
     { day: 2, hour: 8, minute: 0, active: true },

@@ -39,6 +39,8 @@ void initLampState(LampState* pLampState, bool* pWarningsEnabled, FullConfig* pA
 
 // Setzt die LED-Farbe passend zum konfigurierten Farbmodus (Weiß-Töne oder Custom-RGB)
 void checkAndApplyColorMode(const FullConfig& config) {
+    // Aktives Licht-Set (Index abgesichert)
+    const LightSet& set = config.sets[config.activeSet < config.setCount ? config.activeSet : 0];
     RGB colorToApply;
     String modeName;
 
@@ -49,7 +51,7 @@ void checkAndApplyColorMode(const FullConfig& config) {
     // der Ton verschiebt sich dabei etwas (am Gerät abgestimmt)
     uint32_t colorHex = 0;
     uint32_t boostHex = 0;
-    switch(config.colorMode) {
+    switch(set.colorMode) {
     case 0: // Kaltweiß (~6000 K): weiße LED etwas reduziert, Blau dazu
         colorHex = 0xC00000A0;
         boostHex = 0xFF6080FF;
@@ -71,7 +73,7 @@ void checkAndApplyColorMode(const FullConfig& config) {
         modeName = "Candle";
         break;
     case 3: // Benutzerdefinierte Farbe (ohne Boost)
-        colorToApply = config.color;
+        colorToApply = set.color;
         colorHex = (uint32_t(0) << 24) | (uint32_t(colorToApply.r) << 16) | (uint32_t(colorToApply.g) << 8)
             | uint32_t(colorToApply.b);
         boostHex = colorHex;
@@ -85,7 +87,7 @@ void checkAndApplyColorMode(const FullConfig& config) {
     }
 
     setLedColors(colorHex, boostHex);
-    setAnimationMode(config.animationMode);
+    setAnimationMode(set.animationMode);
     setAnimationSpeed(config.animationSpeed);
     serialPrint("LED color set to " + modeName + " (Hex: " + String(colorHex, HEX) + ")");
 }

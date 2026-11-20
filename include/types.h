@@ -25,12 +25,21 @@ struct Alarm {
 #define DEFAULT_LED_COUNT 4
 #define MAX_LED_COUNT 16 // Strombedarf: bis ca. 80 mA pro RGBW-LED bei voller Helligkeit
 
+// Ein Licht-Set: Lichtfarbe + Animation (in der Weboberfläche anlegbar, per Drücken + Drehen wählbar)
+struct LightSet {
+    byte colorMode;     // 0=Kaltweiß, 1=Neutralweiß, 2=Warmweiß, 3=Eigene Farbe, 4=Kerzenlicht
+    byte animationMode; // 0=Statisch, 1=Atmen, 2=Flamme
+    RGB color;          // nur bei colorMode 3 (Eigene Farbe)
+};
+
+#define MAX_LIGHT_SETS 6
+
 // Vollständige Lampen-Konfiguration (wird im Flash gespeichert)
 struct FullConfig {
-    RGB color;
+    LightSet sets[MAX_LIGHT_SETS];
+    byte setCount;  // Anzahl angelegter Sets (1–MAX_LIGHT_SETS)
+    byte activeSet; // Index des aktiven Sets (0 … setCount-1)
     byte brightnessMode;
-    byte colorMode;     // 0=Kaltweiß, 1=Neutralweiß, 2=Warmweiß, 3=Benutzerdefiniert, 4=Kerzenlicht
-    byte animationMode; // 0=Statisch, 1=Atmung, 2=Flamme
     Alarm alarms[MAX_ALARMS];
     uint16_t goodNightDuration; // Dauer Gute-Nacht-Modus in Minuten
     uint16_t alarmDuration;     // Dauer Weckalarm in Minuten

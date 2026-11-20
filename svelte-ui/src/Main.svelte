@@ -2,7 +2,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import AlarmTable from "./components/AlarmTable.svelte";
-  import ColorPicker from "./components/ColorPicker.svelte";
+  import LightSets from "./components/LightSets.svelte";
   import MessageAlert from "./components/MessageAlert.svelte";
   import { configStore } from "./stores/configStore.js";
   import { messageStore } from "./stores/messageStore.js";
@@ -122,8 +122,8 @@
     <MessageAlert />
 
     <section aria-labelledby="section-general">
-      <h3 id="section-general">Farbe</h3>
-      <ColorPicker />
+      <h3 id="section-general">Licht-Sets</h3>
+      <LightSets />
     </section>
 
     <section aria-labelledby="section-durations">

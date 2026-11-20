@@ -4,14 +4,19 @@
 String createConfigJson(const FullConfig& config) {
     JsonDocument doc;
 
-    JsonObject colorObj = doc["override_color"].to<JsonObject>();
-    colorObj["r"] = config.color.r;
-    colorObj["g"] = config.color.g;
-    colorObj["b"] = config.color.b;
-
-    doc["colorMode"] = config.colorMode;
+    // Licht-Sets und aktives Set
+    JsonArray setsArray = doc["sets"].to<JsonArray>();
+    for(int i = 0; i < config.setCount && i < MAX_LIGHT_SETS; ++i) {
+        JsonObject s = setsArray.add<JsonObject>();
+        s["colorMode"] = config.sets[i].colorMode;
+        s["animationMode"] = config.sets[i].animationMode;
+        JsonObject c = s["color"].to<JsonObject>();
+        c["r"] = config.sets[i].color.r;
+        c["g"] = config.sets[i].color.g;
+        c["b"] = config.sets[i].color.b;
+    }
+    doc["activeSet"] = config.activeSet;
     doc["brightnessMode"] = config.brightnessMode;
-    doc["animationMode"] = config.animationMode;
     doc["goodNightDuration"] = config.goodNightDuration;
     doc["alarmDuration"] = config.alarmDuration;
     doc["animationSpeed"] = config.animationSpeed;
@@ -58,21 +63,38 @@ bool parseConfigJson(const String& jsonString, FullConfig& config, String* error
     FullConfig tmp = config; // erst auf Kopie arbeiten, bei Fehler nichts übernehmen
     long v;
 
-    // Farbe: fehlt override_color, bleibt die aktuelle Farbe
-    JsonObjectConst colorObj = doc["override_color"].as<JsonObjectConst>();
-    if(!colorObj.isNull()) {
-        if(!readIntRange(colorObj["r"], tmp.color.r, 0, 255, v)) return fail(error, "Rotwert muss 0–255 sein.");
-        tmp.color.r = v;
-        if(!readIntRange(colorObj["g"], tmp.color.g, 0, 255, v)) return fail(error, "Grünwert muss 0–255 sein.");
-        tmp.color.g = v;
-        if(!readIntRange(colorObj["b"], tmp.color.b, 0, 255, v)) return fail(error, "Blauwert muss 0–255 sein.");
-        tmp.color.b = v;
+    // Licht-Sets: fehlt "sets", bleiben die aktuellen; sonst wird die Liste komplett ersetzt (1–6)
+    JsonArrayConst setsArray = doc["sets"].as<JsonArrayConst>();
+    if(!setsArray.isNull()) {
+        if(setsArray.size() < 1 || setsArray.size() > MAX_LIGHT_SETS)
+            return fail(error, "Es muss 1–6 Sets geben.");
+        LightSet sets[MAX_LIGHT_SETS];
+        memset(sets, 0, sizeof(sets));
+        int i = 0;
+        for(JsonObjectConst s : setsArray) {
+            if(!readIntRange(s["colorMode"], 1, 0, 4, v)) return fail(error, "Lichtfarbe (colorMode) muss 0–4 sein.");
+            sets[i].colorMode = v;
+            if(!readIntRange(s["animationMode"], 0, 0, 2, v)) return fail(error, "Animation muss 0–2 sein.");
+            sets[i].animationMode = v;
+            JsonObjectConst c = s["color"].as<JsonObjectConst>();
+            if(!readIntRange(c["r"], 255, 0, 255, v)) return fail(error, "Rotwert muss 0–255 sein.");
+            sets[i].color.r = v;
+            if(!readIntRange(c["g"], 255, 0, 255, v)) return fail(error, "Grünwert muss 0–255 sein.");
+            sets[i].color.g = v;
+            if(!readIntRange(c["b"], 255, 0, 255, v)) return fail(error, "Blauwert muss 0–255 sein.");
+            sets[i].color.b = v;
+            i++;
+        }
+        memcpy(tmp.sets, sets, sizeof(tmp.sets));
+        tmp.setCount = i;
     }
-
-    if(!readIntRange(doc["colorMode"], tmp.colorMode, 0, 4, v)) return fail(error, "colorMode muss 0–4 sein.");
-    tmp.colorMode = v;
-    if(!readIntRange(doc["animationMode"], tmp.animationMode, 0, 2, v)) return fail(error, "animationMode muss 0–2 sein.");
-    tmp.animationMode = v;
+    // Aktives Set: muss auf ein vorhandenes Set zeigen (fehlt es, bleibt es, notfalls gekürzt)
+    if(!readIntRange(doc["activeSet"], tmp.activeSet, 0, tmp.setCount - 1, v)) {
+        if(doc["activeSet"].is<long>())
+            return fail(error, "Aktives Set existiert nicht.");
+        v = tmp.setCount - 1; // Liste wurde gekürzt → letztes Set
+    }
+    tmp.activeSet = v;
     if(!readIntRange(doc["goodNightDuration"], tmp.goodNightDuration, 1, 1440, v))
         return fail(error, "Gute-Nacht-Dauer muss 1–1440 Minuten sein.");
     tmp.goodNightDuration = v;

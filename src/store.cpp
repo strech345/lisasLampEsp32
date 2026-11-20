@@ -107,9 +107,13 @@ static bool loadFullConfig(FullConfig& config) {
 FullConfig getDefaultFullConfig() {
     FullConfig defaultConfig;
 
-    defaultConfig.color = {255, 255, 255};
-    defaultConfig.colorMode = 1;      // Neutralweiß
-    defaultConfig.animationMode = 1;  // Atmungs-Effekt
+    // Standard-Sets: 1 Neutralweiß statisch, 2 Warmweiß atmend (aktiv), 3 Kerzenlicht als Flamme
+    memset(defaultConfig.sets, 0, sizeof(defaultConfig.sets));
+    defaultConfig.sets[0] = {1, 0, {255, 255, 255}};
+    defaultConfig.sets[1] = {2, 1, {255, 255, 255}};
+    defaultConfig.sets[2] = {4, 2, {255, 255, 255}};
+    defaultConfig.setCount = 3;
+    defaultConfig.activeSet = 1;
     defaultConfig.brightnessMode = 7; // Maximale Helligkeit
 
     for(int i = 0; i < MAX_ALARMS; ++i) {

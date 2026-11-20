@@ -1,15 +1,22 @@
-// Store für die Lampen-Konfiguration (Farbe, Alarme, Dauer) inkl. Laden/Speichern über lib/api.js.
+// Store für die Lampen-Konfiguration (Licht-Sets, Alarme, Dauer) inkl. Laden/Speichern über lib/api.js.
 import { get, writable } from "svelte/store";
 import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
 
 const MAX_ALARMS = 10;
+export const MAX_LIGHT_SETS = 6; // muss zur Firmware passen (include/types.h)
 
-// Default config matching the original structure
+// Neues Set beim Hinzufügen: Neutralweiß, statisch
+const NEW_SET = { colorMode: 1, animationMode: 0, color: { r: 255, g: 255, b: 255 } };
+
+// Startwerte bis die Konfiguration vom Gerät geladen ist (entsprechen den Firmware-Standardwerten)
 const defaultConfig = {
-  override_color: { r: 255, g: 255, b: 255 },
-  colorMode: 1, // Default to Neutral White
-  animationMode: 1,
+  sets: [
+    { colorMode: 1, animationMode: 0, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 2, animationMode: 1, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 4, animationMode: 2, color: { r: 255, g: 255, b: 255 } },
+  ],
+  activeSet: 1,
   alarms: Array(MAX_ALARMS)
     .fill(null)
     .map(() => ({
@@ -56,35 +63,39 @@ function createConfigStore() {
       this.load();
     },
 
-    updateColor(r, g, b) {
-      update((config) => ({
-        ...config,
-        override_color: { r, g, b },
-      }));
+    // Macht Set i zum aktiven Set
+    setActiveSet(i) {
+      update((config) => ({ ...config, activeSet: i }));
       this.post();
     },
 
-    /*  toggleColorOverride(active) {
-      update((config) => ({
-        ...config,
-        colorMode: 1, // Always set to 1 as requested
-      }));
-      this.post();
-    }, */
-
-    setColorMode(modeId) {
-      update((config) => ({
-        ...config,
-        colorMode: modeId,
-      }));
+    // Ändert Felder von Set i (z. B. { colorMode: 3 } oder { color: {r,g,b} })
+    updateSet(i, patch) {
+      update((config) => {
+        const sets = config.sets.map((s, idx) => (idx === i ? { ...s, ...patch } : s));
+        return { ...config, sets };
+      });
       this.post();
     },
 
-    setAnimationMode(modeId) {
-      update((config) => ({
-        ...config,
-        animationMode: modeId,
-      }));
+    // Hängt ein neues Set an (max. MAX_LIGHT_SETS)
+    addSet() {
+      update((config) => {
+        if (config.sets.length >= MAX_LIGHT_SETS) return config;
+        return { ...config, sets: [...config.sets, { ...NEW_SET, color: { ...NEW_SET.color } }] };
+      });
+      this.post();
+    },
+
+    // Löscht Set i (mindestens eines bleibt); das aktive Set rückt bei Bedarf nach
+    removeSet(i) {
+      update((config) => {
+        if (config.sets.length <= 1) return config;
+        const sets = config.sets.filter((_, idx) => idx !== i);
+        let activeSet = config.activeSet;
+        if (i < activeSet || activeSet >= sets.length) activeSet = Math.max(0, activeSet - 1);
+        return { ...config, sets, activeSet };
+      });
       this.post();
     },
 
