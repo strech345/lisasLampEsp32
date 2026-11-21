@@ -1,7 +1,8 @@
 // Feier-Modus — Implementierung
-// Manuell gestoppter Modus wird für den Rest des Tages unterdrückt (lastTriggeredDay).
+// Manuell gestoppter Modus wird für den Rest des Tages unterdrückt (Starttag im RTC-Speicher).
 #include "celebration.h"
 #include <time.h>
+#include <esp_attr.h>
 #include "debug_utils.h"
 
 // Party-Tage aus den Systemeinstellungen (in der Weboberfläche änderbar, Standard aus secrets.h)
@@ -13,7 +14,31 @@ void initCelebration(const SystemSettings* settings) {
 }
 
 static bool celebrationActive = false;
-static int lastTriggeredDay = -1; // tm_yday des letzten Starts — verhindert Neustart nach manuellem Stopp
+
+// Tag des letzten Starts als Jahr * 1000 + Jahrestag (tm_yday); -1 = heute noch nicht gestartet.
+// Verhindert einen Neustart nach manuellem Stopp — im RTC-Speicher, damit das auch nach Deep Sleep gilt
+// (sonst startete z. B. ein Timer-Wakeup um 23 Uhr den Regenbogen erneut), ebenso nach Neustart/Absturz.
+// Nach dem Einschalten ist der Speicher zufällig → die Kennung erkennt das und setzt -1.
+#define CELEBRATION_RTC_MAGIC 0xCE1EB001u
+struct CelebrationRtcState {
+    uint32_t magic;
+    int32_t lastTriggeredDay;
+};
+RTC_NOINIT_ATTR static CelebrationRtcState s_rtc;
+
+// Liefert den gemerkten Starttag; nach dem Einschalten (Kennung fehlt) zuerst auf -1 setzen
+static int32_t& lastTriggeredDay() {
+    if(s_rtc.magic != CELEBRATION_RTC_MAGIC) {
+        s_rtc.lastTriggeredDay = -1;
+        s_rtc.magic = CELEBRATION_RTC_MAGIC;
+    }
+    return s_rtc.lastTriggeredDay;
+}
+
+// Schlüssel für "heute": Jahr * 1000 + Jahrestag (eindeutig auch über den Jahreswechsel)
+static int32_t dayKey(const struct tm* t) {
+    return (int32_t)(t->tm_year + 1900) * 1000 + t->tm_yday;
+}
 
 // Prüft ob Monat/Tag in der Feiertagsliste ist
 static bool isCelebrationDate(int m, int d) {
@@ -33,8 +58,9 @@ void checkCelebrationLogic() {
     struct tm* ptm = localtime(&nowTime);
 
     // Wenn der Tag gewechselt hat, Unterdrückung zurücksetzen
-    if(lastTriggeredDay != -1 && lastTriggeredDay != ptm->tm_yday) {
-        lastTriggeredDay = -1;
+    const int32_t today = dayKey(ptm);
+    if(lastTriggeredDay() != -1 && lastTriggeredDay() != today) {
+        lastTriggeredDay() = -1;
     }
 
     // Systemzeit vor 2020 = nie synchronisiert (Epoch-0 = 1.1.1970 wäre sonst ein Feiertag)
@@ -44,10 +70,10 @@ void checkCelebrationLogic() {
 
     if(isCelebrationDate(ptm->tm_mon + 1, ptm->tm_mday)) {
         // Feier-Modus starten wenn es 7 Uhr oder später ist und heute noch nicht gestartet wurde
-        if(ptm->tm_hour >= 7 && !celebrationActive && lastTriggeredDay == -1) {
+        if(ptm->tm_hour >= 7 && !celebrationActive && lastTriggeredDay() == -1) {
             serialPrint("It's a celebration day! Starting celebration mode at 7 AM.");
             celebrationActive = true;
-            lastTriggeredDay = ptm->tm_yday;
+            lastTriggeredDay() = today;
         }
     } else {
         // Kein Feiertag mehr → sicherstellen dass der Modus gestoppt ist
@@ -90,7 +116,7 @@ int64_t getMillisToNextCelebration() {
 
         if(target.tm_mon == ptm->tm_mon && target.tm_mday == ptm->tm_mday) {
             // Feiertag ist heute: wenn 7 Uhr schon vorbei oder manuell gestoppt → nächstes Jahr
-            if(ptm->tm_hour >= 7 || lastTriggeredDay == ptm->tm_yday) {
+            if(ptm->tm_hour >= 7 || lastTriggeredDay() == dayKey(ptm)) {
                 target.tm_year += 1;
                 celebrationEpoch = mktime(&target);
             }

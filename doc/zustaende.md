@@ -67,7 +67,9 @@ Wecker deaktiviert oder zeitlich geändert wurde.
 
 Jeder Wecker feuert pro Tag nur einmal. Der Auslösetag liegt im RTC-Speicher und übersteht Deep Sleep,
 Neustart und Absturz (nicht aber einen Stromausfall): Ein gestoppter Wecker startet also nicht erneut, wenn
-die Lampe innerhalb des 10-min-Nachlauffensters aufgeweckt wird.
+die Lampe innerhalb des 10-min-Nachlauffensters aufgeweckt wird. Ebenso merkt sich der Feier-Modus den
+Starttag im RTC-Speicher: Wurde er für heute beendet, startet ihn auch ein späteres Aufwachen (z. B. der
+Timer-Wakeup für den Zeitabgleich) nicht erneut.
 
 ---
 
