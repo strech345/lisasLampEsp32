@@ -1,31 +1,41 @@
+// JSON-Serialisierung/-Deserialisierung — Implementierung
 #include "json_utils.h"
 
 String createConfigJson(const FullConfig& config) {
-    StaticJsonDocument<2048> doc; // Adjust size if more data or complex structures are added
+    JsonDocument doc;
 
-    // Add RGB override color
-    JsonObject colorObj = doc.createNestedObject("override_color");
-    colorObj["r"] = config.color.r;
-    colorObj["g"] = config.color.g;
-    colorObj["b"] = config.color.b;
-
-    // Add color mode
-    // doc["selectedColorMode"] = 1; // Always active for frontend compatibility
-    doc["colorMode"] = config.colorMode;
+    // Szenen und aktives Set
+    JsonArray setsArray = doc["sets"].to<JsonArray>();
+    for(int i = 0; i < config.setCount && i < MAX_LIGHT_SETS; ++i) {
+        JsonObject s = setsArray.add<JsonObject>();
+        s["colorMode"] = config.sets[i].colorMode;
+        s["animationMode"] = config.sets[i].animationMode;
+        JsonObject c = s["color"].to<JsonObject>();
+        c["r"] = config.sets[i].color.r;
+        c["g"] = config.sets[i].color.g;
+        c["b"] = config.sets[i].color.b;
+    }
+    doc["activeSet"] = config.activeSet;
     doc["brightnessMode"] = config.brightnessMode;
-    doc["animationMode"] = config.animationMode;
     doc["goodNightDuration"] = config.goodNightDuration;
     doc["alarmDuration"] = config.alarmDuration;
     doc["animationSpeed"] = config.animationSpeed;
 
-    // Add alarms array
-    JsonArray alarmsArray = doc.createNestedArray("alarms");
+    JsonArray alarmsArray = doc["alarms"].to<JsonArray>();
     for(int i = 0; i < MAX_ALARMS; ++i) {
-        JsonObject alarmObj = alarmsArray.createNestedObject();
+        JsonObject alarmObj = alarmsArray.add<JsonObject>();
         alarmObj["day"] = config.alarms[i].day;
         alarmObj["hour"] = config.alarms[i].hour;
         alarmObj["minute"] = config.alarms[i].minute;
         alarmObj["active"] = config.alarms[i].active;
+        alarmObj["once"] = config.alarms[i].once;
+        if(config.alarms[i].once) {
+            // Datum im Format des HTML-Datumsfelds (JJJJ-MM-TT)
+            char date[16]; // 10 Zeichen + Reserve (Compiler-Warnung bei Extremwerten)
+            snprintf(date, sizeof(date), "%04u-%02u-%02u", config.alarms[i].onceYear, config.alarms[i].onceMonth,
+                     config.alarms[i].onceDay);
+            alarmObj["date"] = date;
+        }
     }
 
     String jsonResponse;
@@ -33,88 +43,116 @@ String createConfigJson(const FullConfig& config) {
     return jsonResponse;
 }
 
-bool parseConfigJson(const String& jsonString, FullConfig& config) {
-    StaticJsonDocument<2048> doc; // Adjust size if more data or complex structures are added
+// Setzt die Fehlermeldung (falls gewünscht) und gibt false zurück
+static bool fail(String* error, const char* msg) {
+    if(error)
+        *error = msg;
+    return false;
+}
 
-    DeserializationError error = deserializeJson(doc, jsonString);
-    if(error) {
-        // Handle deserialization error (e.g., print to serial)
-        // For now, just return false. Consider adding a serialPrint if needed
-        // and accessible.
-        return false;
+// Liest eine Ganzzahl aus JSON; fehlt das Feld (oder ist es keine Zahl), bleibt `current`.
+// Liefert false wenn der Wert außerhalb [minV, maxV] liegt.
+static bool readIntRange(JsonVariantConst v, long current, long minV, long maxV, long& out) {
+    out = v.is<long>() ? v.as<long>() : current;
+    return out >= minV && out <= maxV;
+}
+
+// Parst /set_config. Arbeitet auf der übergebenen Kopie der aktuellen Config: fehlende Felder behalten
+// ihren Wert. brightnessMode wird bewusst NICHT übernommen (Drehknopf ist Master der Helligkeit).
+// Bei Fehler bleibt `config` unverändert und `error` enthält eine deutsche Meldung.
+bool parseConfigJson(const String& jsonString, FullConfig& config, String* error) {
+    JsonDocument doc;
+
+    DeserializationError err = deserializeJson(doc, jsonString);
+    if(err) {
+        return fail(error, "Ungültiges JSON.");
     }
 
-    // Parse RGB override color
-    JsonObject colorObj = doc["override_color"];
-    if(!colorObj.isNull()) {
-        config.color.r = colorObj["r"] | 0; // Use | 0 for default if key missing
-        config.color.g = colorObj["g"] | 0;
-        config.color.b = colorObj["b"] | 0;
-    } else {
-        config.color.r = 0; // Use | 0 for default if key missing
-        config.color.g = 0;
-        config.color.b = 0;
-    }
+    FullConfig tmp = config; // erst auf Kopie arbeiten, bei Fehler nichts übernehmen
+    long v;
 
-    // Parse color mode
-    if(doc.containsKey("colorMode")) {
-        config.colorMode = doc["colorMode"];
-    } else {
-        config.colorMode = 1; // Default to Neutral White if not present
-    }
-
-    if(doc.containsKey("brightnessMode")) {
-        config.brightnessMode = doc["brightnessMode"];
-    } else {
-        config.brightnessMode = 7; // Default to max brightness
-    }
-
-    if(doc.containsKey("animationMode")) {
-        config.animationMode = doc["animationMode"];
-    } else {
-        config.animationMode = 1; // Default to Neutral White if not present
-    }
-
-    if(doc.containsKey("goodNightDuration")) {
-        config.goodNightDuration = doc["goodNightDuration"];
-    } else {
-        config.goodNightDuration = 30; // Default 30 min
-    }
-
-    if(doc.containsKey("alarmDuration")) {
-        config.alarmDuration = doc["alarmDuration"];
-    } else {
-        config.alarmDuration = 30; // Default 30 min
-    }
-
-    if(doc.containsKey("animationSpeed")) {
-        config.animationSpeed = doc["animationSpeed"];
-    } else {
-        config.animationSpeed = 200; // Default speed
-    }
-
-    // Parse alarms array
-    JsonArray alarmsArray = doc["alarms"].as<JsonArray>();
-    if(!alarmsArray.isNull()) {
+    // Szenen: fehlt "sets", bleiben die aktuellen; sonst wird die Liste komplett ersetzt (1–6)
+    JsonArrayConst setsArray = doc["sets"].as<JsonArrayConst>();
+    if(!setsArray.isNull()) {
+        if(setsArray.size() < 1 || setsArray.size() > MAX_LIGHT_SETS)
+            return fail(error, "Es muss 1–6 Sets geben.");
+        LightSet sets[MAX_LIGHT_SETS];
+        memset(sets, 0, sizeof(sets));
         int i = 0;
-        for(JsonObject alarmObj : alarmsArray) {
-            if(i < MAX_ALARMS) {
-                config.alarms[i].day = alarmObj["day"] | 0;
-                config.alarms[i].hour = alarmObj["hour"] | 0;
-                config.alarms[i].minute = alarmObj["minute"] | 0;
-                config.alarms[i].active = alarmObj["active"] | false;
-                i++;
-            }
+        for(JsonObjectConst s : setsArray) {
+            if(!readIntRange(s["colorMode"], 1, 0, 4, v)) return fail(error, "Lichtfarbe (colorMode) muss 0–4 sein.");
+            sets[i].colorMode = v;
+            if(!readIntRange(s["animationMode"], 0, 0, 2, v)) return fail(error, "Animation muss 0–2 sein.");
+            sets[i].animationMode = v;
+            JsonObjectConst c = s["color"].as<JsonObjectConst>();
+            if(!readIntRange(c["r"], 255, 0, 255, v)) return fail(error, "Rotwert muss 0–255 sein.");
+            sets[i].color.r = v;
+            if(!readIntRange(c["g"], 255, 0, 255, v)) return fail(error, "Grünwert muss 0–255 sein.");
+            sets[i].color.g = v;
+            if(!readIntRange(c["b"], 255, 0, 255, v)) return fail(error, "Blauwert muss 0–255 sein.");
+            sets[i].color.b = v;
+            i++;
         }
-    } else {
-        // Handle missing alarms array if needed, or assume defaults are fine
+        memcpy(tmp.sets, sets, sizeof(tmp.sets));
+        tmp.setCount = i;
+    }
+    // Aktives Set: muss auf ein vorhandenes Set zeigen (fehlt es, bleibt es, notfalls gekürzt)
+    if(!readIntRange(doc["activeSet"], tmp.activeSet, 0, tmp.setCount - 1, v)) {
+        if(doc["activeSet"].is<long>())
+            return fail(error, "Aktives Set existiert nicht.");
+        v = tmp.setCount - 1; // Liste wurde gekürzt → letztes Set
+    }
+    tmp.activeSet = v;
+    if(!readIntRange(doc["goodNightDuration"], tmp.goodNightDuration, 1, 1440, v))
+        return fail(error, "Gute-Nacht-Dauer muss 1–1440 Minuten sein.");
+    tmp.goodNightDuration = v;
+    if(!readIntRange(doc["alarmDuration"], tmp.alarmDuration, 1, 1440, v))
+        return fail(error, "Weckdauer muss 1–1440 Minuten sein.");
+    tmp.alarmDuration = v;
+    if(!readIntRange(doc["animationSpeed"], tmp.animationSpeed, 10, 65535, v))
+        return fail(error, "Animationsgeschwindigkeit muss 10–65535 sein.");
+    tmp.animationSpeed = v;
+    // brightnessMode aus dem JSON wird ignoriert (K8)
+
+    JsonArrayConst alarmsArray = doc["alarms"].as<JsonArrayConst>();
+    if(!alarmsArray.isNull()) {
+        if(alarmsArray.size() > MAX_ALARMS) return fail(error, "Zu viele Wecker.");
+        int i = 0;
+        for(JsonObjectConst alarmObj : alarmsArray) {
+            if(!readIntRange(alarmObj["day"], tmp.alarms[i].day, 0, 7, v)) return fail(error, "Wecker-Tag muss 0–7 sein.");
+            tmp.alarms[i].day = v;
+            if(!readIntRange(alarmObj["hour"], tmp.alarms[i].hour, 0, 23, v)) return fail(error, "Wecker-Stunde muss 0–23 sein.");
+            tmp.alarms[i].hour = v;
+            if(!readIntRange(alarmObj["minute"], tmp.alarms[i].minute, 0, 59, v)) return fail(error, "Wecker-Minute muss 0–59 sein.");
+            tmp.alarms[i].minute = v;
+            tmp.alarms[i].active = alarmObj["active"] | tmp.alarms[i].active;
+            // Einmaliger Termin: "once": true + "date": "JJJJ-MM-TT"
+            tmp.alarms[i].once = alarmObj["once"] | false;
+            if(tmp.alarms[i].once) {
+                const char* date = alarmObj["date"] | "";
+                unsigned y = 0, m = 0, d = 0;
+                if(sscanf(date, "%4u-%2u-%2u", &y, &m, &d) != 3 || y < 2020 || y > 2099 || m < 1 || m > 12 || d < 1
+                   || d > 31)
+                    return fail(error, "Wecker-Datum ungültig (JJJJ-MM-TT).");
+                tmp.alarms[i].onceYear = y;
+                tmp.alarms[i].onceMonth = m;
+                tmp.alarms[i].onceDay = d;
+                tmp.alarms[i].day = 0; // Wochentag spielt bei einmaligen Weckern keine Rolle
+            } else {
+                tmp.alarms[i].onceYear = 0;
+                tmp.alarms[i].onceMonth = 0;
+                tmp.alarms[i].onceDay = 0;
+            }
+            i++;
+        }
     }
 
+    config = tmp;
     return true;
 }
 
 String createWiFiStatusJson(const WiFiStatus& status) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
 
     if(status.currentTime.isEmpty()) {
         doc["currentTime"] = nullptr;
@@ -122,13 +160,16 @@ String createWiFiStatusJson(const WiFiStatus& status) {
         doc["currentTime"] = status.currentTime;
     }
 
-    doc["lastTestResult"] = (int)status.lastTestResult;
-    doc["timeSinceLastTestMs"] = status.timeSinceLastTestMs;
+    doc["timeSinceLastTestMs"]          = status.timeSinceLastTestMs;
     doc["timeSinceLastSucceededTestMs"] = status.timeSinceLastSucceededTestMs;
-    doc["lastStaConnectionTime"] = status.lastStaConnectionTime;
-    doc["systemTime"] = status.systemTime;
-    doc["clockSynced"] = status.clockSynced;
-    doc["staConfigValid"] = status.staConfigValid;
+    doc["lastStaConnectionTime"]        = status.lastStaConnectionTime;
+    doc["systemTime"]                   = status.systemTime;
+    doc["clockSynced"]                  = status.clockSynced;
+    doc["staConfigValid"]               = status.staConfigValid;
+    doc["staActive"]                    = status.staActive;
+    doc["lastSyncOk"]                   = status.lastSyncOk;
+    doc["everSynced"]                   = status.everSynced;
+    doc["nextSyncInMs"]                 = status.nextSyncInMs;
 
     String jsonString;
     serializeJson(doc, jsonString);
@@ -136,45 +177,142 @@ String createWiFiStatusJson(const WiFiStatus& status) {
 }
 
 String createSystemConfigJson(const SystemSettings& systemSettings) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
 
-    doc["internalSSID"] = systemSettings.internalSSID;
-    doc["internalPW"] = strlen(systemSettings.internalPW) > 0 ? PASSWORD_MASK : "";
-    doc["externalSSID"] = systemSettings.externalSSID;
-    doc["externalPW"] = strlen(systemSettings.externalPW) > 0 ? PASSWORD_MASK : "";
-
+    doc["internalSSID"]     = systemSettings.internalSSID;
+    doc["internalPW"]       = strlen(systemSettings.internalPW) > 0 ? PASSWORD_MASK : "";
+    doc["externalSSID"]     = systemSettings.externalSSID;
+    doc["externalPW"]       = strlen(systemSettings.externalPW) > 0 ? PASSWORD_MASK : "";
+    doc["externalSSID2"]    = systemSettings.externalSSID2;
+    doc["externalPW2"]      = strlen(systemSettings.externalPW2) > 0 ? PASSWORD_MASK : "";
+    doc["warningsEnabled"]  = systemSettings.warningsEnabled;
+    doc["deepSleepEnabled"] = systemSettings.deepSleepEnabled;
+    doc["tsfFallbackEnabled"] = systemSettings.tsfFallbackEnabled;
+    doc["rdsClockEnabled"]  = systemSettings.rdsClockEnabled;
+    doc["rtcCrystalEnabled"] = systemSettings.rtcCrystalEnabled;
+    doc["ledCount"]         = systemSettings.ledCount;
+    // Persönliches
+    doc["lampName"] = systemSettings.lampName;
+    JsonArray cel = doc["celebrations"].to<JsonArray>();
+    for(uint8_t i = 0; i < systemSettings.celebrationCount && i < MAX_CELEBRATIONS; i++) {
+        JsonObject c = cel.add<JsonObject>();
+        c["month"] = systemSettings.celebrations[i].month;
+        c["day"] = systemSettings.celebrations[i].day;
+    }
+    // Debug
+    doc["statusLedEnabled"] = systemSettings.statusLedEnabled;
+    doc["serialLogEnabled"] = systemSettings.serialLogEnabled;
+    doc["eventLogEnabled"]  = systemSettings.eventLogEnabled;
+    doc["logToUsb"]         = systemSettings.logToUsb;
+    // Hotspot-Laufzeit und Zeitabgleich (Minuten)
+    doc["apTimeoutMin"]    = systemSettings.apTimeoutMin;
+    doc["syncIntervalMin"] = systemSettings.syncIntervalMin;
+    doc["syncRetryMin"]    = systemSettings.syncRetryMin;
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     return jsonResponse;
 }
 
-bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSettings) {
-    StaticJsonDocument<512> doc;
-
-    DeserializationError error = deserializeJson(doc, jsonString);
-    if(error) {
+// Prüft/übernimmt ein Passwortfeld: fehlt das Feld oder ist es die Maske = unverändert,
+// leer = Passwort löschen, sonst muss die Länge 8–63 sein (WPA). Gibt false bei ungültiger Länge zurück.
+static bool applyPassword(JsonVariantConst value, char* dst, size_t dstSize) {
+    if(!value.is<const char*>())
+        return true;
+    const char* src = value.as<const char*>();
+    if(strcmp(src, PASSWORD_MASK) == 0)
+        return true;
+    size_t len = strlen(src);
+    if(len > 0 && (len < 8 || len > 63 || len >= dstSize))
         return false;
+    strlcpy(dst, src, dstSize);
+    return true;
+}
+
+// Übernimmt eine SSID: fehlt das Feld, bleibt der Wert. Länge muss minLen–32 sein.
+static bool applySsid(JsonVariantConst value, char* dst, size_t dstSize, size_t minLen) {
+    if(!value.is<const char*>())
+        return true;
+    const char* src = value.as<const char*>();
+    size_t len = strlen(src);
+    if(len < minLen || len >= dstSize)
+        return false;
+    strlcpy(dst, src, dstSize);
+    return true;
+}
+
+// Parst /set_system_config auf einer Kopie; Felder die fehlen behalten ihren Wert.
+// Regeln: AP-SSID 1–32 Zeichen; externe SSID 0–32; Passwörter: Maske "******" = unverändert,
+// leer = kein Passwort (Hotspot dann offen), sonst 8–63 Zeichen. Hotspot-Laufzeit 0–1440 min
+// (0 = unbegrenzt), Sync-Intervalle (Erfolg/Fehlschlag) je 5–720 min.
+bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSettings, String* error) {
+    JsonDocument doc;
+
+    DeserializationError err = deserializeJson(doc, jsonString);
+    if(err) {
+        return fail(error, "Ungültiges JSON.");
     }
 
-    strlcpy(systemSettings.internalSSID, doc["internalSSID"] | "", sizeof(systemSettings.internalSSID));
+    SystemSettings tmp = systemSettings;
 
-    if(doc.containsKey("internalPW")) {
-        const char* internalPW = doc["internalPW"] | "";
-        if(strlen(internalPW) > 0 && strcmp(internalPW, PASSWORD_MASK) != 0) {
-            strlcpy(systemSettings.internalPW, internalPW, sizeof(systemSettings.internalPW));
+    if(!applySsid(doc["internalSSID"], tmp.internalSSID, sizeof(tmp.internalSSID), 1))
+        return fail(error, "Hotspot-Name muss 1–32 Zeichen lang sein.");
+    if(!applyPassword(doc["internalPW"], tmp.internalPW, sizeof(tmp.internalPW)))
+        return fail(error, "Hotspot-Passwort muss leer oder 8–63 Zeichen lang sein.");
+
+    if(!applySsid(doc["externalSSID"], tmp.externalSSID, sizeof(tmp.externalSSID), 0))
+        return fail(error, "WLAN-Name (extern) darf höchstens 32 Zeichen lang sein.");
+    if(!applyPassword(doc["externalPW"], tmp.externalPW, sizeof(tmp.externalPW)))
+        return fail(error, "WLAN-Passwort (extern) muss leer oder 8–63 Zeichen lang sein.");
+
+    if(!applySsid(doc["externalSSID2"], tmp.externalSSID2, sizeof(tmp.externalSSID2), 0))
+        return fail(error, "WLAN-Name 2 darf höchstens 32 Zeichen lang sein.");
+    if(!applyPassword(doc["externalPW2"], tmp.externalPW2, sizeof(tmp.externalPW2)))
+        return fail(error, "WLAN-Passwort 2 muss leer oder 8–63 Zeichen lang sein.");
+
+    tmp.warningsEnabled  = doc["warningsEnabled"]  | tmp.warningsEnabled;
+    tmp.deepSleepEnabled = doc["deepSleepEnabled"] | tmp.deepSleepEnabled;
+
+    // Hotspot-Laufzeit (0 = unbegrenzt) und Sync-Intervalle in Minuten; fehlende Felder bleiben
+    long v;
+    if(!readIntRange(doc["apTimeoutMin"], tmp.apTimeoutMin, 0, MAX_AP_TIMEOUT_MIN, v))
+        return fail(error, "Hotspot-Laufzeit muss 0–1440 Minuten sein.");
+    tmp.apTimeoutMin = v;
+    if(!readIntRange(doc["syncIntervalMin"], tmp.syncIntervalMin, MIN_SYNC_INTERVAL_MIN, MAX_SYNC_INTERVAL_MIN, v))
+        return fail(error, "Sync-Intervall muss 5–720 Minuten sein.");
+    tmp.syncIntervalMin = v;
+    if(!readIntRange(doc["syncRetryMin"], tmp.syncRetryMin, MIN_SYNC_INTERVAL_MIN, MAX_SYNC_INTERVAL_MIN, v))
+        return fail(error, "Wiederholungs-Intervall muss 5–720 Minuten sein.");
+    tmp.syncRetryMin = v;
+
+    // Name der Lampe: fehlt das Feld, bleibt er; sonst 1–20 Zeichen
+    if(doc["lampName"].is<const char*>()) {
+        const char* name = doc["lampName"];
+        size_t len = strlen(name);
+        if(len < 1 || len > LAMP_NAME_MAX_LEN)
+            return fail(error, "Name der Lampe muss 1–20 Zeichen lang sein.");
+        strlcpy(tmp.lampName, name, sizeof(tmp.lampName));
+    }
+
+    // Party-Tage: fehlt das Feld, bleiben sie; sonst Liste komplett ersetzen (0–8, Monat 1–12, Tag 1–31)
+    JsonArrayConst cel = doc["celebrations"].as<JsonArrayConst>();
+    if(!cel.isNull()) {
+        if(cel.size() > MAX_CELEBRATIONS)
+            return fail(error, "Höchstens 8 Party-Tage.");
+        CelebrationDay days[MAX_CELEBRATIONS];
+        memset(days, 0, sizeof(days));
+        uint8_t n = 0;
+        for(JsonObjectConst c : cel) {
+            long m, d;
+            if(!readIntRange(c["month"], 0, 1, 12, m) || !readIntRange(c["day"], 0, 1, 31, d))
+                return fail(error, "Party-Tag ungültig (Monat 1–12, Tag 1–31).");
+            days[n].month = m;
+            days[n].day = d;
+            n++;
         }
+        memcpy(tmp.celebrations, days, sizeof(tmp.celebrations));
+        tmp.celebrationCount = n;
     }
 
-    if(doc.containsKey("externalSSID")) {
-        strlcpy(systemSettings.externalSSID, doc["externalSSID"] | "", sizeof(systemSettings.externalSSID));
-    }
-
-    if(doc.containsKey("externalPW")) {
-        const char* externalPW = doc["externalPW"] | "";
-        if(strlen(externalPW) > 0 && strcmp(externalPW, PASSWORD_MASK) != 0) {
-            strlcpy(systemSettings.externalPW, externalPW, sizeof(systemSettings.externalPW));
-        }
-    }
-
+    systemSettings = tmp;
     return true;
 }

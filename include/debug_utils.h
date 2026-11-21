@@ -1,12 +1,16 @@
 #ifndef DEBUG_UTILS_H
 #define DEBUG_UTILS_H
+// Debug-Ausgaben: gibt Meldungen auf die serielle Schnittstelle aus wenn DEBUG definiert ist.
 
-#include <Arduino.h> // For String
+#include <Arduino.h>
 
-/**
- * @brief Prints a message to the serial port if DEBUG is enabled.
- * @param text The text to print.
- */
+// Gibt text auf Serial aus — kompiliert zu No-op wenn DEBUG nicht definiert ist
 void serialPrint(const String& text);
+
+// Startet die serielle Ausgabe (einmal am Anfang von setup() aufrufen)
+void debugInit();
+
+// Schaltet serielle Logs an/aus und wählt die Schnittstelle (useUsb = USB statt UART RX/TX)
+void setSerialLogging(bool enabled, bool useUsb);
 
 #endif // DEBUG_UTILS_H

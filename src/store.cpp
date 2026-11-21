@@ -1,3 +1,5 @@
+// Persistenzschicht — Implementierung
+// Alle Struct-Daten werden als binäre Byte-Blöcke im NVS-Namespace "lisas_lamp_cfg" abgelegt.
 #include "store.h"
 
 #include <Preferences.h>
@@ -7,69 +9,95 @@
 #include "types.h"
 #include <Arduino.h>
 
+// Zugangsdaten-Standardwerte: eigene Werte aus include/secrets.h (gitignored), sonst die Vorlage
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#include "secrets.example.h"
+#endif
+
+// Compile-Zeit-Prüfung der Standardwerte (sizeof eines String-Literals = Länge + 1).
+// Verhindert eine Firmware, deren Hotspot nach einem Werksreset nicht starten könnte.
+#define SECRET_LEN(s) (sizeof(s) - 1)
+#define SECRET_PW_OK(s) (SECRET_LEN(s) == 0 || (SECRET_LEN(s) >= 8 && SECRET_LEN(s) <= 63))
+static_assert(SECRET_LEN(SECRET_AP_SSID) >= 1 && SECRET_LEN(SECRET_AP_SSID) <= SSID_MAX_LEN,
+              "secrets.h: SECRET_AP_SSID muss 1-32 Zeichen lang sein");
+static_assert(SECRET_LEN(SECRET_EXT_SSID) <= SSID_MAX_LEN && SECRET_LEN(SECRET_EXT_SSID2) <= SSID_MAX_LEN,
+              "secrets.h: externe SSIDs duerfen hoechstens 32 Zeichen lang sein");
+static_assert(SECRET_LEN(SECRET_LAMP_NAME) >= 1 && SECRET_LEN(SECRET_LAMP_NAME) <= LAMP_NAME_MAX_LEN,
+              "secrets.h: SECRET_LAMP_NAME muss 1-20 Zeichen lang sein");
+static const CelebrationDay DEFAULT_CELEBRATIONS[] = SECRET_CELEBRATIONS;
+static_assert(sizeof(DEFAULT_CELEBRATIONS) / sizeof(DEFAULT_CELEBRATIONS[0]) <= MAX_CELEBRATIONS,
+              "secrets.h: hoechstens 8 Party-Tage (SECRET_CELEBRATIONS)");
+static_assert(SECRET_PW_OK(SECRET_AP_PASSWORD) && SECRET_PW_OK(SECRET_EXT_PASSWORD)
+                  && SECRET_PW_OK(SECRET_EXT_PASSWORD2),
+              "secrets.h: Passwoerter muessen leer oder 8-63 Zeichen lang sein");
+
 static Preferences preferences;
 
-// Define a namespace for preferences to avoid conflicts
 const char* PREF_NAMESPACE = "lisas_lamp_cfg";
 const char* CONFIG_KEY = "fullConfig";
 
-// Debounced save support
-static FullConfig pendingConfig;
-// static bool savePending = false;
-static unsigned long lastSaveRequestTime = 0;
-// static unsigned long lastSavedTime = 0;
-
-bool saveFullConfig(const FullConfig& config, bool debounce) {
-    if(debounce) {
-        pendingConfig = config;
-        // savePending = true;
-        lastSaveRequestTime = millis();
-        return true;
-    }
-    lastSaveRequestTime = 0; // Reset debounce timer
-
-    if(!preferences.begin(PREF_NAMESPACE,
-                          false)) { // Open preferences in R/W mode
+// Generischer Helfer: speichert ein beliebiges Struct in den Flash-Speicher
+template<typename T>
+static bool saveStruct(const char* key, const T& data) {
+    if(!preferences.begin(PREF_NAMESPACE, false)) {
         serialPrint("Failed to open preferences for writing");
         return false;
     }
-
-    // Use putBytes to save the entire struct
-    size_t bytesWritten = preferences.putBytes(CONFIG_KEY, &config, sizeof(FullConfig));
-    preferences.end(); // Close preferences
-
-    if(bytesWritten == sizeof(FullConfig)) {
-        serialPrint("FullConfig saved successfully!");
-        // lastSavedTime = millis();
-        // savePending = false;
+    size_t written = preferences.putBytes(key, &data, sizeof(T));
+    preferences.end();
+    if(written == sizeof(T)) {
+        serialPrint(String(key) + " saved successfully");
         return true;
-    } else {
-        serialPrint("Failed to save FullConfig. Bytes written: " + String(bytesWritten));
-        return false;
     }
+    serialPrint(String(key) + " save failed, bytes written: " + String(written));
+    return false;
 }
 
-// Call this regularly (e.g. from loop)
+static FullConfig pendingConfig;
+static unsigned long lastSaveRequestTime = 0;
+
+// Speichert die Konfiguration; mit debounce=true wird der Schreibvorgang um 5 Sekunden verzögert
+// (verhindert Flash-Verschleiß bei häufigem Drehen am Encoder)
+bool saveFullConfig(const FullConfig& config, bool debounce) {
+    if(debounce) {
+        pendingConfig = config;
+        lastSaveRequestTime = millis();
+        return true;
+    }
+    lastSaveRequestTime = 0;
+    return saveStruct(CONFIG_KEY, config);
+}
+
+// Führt verzögerten Schreibvorgang aus wenn 5 Sekunden seit letzter Änderung vergangen sind
 void checkToSave() {
     if(lastSaveRequestTime != 0) {
         if(millis() - lastSaveRequestTime >= 5000) {
             serialPrint("Debounced: Saving FullConfig after 5s");
             saveFullConfig(pendingConfig, false);
-            // lastSaveRequestTime = 0; // Reset debounce timer
         }
     }
 }
 
-bool loadFullConfig(FullConfig& config) {
-    if(!preferences.begin(PREF_NAMESPACE,
-                          true)) { // Open preferences in Read-only mode
+// Schreibt eine per Debounce ausstehende FullConfig sofort (no-op wenn nichts aussteht).
+// Muss vor Deep Sleep und vor ESP.restart() aufgerufen werden, sonst geht die Änderung verloren.
+void flushPendingSave() {
+    if(lastSaveRequestTime == 0)
+        return; // nichts ausstehend
+    serialPrint("Flush: Saving pending FullConfig immediately");
+    saveFullConfig(pendingConfig, false); // setzt lastSaveRequestTime wieder auf 0
+}
+
+// Lädt die gespeicherte Konfiguration aus dem Flash-Speicher
+static bool loadFullConfig(FullConfig& config) {
+    if(!preferences.begin(PREF_NAMESPACE, true)) {
         serialPrint("Failed to open preferences for reading");
         return false;
     }
 
-    // Use getBytes to load the entire struct
     size_t bytesRead = preferences.getBytes(CONFIG_KEY, &config, sizeof(FullConfig));
-    preferences.end(); // Close preferences
+    preferences.end();
 
     if(bytesRead == sizeof(FullConfig)) {
         serialPrint("FullConfig loaded successfully!");
@@ -80,18 +108,21 @@ bool loadFullConfig(FullConfig& config) {
     }
 }
 
+// Gibt eine Konfiguration mit Standardwerten zurück
 FullConfig getDefaultFullConfig() {
     FullConfig defaultConfig;
 
-    // Default RGB color (e.g., white)
-    defaultConfig.color = {255, 255, 255};
-    defaultConfig.colorMode = 1;      // Default to Neutral White
-    defaultConfig.animationMode = 1;  // Default to Breathing
-    defaultConfig.brightnessMode = 7; // Default to maximum brightness
+    // Standard-Sets: 1 Neutralweiß statisch, 2 Warmweiß atmend (aktiv), 3 Kerzenlicht als Flamme
+    memset(defaultConfig.sets, 0, sizeof(defaultConfig.sets));
+    defaultConfig.sets[0] = {1, 0, {255, 255, 255}};
+    defaultConfig.sets[1] = {2, 1, {255, 255, 255}};
+    defaultConfig.sets[2] = {4, 2, {255, 255, 255}};
+    defaultConfig.setCount = 3;
+    defaultConfig.activeSet = 1;
+    defaultConfig.brightnessMode = 7; // Maximale Helligkeit
 
-    // Default alarms (all inactive)
     for(int i = 0; i < MAX_ALARMS; ++i) {
-        defaultConfig.alarms[i] = {0, 0, 0, false}; // day=0 (not set), hour=0, minute=0, active=false
+        defaultConfig.alarms[i] = {0, 0, 0, false, false, 0, 0, 0};
     }
     defaultConfig.goodNightDuration = 30;
     defaultConfig.alarmDuration = 30;
@@ -100,93 +131,81 @@ FullConfig getDefaultFullConfig() {
     return defaultConfig;
 }
 
+// Überschreibt die gespeicherte Konfiguration mit den Standardwerten
 bool resetFullConfig() {
     serialPrint("Resetting FullConfig to defaults...");
-
-    // 1. Delete existing config
-    /* if (!deleteFullConfig()) {
-        serialPrint("Failed to delete existing config during reset.");
-        //return false;
-    } */
-
-    // 2. Get default config
     FullConfig defaultConfig = getDefaultFullConfig();
-
-    // 3. Save default config
     if(!saveFullConfig(defaultConfig, false)) {
         serialPrint("Failed to save default config during reset.");
         return false;
     }
-
     serialPrint("FullConfig successfully reset to defaults.");
-
     return true;
 }
 
-bool ensureConfigExistsAndResetIfNot() {
-    serialPrint("Checking if FullConfig exists...");
-
-    if(!preferences.begin(PREF_NAMESPACE,
-                          true)) { // Open preferences in Read-only mode
-        serialPrint("Failed to open preferences to check config existence.");
-        // If we can't even open preferences, we can't check, so attempt to
-        // reset
-        serialPrint("Attempting to reset FullConfig due to preferences "
-                    "open failure.");
-        return resetFullConfig();
+// Prüft ob ein Struct im Flash existiert und die richtige Größe hat; bei Abweichung Reset aufrufen
+static bool ensureStructExists(const char* key, size_t expectedSize, bool (*resetFn)()) {
+    if(!preferences.begin(PREF_NAMESPACE, true)) {
+        preferences.end();
+        return resetFn();
     }
-
-    size_t storedSize = preferences.getBytesLength(CONFIG_KEY);
-    preferences.end(); // Close preferences
-
+    size_t storedSize = preferences.getBytesLength(key);
+    preferences.end();
     if(storedSize == 0) {
-        serialPrint("No FullConfig found. Resetting to defaults.");
-        return resetFullConfig();
-
-    } else if(storedSize != sizeof(FullConfig)) {
-        serialPrint("Stored FullConfig size mismatch. Resetting to defaults.");
-        return resetFullConfig();
-    } else {
-        serialPrint("FullConfig exists and is valid.");
-        return true;
+        return resetFn();
+    } else if(storedSize != expectedSize) {
+        // Größenänderung durch Firmware-Update → neu initialisieren
+        return resetFn();
     }
+    return true;
+}
+
+// Stellt sicher dass eine gültige FullConfig im Flash vorhanden ist
+static bool ensureConfigExistsAndResetIfNot() {
+    serialPrint("Checking if FullConfig exists...");
+    return ensureStructExists(CONFIG_KEY, sizeof(FullConfig), resetFullConfig);
 }
 
 const char* SYSTEM_SETTINGS_KEY = "systemSettings";
 
+// Gibt Systemeinstellungen mit Standardwerten zurück; Zugangsdaten aus secrets.h (siehe oben)
 SystemSettings getDefaultSystemSettings() {
     SystemSettings defaultSettings;
-
-    // Initialize with default values
-    strcpy(defaultSettings.internalSSID, "Lizas-Lamp"); // AP_SSID
-    strcpy(defaultSettings.internalPW, "");   // AP_PASSWORD (empty for open network)
-    strcpy(defaultSettings.externalSSID,
-           "Gastzugang_test"); // STA_SSID
-    strcpy(defaultSettings.externalPW,
-           "AufstehenIstSchoen43="); // STA_PASSWORD
-
+    strlcpy(defaultSettings.internalSSID, SECRET_AP_SSID, sizeof(defaultSettings.internalSSID));
+    strlcpy(defaultSettings.internalPW, SECRET_AP_PASSWORD, sizeof(defaultSettings.internalPW));
+    strlcpy(defaultSettings.externalSSID, SECRET_EXT_SSID, sizeof(defaultSettings.externalSSID));
+    strlcpy(defaultSettings.externalPW, SECRET_EXT_PASSWORD, sizeof(defaultSettings.externalPW));
+    strlcpy(defaultSettings.externalSSID2, SECRET_EXT_SSID2, sizeof(defaultSettings.externalSSID2));
+    strlcpy(defaultSettings.externalPW2, SECRET_EXT_PASSWORD2, sizeof(defaultSettings.externalPW2));
+    defaultSettings.warningsEnabled = true;
+    defaultSettings.deepSleepEnabled = true;
+    defaultSettings.tsfFallbackEnabled = true;
+    defaultSettings.rdsClockEnabled = false;
+    defaultSettings.rdsLastChannel = 0;
+    defaultSettings.rtcCrystalEnabled = false;
+    defaultSettings.rtcCrystalAvailable = false;
+    defaultSettings.ledCount = DEFAULT_LED_COUNT;
+    strlcpy(defaultSettings.lampName, SECRET_LAMP_NAME, sizeof(defaultSettings.lampName));
+    memset(defaultSettings.celebrations, 0, sizeof(defaultSettings.celebrations));
+    defaultSettings.celebrationCount = sizeof(DEFAULT_CELEBRATIONS) / sizeof(DEFAULT_CELEBRATIONS[0]);
+    memcpy(defaultSettings.celebrations, DEFAULT_CELEBRATIONS, sizeof(DEFAULT_CELEBRATIONS));
+    defaultSettings.statusLedEnabled = true;
+    defaultSettings.serialLogEnabled = true;
+    defaultSettings.eventLogEnabled = true;
+    defaultSettings.logToUsb = false;
+    defaultSettings.apTimeoutMin = DEFAULT_AP_TIMEOUT_MIN;
+    defaultSettings.syncIntervalMin = DEFAULT_SYNC_INTERVAL_MIN;
+    defaultSettings.syncRetryMin = DEFAULT_SYNC_RETRY_MIN;
     return defaultSettings;
 }
 
+// Speichert die Systemeinstellungen sofort in den Flash-Speicher
 bool saveSystemSettings(const SystemSettings& settings) {
-    if(!preferences.begin(PREF_NAMESPACE, false)) {
-        serialPrint("Failed to open preferences for writing");
-        return false;
-    }
-
-    size_t bytesWritten = preferences.putBytes(SYSTEM_SETTINGS_KEY, &settings, sizeof(SystemSettings));
-    preferences.end();
-
-    if(bytesWritten == sizeof(SystemSettings)) {
-        serialPrint("SystemSettings saved successfully!");
-        return true;
-    } else {
-        serialPrint("Failed to save SystemSettings. Bytes written: " + String(bytesWritten));
-        return false;
-    }
+    return saveStruct(SYSTEM_SETTINGS_KEY, settings);
 }
 
-bool loadSystemSettings(SystemSettings& settings) {
+// Lädt die Systemeinstellungen aus dem Flash-Speicher
+static bool loadSystemSettings(SystemSettings& settings) {
     if(!preferences.begin(PREF_NAMESPACE, true)) {
         serialPrint("Failed to open preferences for reading");
         return false;
@@ -200,50 +219,102 @@ bool loadSystemSettings(SystemSettings& settings) {
         return true;
     } else {
         serialPrint("Failed to load SystemSettings. Bytes read: " + String(bytesRead));
-        // If loading fails, initialize with default values
-        memset(&settings, 0, sizeof(SystemSettings)); // Zero out the struct
+        memset(&settings, 0, sizeof(SystemSettings));
         return false;
     }
 }
 
+// Überschreibt die gespeicherten Systemeinstellungen mit den Standardwerten
 bool resetSystemSettings() {
     serialPrint("Resetting SystemSettings to defaults...");
-
-    // Get default settings
     SystemSettings defaultSettings = getDefaultSystemSettings();
-
-    // Save default settings
     if(!saveSystemSettings(defaultSettings)) {
         serialPrint("Failed to save default system settings during reset.");
         return false;
     }
-
     serialPrint("SystemSettings successfully reset to defaults.");
     return true;
 }
 
-bool ensureSystemSettingsExistsAndResetIfNot() {
-    serialPrint("Checking if SystemSettings exists...");
+// "tsfData4": seit Gangverlauf in TsfEntry (ältere Stände haben ein anderes Format und werden verworfen)
+static const char* TSF_DATA_KEY = "tsfData4";
 
-    if(!preferences.begin(PREF_NAMESPACE, true)) {
-        serialPrint("Failed to open preferences to check system settings "
-                    "existence.");
-        serialPrint("Attempting to reset SystemSettings due to preferences "
-                    "open failure.");
-        return resetSystemSettings();
-    }
-
-    size_t storedSize = preferences.getBytesLength(SYSTEM_SETTINGS_KEY);
+// Speichert die TSF-Zeitstempel-Einträge (count Stück) in den Flash-Speicher
+bool saveTsfEntries(const TsfEntry* entries, uint8_t count) {
+    if (!preferences.begin(PREF_NAMESPACE, false)) return false;
+    size_t written = preferences.putBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
     preferences.end();
+    return written == count * sizeof(TsfEntry);
+}
 
-    if(storedSize == 0) {
-        serialPrint("No SystemSettings found. Resetting to defaults.");
-        return resetSystemSettings();
-    } else if(storedSize != sizeof(SystemSettings)) {
-        serialPrint("Stored SystemSettings size mismatch. Resetting to defaults.");
-        return resetSystemSettings();
-    } else {
-        serialPrint("SystemSettings exists and is valid.");
-        return true;
+// Lädt bis zu maxCount TSF-Einträge; gibt die Anzahl tatsächlich geladener Einträge zurück
+uint8_t loadTsfEntries(TsfEntry* entries, uint8_t maxCount) {
+    // Preferences nur einmal öffnen: Länge und Daten in derselben Sitzung lesen
+    if (!preferences.begin(PREF_NAMESPACE, true)) return 0;
+    size_t storedSize = preferences.getBytesLength(TSF_DATA_KEY);
+    if (storedSize == 0 || storedSize % sizeof(TsfEntry) != 0) {
+        preferences.end();
+        return 0;
     }
+    uint8_t count = storedSize / sizeof(TsfEntry);
+    if (count > maxCount) count = maxCount;
+    preferences.getBytes(TSF_DATA_KEY, entries, count * sizeof(TsfEntry));
+    preferences.end();
+    return count;
+}
+
+// Stellt sicher dass gültige SystemSettings im Flash vorhanden sind
+static bool ensureSystemSettingsExistsAndResetIfNot() {
+    serialPrint("Checking if SystemSettings exists...");
+    return ensureStructExists(SYSTEM_SETTINGS_KEY, sizeof(SystemSettings), resetSystemSettings);
+}
+
+static const char* LAST_TIME_KEY = "lastKnownTime";
+
+// Speichert den aktuellen Unix-Timestamp damit er nach einem Neustart ohne Internet wiederhergestellt werden kann
+void saveLastKnownTime(time_t t) {
+    if(!preferences.begin(PREF_NAMESPACE, false))
+        return;
+    preferences.putULong64(LAST_TIME_KEY, (uint64_t)t);
+    preferences.end();
+}
+
+// Gibt den zuletzt gespeicherten Unix-Timestamp zurück (0 wenn noch nie gespeichert)
+time_t loadLastKnownTime() {
+    if(!preferences.begin(PREF_NAMESPACE, true))
+        return 0;
+    uint64_t t = preferences.getULong64(LAST_TIME_KEY, 0);
+    preferences.end();
+    return (time_t)t;
+}
+
+// Lädt die Lampen-Konfiguration; fehlt sie oder passt die gespeicherte Größe nicht (Firmware-Update),
+// werden Standardwerte gespeichert und geliefert
+void loadFullConfigOrDefault(FullConfig& config) {
+    ensureConfigExistsAndResetIfNot();
+    if(!loadFullConfig(config)) {
+        serialPrint("Using default configuration");
+        config = getDefaultFullConfig();
+    }
+}
+
+// Lädt die Systemeinstellungen; sonst wie loadFullConfigOrDefault() Standardwerte
+void loadSystemSettingsOrDefault(SystemSettings& settings) {
+    ensureSystemSettingsExistsAndResetIfNot();
+    if(!loadSystemSettings(settings)) {
+        serialPrint("Using default system settings");
+        settings = getDefaultSystemSettings();
+    }
+    // Plausibilisieren (z. B. nach Speicherfehler)
+    if(settings.ledCount < 1 || settings.ledCount > MAX_LED_COUNT)
+        settings.ledCount = DEFAULT_LED_COUNT;
+    if(settings.celebrationCount > MAX_CELEBRATIONS)
+        settings.celebrationCount = 0;
+    settings.lampName[LAMP_NAME_MAX_LEN] = '\0';
+    if(settings.apTimeoutMin > MAX_AP_TIMEOUT_MIN)
+        settings.apTimeoutMin = DEFAULT_AP_TIMEOUT_MIN;
+    if(settings.syncIntervalMin < MIN_SYNC_INTERVAL_MIN || settings.syncIntervalMin > MAX_SYNC_INTERVAL_MIN)
+        settings.syncIntervalMin = DEFAULT_SYNC_INTERVAL_MIN;
+    if(settings.syncRetryMin < MIN_SYNC_INTERVAL_MIN || settings.syncRetryMin > MAX_SYNC_INTERVAL_MIN)
+        settings.syncRetryMin = DEFAULT_SYNC_RETRY_MIN;
 }

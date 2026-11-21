@@ -1,5 +1,7 @@
 #ifndef ALERTS_H
 #define ALERTS_H
+// Kurzzeit-Alerts: zeigt visuell Fehler (rot), Warnungen (gelb) oder Erfolg (grün)
+// an; zeitbegrenzte Alerts erlöschen automatisch, dauerhafte nur per stopAlert().
 
 #include <Arduino.h>
 
@@ -10,26 +12,16 @@ enum AlertType {
     ALERT_OK = 3
 };
 
-/**
- * @brief Starts an alert with an optional duration.
- * @param type The type of alert to start.
- * @param durationMs Optional duration in milliseconds. 0 means persistent.
- */
+// Startet einen Alert; durationMs=0 bedeutet dauerhaft (bis stopAlert() aufgerufen wird)
 void startAlert(AlertType type, unsigned long durationMs = 0);
 
-/**
- * @brief Stops the current alert.
- */
+// Beendet den aktiven Alert
 void stopAlert();
 
-/**
- * @brief Returns the current active alert type.
- */
+// Gibt den aktuell aktiven Alert-Typ zurück
 AlertType getActiveAlertType();
 
-/**
- * @brief Periodically check if a timed alert should be cleared.
- */
+// Beendet einen zeitbegrenzten Alert automatisch wenn die Dauer abgelaufen ist
 void checkAlertState();
 
 #endif // ALERTS_H

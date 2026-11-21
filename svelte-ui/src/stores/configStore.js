@@ -1,21 +1,30 @@
+// Store für die Lampen-Konfiguration (Szenen, Alarme, Dauer) inkl. Laden/Speichern über lib/api.js.
 import { get, writable } from "svelte/store";
-import { isMockEnabled, mockFetch } from "../lib/mockData.js";
+import { getJson, postJson } from "../lib/api.js";
 import { messageStore } from "./messageStore.js";
+import { t } from "../lib/i18n.js";
 
-const MAX_ALARMS = 10;
+export const MAX_ALARMS = 16; // muss zur Firmware passen (include/types.h)
 
-// Default config matching the original structure
+// Freier Wecker-Platz: weder wöchentlich (day > 0) noch einmalig (once)
+const EMPTY_ALARM = { day: 0, hour: 0, minute: 0, active: false, once: false };
+export const MAX_LIGHT_SETS = 6; // muss zur Firmware passen (include/types.h)
+
+// Neues Set beim Hinzufügen: Neutralweiß, statisch
+const NEW_SET = { colorMode: 1, animationMode: 0, color: { r: 255, g: 255, b: 255 } };
+
+// Startwerte bis die Konfiguration vom Gerät geladen ist (entsprechen den Firmware-Standardwerten)
 const defaultConfig = {
-  override_color: { r: 255, g: 255, b: 255 },
-  colorMode: 1, // Default to Neutral White
-  animationMode: 1,
+  sets: [
+    { colorMode: 1, animationMode: 0, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 2, animationMode: 1, color: { r: 255, g: 255, b: 255 } },
+    { colorMode: 4, animationMode: 2, color: { r: 255, g: 255, b: 255 } },
+  ],
+  activeSet: 1,
   alarms: Array(MAX_ALARMS)
     .fill(null)
     .map(() => ({
-      day: 0,
-      hour: 0,
-      minute: 0,
-      active: false,
+      ...EMPTY_ALARM,
     })),
   goodNightDuration: 30,
   alarmDuration: 30,
@@ -30,90 +39,77 @@ function createConfigStore() {
   return {
     subscribe,
 
+    // Lädt die Konfiguration vom Gerät
     async load() {
       try {
-        const fetchFn = isMockEnabled() ? mockFetch : fetch;
-        const response = await fetchFn("/get_config");
-        if (response.ok) {
-          const config = await response.json();
-          console.log("Fetched config:", config);
-          originalConfig = JSON.parse(JSON.stringify(config));
-          set(config);
-        } else {
-          messageStore.show(
-            "error",
-            `Error fetching configuration: ${response.statusText}`
-          );
-        }
+        const config = await getJson("/get_config");
+        originalConfig = JSON.parse(JSON.stringify(config));
+        set(config);
       } catch (error) {
-        console.error("Network error fetching configuration:", error);
-        messageStore.show(
-          "error",
-          `Network error fetching configuration: ${error.message}`
-        );
+        messageStore.show("error", get(t)("config.loadFailed", { msg: error.message }));
       }
     },
 
+    // Sendet die Konfiguration (ohne brightnessMode – der Drehknopf ist Master) und lädt danach neu
     async post() {
+      const currentConfig = get(configStoreData);
+      const { brightnessMode, ...payload } = currentConfig;
       try {
-        const currentConfig = get(configStoreData);
-
-        const fetchFn = isMockEnabled() ? mockFetch : fetch;
-        const response = await fetchFn("/set_config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(currentConfig),
-        });
-
-        if (response.ok) {
-          originalConfig = JSON.parse(JSON.stringify(currentConfig));
-          // Reload configuration from ESP32
-          this.load();
-        } else {
-          const errorText = await response.text();
-          messageStore.show(
-            "error",
-            `Error saving configuration: ${errorText}`
-          );
-          // Reload configuration from ESP32 even on error
-          this.load();
-        }
+        await postJson("/set_config", payload);
+        originalConfig = JSON.parse(JSON.stringify(currentConfig));
       } catch (error) {
-        messageStore.show("error", `Network error: ${error.message}`);
-        // Reload configuration from ESP32 even on error
-        this.load();
+        messageStore.show("error", get(t)("config.saveFailed", { msg: error.message }));
       }
+      // Auch bei Fehler neu laden, damit die UI den Gerätezustand zeigt
+      this.load();
     },
 
-    updateColor(r, g, b) {
-      update((config) => ({
-        ...config,
-        override_color: { r, g, b },
-      }));
+    // Übernimmt nur das aktive Set vom Gerät (z. B. nach Wechsel per Drehknopf), ohne andere Felder
+    // anzufassen — so wird nichts überschrieben, was gerade bearbeitet wird
+    async syncActiveSet() {
+      try {
+        const remote = await getJson("/get_config");
+        update((config) =>
+          remote.activeSet !== undefined && remote.activeSet !== config.activeSet
+            ? { ...config, activeSet: remote.activeSet }
+            : config
+        );
+      } catch {}
+    },
+
+    // Macht Set i zum aktiven Set
+    setActiveSet(i) {
+      update((config) => ({ ...config, activeSet: i }));
       this.post();
     },
 
-    /*  toggleColorOverride(active) {
-      update((config) => ({
-        ...config,
-        colorMode: 1, // Always set to 1 as requested
-      }));
-      this.post();
-    }, */
-
-    setColorMode(modeId) {
-      update((config) => ({
-        ...config,
-        colorMode: modeId,
-      }));
+    // Ändert Felder von Set i (z. B. { colorMode: 3 } oder { color: {r,g,b} })
+    updateSet(i, patch) {
+      update((config) => {
+        const sets = config.sets.map((s, idx) => (idx === i ? { ...s, ...patch } : s));
+        return { ...config, sets };
+      });
       this.post();
     },
 
-    setAnimationMode(modeId) {
-      update((config) => ({
-        ...config,
-        animationMode: modeId,
-      }));
+    // Hängt ein neues Set an (max. MAX_LIGHT_SETS)
+    addSet() {
+      update((config) => {
+        if (config.sets.length >= MAX_LIGHT_SETS) return config;
+        return { ...config, sets: [...config.sets, { ...NEW_SET, color: { ...NEW_SET.color } }] };
+      });
+      this.post();
+    },
+
+    // Löscht Set i (mindestens eines bleibt); das aktive Set rückt bei Bedarf nach
+    removeSet(i) {
+      update((config) => {
+        if (config.sets.length <= 1) return config;
+        const sets = config.sets.filter((_, idx) => idx !== i);
+        let activeSet = config.activeSet;
+        if (i < activeSet || activeSet >= sets.length) activeSet = Math.max(0, activeSet - 1);
+        return { ...config, sets, activeSet };
+      });
       this.post();
     },
 
@@ -133,16 +129,20 @@ function createConfigStore() {
       this.post();
     },
 
-    addAlarm() {
+    // Neuer wöchentlicher Wecker (Montag 7:00) im ersten freien Platz
+    // (zum Termin wird er über die Auswahl "Datum" in der Zeile)
+    addAlarm(date = null) {
       update((config) => {
         const alarms = [...config.alarms];
         for (let i = 0; i < MAX_ALARMS; i++) {
-          if (alarms[i].day === 0) {
-            alarms[i] = { day: 1, hour: 7, minute: 0, active: true };
+          if (alarms[i].day === 0 && !alarms[i].once) {
+            alarms[i] = date
+              ? { day: 0, hour: 7, minute: 0, active: true, once: true, date }
+              : { day: 1, hour: 7, minute: 0, active: true, once: false };
             return { ...config, alarms };
           }
         }
-        messageStore.show("error", "Maximum alarms reached");
+        messageStore.show("error", get(t)("config.maxAlarms"));
         return config;
       });
       this.post();
@@ -160,7 +160,7 @@ function createConfigStore() {
     removeAlarm(index) {
       update((config) => {
         const alarms = [...config.alarms];
-        alarms[index] = { day: 0, hour: 0, minute: 0, active: false };
+        alarms[index] = { ...EMPTY_ALARM };
         return { ...config, alarms };
       });
       this.post();

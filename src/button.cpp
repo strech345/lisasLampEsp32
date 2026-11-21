@@ -1,69 +1,183 @@
-#include "button.h" // Include the updated button header
+// Drehencoder- und Tastersteuerung — Implementierung
+#include "button.h"
+#include "pins.h"
 
-#include <functional> // Required for std::function
+#include <functional>
 
 #include "AiEsp32RotaryEncoder.h"
 #include "Arduino.h"
+#include "alerts.h"
+#include "lamp_state.h"
+#include "led.h"
+#include "good_night.h"
+#include "store.h"
+#include "event_log.h"
+#include "debug_utils.h"
+#include "wifi_controller.h"
 
-// Static variable to store the rotary encoder event callback
+static FullConfig* s_appConfig = nullptr;
+static LampState* s_lampState = nullptr;
+static WiFiTestTracker* s_wifiTracker = nullptr;
+
+// Flanken pro Rastung des KY-040 (voller Quadratur-Zyklus). Die Bibliothek zählt mit Schrittweite 1
+// (Rohflanken); das Umrechnen auf Rastungen passiert in handleRotation().
+#define ROTARY_ENCODER_STEPS 4
+
+const unsigned long shortPressAfterMiliseconds = 50;   // kürzer = Prellen, kein Klick
+const unsigned long shortPressMaxMs = 500;             // länger gehalten = kein Klick (bis 2 s: gar nichts)
+const unsigned long longPressAfterMiliseconds = 1000;      // Boot-Taste: Werksreset
+const unsigned long rotaryLongPressMs = 2000;              // Drehknopf: Hotspot (nur ohne Drehen)
+
+// Wurde während des aktuellen Drückens am Drehknopf gedreht? (Set-Wechsel → kein kurzer/langer Druck)
+static bool s_rotatedWhileHeld = false;
+
 static RotaryEncoderCallback _rotaryEncoderCallback;
 
-#define ROTARY_ENCODER_CLK_PIN 1
-#define ROTARY_ENCODER_DT_PIN 2
-#define ROTARY_ENCODER_SW_PIN 3
-#define ROTARY_ENCODER_STEPS 4
-#define BOOT_BUTTON_PIN 9
+// Schrittweite 1 = Rohflanken; letzter Parameter false = interne Pullups statt Pulldowns
+// (das KY-040-Modul hat eigene Pullups, interne Pulldowns würden dagegen arbeiten)
+AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(PIN_ENCODER_DT, PIN_ENCODER_CLK,
+                                                          PIN_ENCODER_SW, -1, 1, false);
 
-// paramaters for button
-unsigned long shortPressAfterMiliseconds = 50;  // how long short press shoud be. Do not set too low to avoid bouncing
-                                                // (false press events).
-unsigned long longPressAfterMiliseconds = 1000; // how long čong press shoud be.
+// Rastungs-Erkennung: Ruhepegel der beiden Encoder-Pins (beim Start gelernt) und Rohzählerstand
+// der zuletzt ausgewerteten Rastung
+static int s_restDt = HIGH;
+static int s_restClk = HIGH;
+static long s_lastDetentPos = 0;
 
-// Generally, you should use "unsigned long" for variables that hold time
-// The value will quickly become too large for an int to store
-// unsigned long previousMillis = 0;  // will store last time LED was updated
+// Speichert Zeiger auf den globalen Zustand für die Callback-Funktionen
+void initButtonCallbacks(FullConfig* pAppConfig, LampState* pLampState, WiFiTestTracker* pWifiTracker) {
+    s_appConfig = pAppConfig;
+    s_lampState = pLampState;
+    s_wifiTracker = pWifiTracker;
+}
 
-// constants won't change :
-// const long interval = 1000;  // interval at which to blink (milliseconds)
+// Callback für alle Encoder-Ereignisse: Drehen, kurzer Druck, langer Druck und Boot-Button
+void myRotaryEncoderCallback(RotaryEncoderEventType eventType, int16_t value) {
+    switch(eventType) {
+    case RotaryEncoderEventType::ShortClick:
+        serialPrint("ShortClick Event!");
+        onShortPress();
+        break;
+    case RotaryEncoderEventType::LongClick:
+        // Langer Druck (2 s, ohne Drehen): Hotspot einschalten, gelber Blitz als Bestätigung
+        serialPrint("LongClick Event!");
+        logEvent("WiFi started (long press)");
+        startAlert(ALERT_WARNING, 200);
+        startWifi();
+        break;
+    case RotaryEncoderEventType::Rotate: {
+        // Drehen bei gedrückter Taste: Szene wechseln (statt Helligkeit), kein Hotspot für diesen Druck
+        if(rotaryEncoder.isEncoderButtonDown()) {
+            s_rotatedWhileHeld = true;
+            switchLightSet(value);
+            break;
+        }
+        // Bedienung hat Vorrang vor der Hotspot-Animation
+        dismissApAnimation();
+        // Helligkeit ändern (0–7) mit relativer Steuerung, sofort speichern und anwenden
+        int currentBrightness = s_appConfig->brightnessMode;
+        int newBrightness = currentBrightness + value;
+        serialPrint("Rotary encoder rotated by " + String(value) + ", changing brightness from "
+                    + String(currentBrightness) + " to " + String(newBrightness));
 
-AiEsp32RotaryEncoder rotaryEncoder = AiEsp32RotaryEncoder(ROTARY_ENCODER_DT_PIN, ROTARY_ENCODER_CLK_PIN,
-                                                          ROTARY_ENCODER_SW_PIN, -1, ROTARY_ENCODER_STEPS);
+        // Begrenzungen intern prüfen (0-7)
+        if(newBrightness < 0)
+            newBrightness = 0;
+        if(newBrightness > 7)
+            newBrightness = 7;
 
-/**
- * @brief Interrupt service routine for the rotary encoder.
- * This is called by the AiEsp32RotaryEncoder library.
- */
+        if(newBrightness == currentBrightness)
+            break; // Keine Änderung
+
+        s_appConfig->brightnessMode = (byte)newBrightness;
+        serialPrint("Brightness mode changed by " + String(value) + " to: " + String(newBrightness));
+        setBrightnessLevel(s_appConfig->brightnessMode); // setzt Helligkeit und zeigt sofort an
+        saveFullConfig(*s_appConfig, true);
+        // Drehen heißt "Lampe benutzen": Gute-Nacht wirklich beenden, Sleep/Systemwarnung → Default,
+        // damit Zustand und LEDs konsistent sind. Alarm und Alerts bleiben unverändert.
+        switch(*s_lampState) {
+        case LAMP_STATE_GOOD_NIGHT:
+            stopGoodNightMode();
+            *s_lampState = LAMP_STATE_DEFAULT;
+            break;
+        case LAMP_STATE_SLEEP:
+        case LAMP_STATE_SYS_WARNING:
+        case LAMP_STATE_SYS_ERROR:
+            *s_lampState = LAMP_STATE_DEFAULT;
+            break;
+        default:
+            break;
+        }
+        break;
+    }
+    case RotaryEncoderEventType::ShortBootClick:
+        // Reserviert — aktuell ohne Funktion
+        serialPrint("ShortBootClick Event!");
+        break;
+    case RotaryEncoderEventType::LongBootClick:
+        // Langer Boot-Druck: Werkszustand wiederherstellen und neu starten
+        serialPrint("LongBootClick Event!");
+        logEvent("Factory reset triggered");
+        serialPrint("Resetting configuration to defaults...");
+        resetFullConfig();
+        resetSystemSettings();
+        serialPrint("Configuration reset. Restarting ESP...");
+        delay(1000);
+        ESP.restart();
+        break;
+    }
+}
+
+// Interrupt-Handler: wird vom Encoder-Chip aufgerufen bei jeder Pegelwechsel
 void IRAM_ATTR readEncoderISR() {
     rotaryEncoder.readEncoder_ISR();
 }
 
+// Initialisiert Encoder-Pins
 void initRotaryEncoder(byte value, RotaryEncoderCallback callback) {
-    pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
     _rotaryEncoderCallback = callback;
     rotaryEncoder.begin();
-    // pinMode(ROTARY_ENCODER_SW_PIN, INPUT_PULLDOWN);
     rotaryEncoder.setup(readEncoderISR);
-    bool circleValues = false;
-    Serial.print("Initializing rotary encoder with value: " + String(value));
-    rotaryEncoder.setBoundaries(0, 7, circleValues);
-    rotaryEncoder.setEncoderValue(value); // start in the middle
+    // Beschleunigung aus: sie addiert bei schnellem Drehen Extra-Flanken, danach passt die Zählung
+    // nicht mehr zu den Rastungen und einzelne Rastungen gehen verloren
+    rotaryEncoder.setAcceleration(0);
+    pinMode(PIN_ENCODER_DT, INPUT_PULLUP);
+    pinMode(PIN_ENCODER_CLK, INPUT_PULLUP);
+    delay(2); // Pullups einschwingen lassen
+    // Ruhepegel lernen: beim Start steht der Knopf in einer Rastung
+    s_restDt = digitalRead(PIN_ENCODER_DT);
+    s_restClk = digitalRead(PIN_ENCODER_CLK);
+    if(s_restDt != s_restClk) { // unplausibel (gerade zwischen zwei Rastungen) → KY-040-Standard
+        s_restDt = HIGH;
+        s_restClk = HIGH;
+    }
+    s_lastDetentPos = rotaryEncoder.readEncoder();
+    serialPrint("Encoder: Ruhepegel DT=" + String(s_restDt) + " CLK=" + String(s_restClk));
 }
 
+// Zustand für die Drucktaster-Erkennung
 struct LampButtonState {
     unsigned long lastTimeButtonDown = 0;
     bool wasButtonDown = false;
     bool longPressHandled = false;
 };
+
+// Allgemeine Drucktaster-Logik: erkennt kurzen und langen Druck (ab longMs, noch während des Haltens),
+// verhindert Doppelauslösung. rotated != nullptr: wurde währenddessen gedreht, entfällt beides.
 void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent,
-                    RotaryEncoderEventType longEvent, unsigned long currentMillis) {
-    // void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType shortEvent,
-    //                    RotaryEncoderEventType longEvent, unsigned long currentMillis) {
+                    RotaryEncoderEventType longEvent, unsigned long currentMillis, unsigned long longMs,
+                    bool* rotated = nullptr) {
     if(isDown) {
         if(!state.wasButtonDown) {
-            // start measuring
+            // Taste frisch gedrückt → Zeitstempel merken
             state.lastTimeButtonDown = currentMillis;
             state.longPressHandled = false;
-        } else if(!state.longPressHandled && (currentMillis - state.lastTimeButtonDown >= longPressAfterMiliseconds)) {
+            if(rotated)
+                *rotated = false;
+        } else if(!state.longPressHandled && !(rotated && *rotated)
+                  && (currentMillis - state.lastTimeButtonDown >= longMs)) {
+            // Langer Druck erkannt → einmal auslösen
             if(_rotaryEncoderCallback) {
                 _rotaryEncoderCallback(longEvent, 0);
             }
@@ -73,9 +187,12 @@ void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType 
         return;
     }
 
-    // button is up
-    if(state.wasButtonDown && !state.longPressHandled) {
-        if(currentMillis - state.lastTimeButtonDown >= shortPressAfterMiliseconds) {
+    // Taste losgelassen: kurzer Druck wenn kein langer Druck stattfand und nicht gedreht wurde
+    if(state.wasButtonDown && !state.longPressHandled && !(rotated && *rotated)) {
+        // Nur ein wirklich kurzer Klick (50–500 ms) löst eine Aktion aus; länger gehalten, aber vor dem
+        // langen Druck losgelassen → keine Aktion
+        unsigned long held = currentMillis - state.lastTimeButtonDown;
+        if(held >= shortPressAfterMiliseconds && held <= shortPressMaxMs) {
             if(_rotaryEncoderCallback) {
                 _rotaryEncoderCallback(shortEvent, 0);
             }
@@ -86,61 +203,55 @@ void process_button(bool isDown, LampButtonState& state, RotaryEncoderEventType 
 
 void handle_rotary_button(unsigned long currentMillis) {
     static LampButtonState rotaryState;
-    // Debugging logic: Print pin state every 500ms
-    /* static unsigned long lastDebug = 0;
-    if (currentMillis - lastDebug > 500) {
-        lastDebug = currentMillis;
-        Serial.print("DEBUG: SW Pin Raw: ");
-        Serial.print(digitalRead(ROTARY_ENCODER_SW_PIN));
-        Serial.print(" | Lib isDown: ");
-        Serial.println(rotaryEncoder.isEncoderButtonDown());
-    } */
-
-    // Fix: Treat HIGH as pressed because pin reads LOW (0) when idle.
-    // This handles cases like Active High buttons or NC switches to GND.
-    // bool kButtonDown = digitalRead(ROTARY_ENCODER_SW_PIN) == HIGH;
     process_button(rotaryEncoder.isEncoderButtonDown(), rotaryState, RotaryEncoderEventType::ShortClick,
-                   RotaryEncoderEventType::LongClick, currentMillis);
-
-    // process_button(kButtonDown, rotaryState, RotaryEncoderEventType::ShortClick, RotaryEncoderEventType::LongClick,
-    //                currentMillis);
+                   RotaryEncoderEventType::LongClick, currentMillis, rotaryLongPressMs, &s_rotatedWhileHeld);
 }
 
 void handle_boot_button(unsigned long currentMillis) {
     static LampButtonState bootState;
-    process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
-                   RotaryEncoderEventType::LongBootClick, currentMillis);
-    // process_button(digitalRead(BOOT_BUTTON_PIN) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
-    //               RotaryEncoderEventType::LongBootClick, currentMillis);
+    process_button(digitalRead(PIN_BOOT_BUTTON) == LOW, bootState, RotaryEncoderEventType::ShortBootClick,
+                   RotaryEncoderEventType::LongBootClick, currentMillis, longPressAfterMiliseconds);
 }
 
+// Wertet Drehungen rastungsgenau aus: Erst wenn der Knopf wieder in einer Rastung steht (beide Pins
+// auf Ruhepegel), wird die seit der letzten Rastung gezählte Flankenzahl auf ganze Rastungen gerundet
+// und gemeldet. Danach wird der Bezugspunkt neu gesetzt → verlorene oder doppelte Flanken (Prellen)
+// verschieben die Zählung nicht dauerhaft, und keine Rastung wird verschluckt.
 void handleRotation() {
-    // lets see if anything changed
-    int16_t encoderDelta = rotaryEncoder.encoderChanged();
-
-    // for some cases we only want to know if value is increased or decreased
-    // (typically for menu items)
-    if(encoderDelta != 0 && _rotaryEncoderCallback) { // Check if callback is set
-        int16_t encoderValue = rotaryEncoder.readEncoder();
-        _rotaryEncoderCallback(RotaryEncoderEventType::Rotate, encoderValue);
-    }
+    if(!_rotaryEncoderCallback)
+        return;
+    if(digitalRead(PIN_ENCODER_DT) != s_restDt || digitalRead(PIN_ENCODER_CLK) != s_restClk)
+        return; // Knopf steht zwischen zwei Rastungen → abwarten
+    long pos = rotaryEncoder.readEncoder();
+    long delta = pos - s_lastDetentPos;
+    s_lastDetentPos = pos;
+    // |delta| < 2: nur Prellen in der Rastung → ignorieren
+    if(delta > -2 && delta < 2)
+        return;
+    // Auf ganze Rastungen runden; mindestens eine (bei 2–3 Flanken fehlten Flanken, gedreht wurde trotzdem)
+    long detents = (delta + (delta > 0 ? ROTARY_ENCODER_STEPS / 2 : -ROTARY_ENCODER_STEPS / 2)) / ROTARY_ENCODER_STEPS;
+    if(detents == 0)
+        detents = delta > 0 ? 1 : -1;
+    if(detents > 7) detents = 7;   // Wertebereich der Helligkeit, schützt vor int16-Überlauf
+    if(detents < -7) detents = -7;
+    _rotaryEncoderCallback(RotaryEncoderEventType::Rotate, (int16_t)detents);
 }
 
+// Läuft in der Hauptschleife: Drehbewegung sofort, Taster alle 20ms (Debounce)
 void rotary_loop() {
-    unsigned long currentMillis = millis();
-    static unsigned long previousMillis = 0;
-    const unsigned long interval = 20; // 20ms interval
-
     if(!_rotaryEncoderCallback) {
         return;
     }
 
-    if(currentMillis - previousMillis >= interval) {
-        // save the last time we ran the loop
-        previousMillis = currentMillis;
+    // Drehbewegung braucht kein Debounce — sofort prüfen für minimale Latenz
+    handleRotation();
 
+    // Taster alle 20ms prüfen (Debounce gegen Prellen)
+    unsigned long currentMillis = millis();
+    static unsigned long previousMillis = 0;
+    if(currentMillis - previousMillis >= 20) {
+        previousMillis = currentMillis;
         handle_rotary_button(currentMillis);
         handle_boot_button(currentMillis);
-        handleRotation();
     }
 }

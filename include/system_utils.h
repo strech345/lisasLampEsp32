@@ -1,20 +1,8 @@
 #ifndef SYSTEM_UTILS_H
 #define SYSTEM_UTILS_H
+// Zeitsteuerungs-Hilfsfunktionen: nicht-blockierende Intervall-Verwaltung.
 
-/**
- * Returns true if intervalMs has passed since *lastRunTime, and updates
- * *lastRunTime.
- */
+// Gibt true zurück wenn intervalMs seit dem letzten Aufruf vergangen sind und aktualisiert *lastRunTime
 bool isTimeForAction(unsigned long* lastRunTime, unsigned long intervalMs);
 
-enum ProcessStatus {
-    PROCESS_INACTIVE,  // The timer is not running
-    PROCESS_RUNNING,   // The timer is active and running (not timed out yet)
-    PROCESS_TIMED_OUT, // The timer has expired
-    PROCESS_STARTING
-};
-ProcessStatus getTimeoutState(unsigned long* pTimerMs, const bool startSignal,
-                              const unsigned long durationMs);
-
-bool startOnce(bool* pHasStarted, const bool startSignal);
 #endif // SYSTEM_UTILS_H

@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(ls)",
+      "Bash(~/.platformio/penv/bin/pio *)",
+      "Bash(grep *)",
+      "Bash(npm *)",
+      "Bash(nmcli *)",
+      "Bash(stty *)",
+      "Bash(dd *)",
+      "Bash(iw *)",
+      "Bash(iwlist *)",
+      "Bash(sudo *)",
+      "Bash(kill *)",
+      "Bash(pkill *)",
+      "Bash(lsof *)",
+      "Bash(python3 *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(sleep *)",
+      "Bash(echo *)",
+      "Bash(cd * && *)",
+      "Read(/home/stephan/repos/)",
+      "Edit(/home/stephan/repos/)"
+    ]
+  }
+}
