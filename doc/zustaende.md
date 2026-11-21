@@ -65,6 +65,10 @@ wird danach wieder Sleep.
 Eine Konfigurationsänderung über die Weboberfläche beendet einen laufenden Wecker nur, wenn genau dieser
 Wecker deaktiviert oder zeitlich geändert wurde.
 
+Jeder Wecker feuert pro Tag nur einmal. Der Auslösetag liegt im RTC-Speicher und übersteht Deep Sleep,
+Neustart und Absturz (nicht aber einen Stromausfall): Ein gestoppter Wecker startet also nicht erneut, wenn
+die Lampe innerhalb des 10-min-Nachlauffensters aufgeweckt wird.
+
 ---
 
 ## Bedienung je Zustand

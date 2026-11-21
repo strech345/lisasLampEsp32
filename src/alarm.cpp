@@ -1,8 +1,10 @@
 // Wecker-Modul — Implementierung
-// Auslösetag wird als tm_yday gespeichert damit ein Alarm pro Tag und Wochentag nur einmal feuert.
+// Der Auslösetag (Jahr + Jahrestag) wird pro Wecker im RTC-Speicher gemerkt, damit ein Wecker pro Tag nur
+// einmal feuert — auch über Deep Sleep, Neustart und Absturz hinweg (nicht über einen Stromausfall).
 #include "alarm.h"
 #include <string.h>
 #include <time.h>
+#include <esp_attr.h>
 #include "debug_utils.h"
 
 // Hilfsstruct: aktuelle Uhrzeit und Wochentag
@@ -30,9 +32,30 @@ Alarm alarms[MAX_ALARMS];
 
 // --- Alarmstatus ---
 
-// Speichert den Jahrestag (tm_yday) des letzten Auslösens pro Alarm.
-// Nicht im Flash — wird bei jedem Boot zurückgesetzt.
-static int last_triggered_day_for_alarm[MAX_ALARMS];
+// Tag des letzten Auslösens pro Alarm als Jahr * 1000 + Jahrestag (tm_yday); -1 = noch nie.
+// RTC_NOINIT: übersteht Deep Sleep (jedes Aufwachen ist ein Neustart), ESP.restart(), Watchdog und Panic.
+// Sonst feuerte ein gestoppter Wecker nach einem Aufwachen im 10-min-Nachlauffenster erneut.
+// Nach dem Einschalten ist der Speicher zufällig → die Kennung erkennt das und setzt alles auf -1.
+#define ALARM_RTC_MAGIC 0xA1A2B001u
+struct AlarmRtcState {
+    uint32_t magic;
+    int32_t lastTriggeredDay[MAX_ALARMS];
+};
+RTC_NOINIT_ATTR static AlarmRtcState s_rtc;
+
+// Stellt den RTC-Zustand bereit: nach dem Einschalten (Kennung fehlt) alle Auslösetage leeren
+static void ensureRtcState() {
+    if(s_rtc.magic == ALARM_RTC_MAGIC)
+        return;
+    for(int i = 0; i < MAX_ALARMS; i++)
+        s_rtc.lastTriggeredDay[i] = -1;
+    s_rtc.magic = ALARM_RTC_MAGIC;
+}
+
+// Schlüssel für "heute": Jahr * 1000 + Jahrestag (eindeutig auch über den Jahreswechsel)
+static int32_t dayKey(int year, int yday) {
+    return (int32_t)year * 1000 + yday;
+}
 
 static int activeAlarmId = -1;               // -1 = kein aktiver Alarm
 static unsigned long alarm_start_millis = 0; // millis()-Wert beim Alarmstart
@@ -42,8 +65,17 @@ long msToNextAlarm = -1;
 // Ersetzt die Alarmliste und berechnet den nächsten Auslösezeitpunkt.
 // Ein laufender Alarm und die "heute schon ausgelöst"-Tage bleiben erhalten; nur für geänderte
 // Einträge (Tag/Stunde/Minute/aktiv) wird der Auslösetag zurückgesetzt, ein geänderter oder
-// deaktivierter aktiver Alarm wird gestoppt.
+// deaktivierter aktiver Alarm wird gestoppt. Der erste Aufruf nach dem Start (aus setup()) übernimmt
+// die Liste nur: Die Auslösetage im RTC-Speicher gelten weiter.
 void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
+    static bool s_loaded = false; // false = erster Aufruf seit dem Start (alarms[] ist noch leer)
+    ensureRtcState();
+    if(!s_loaded) {
+        s_loaded = true;
+        memcpy(alarms, newAlarms, sizeof(alarms));
+        calculateMillisToNextAlarm();
+        return;
+    }
     for(int i = 0; i < MAX_ALARMS; i++) {
         bool timeChanged = alarms[i].day != newAlarms[i].day || alarms[i].hour != newAlarms[i].hour
             || alarms[i].minute != newAlarms[i].minute || alarms[i].once != newAlarms[i].once
@@ -51,7 +83,7 @@ void setAlarms(const Alarm newAlarms[MAX_ALARMS]) {
             || alarms[i].onceYear != newAlarms[i].onceYear;
         bool changed = timeChanged || alarms[i].active != newAlarms[i].active;
         if(changed) {
-            last_triggered_day_for_alarm[i] = -1; // Eintrag geändert → darf heute wieder auslösen
+            s_rtc.lastTriggeredDay[i] = -1; // Eintrag geändert → darf heute wieder auslösen
         }
         // Aktiver Alarm wurde deaktiviert oder zeitlich geändert → stoppen
         if(i == activeAlarmId && (timeChanged || !newAlarms[i].active)) {
@@ -77,7 +109,7 @@ void setActiveAlarm(int index) {
     if(activeAlarmId != -1) {
         TimeInfo currentTimeInfo = getCurrentTimeInfo();
         // Merken an welchem Jahrestag der Alarm ausgelöst hat, damit er heute nicht doppelt feuert
-        last_triggered_day_for_alarm[activeAlarmId] = currentTimeInfo.day;
+        s_rtc.lastTriggeredDay[activeAlarmId] = dayKey(currentTimeInfo.year, currentTimeInfo.day);
         alarm_start_millis = millis();
     }
     serialPrint("Active alarm set to: " + String(activeAlarmId));
@@ -116,6 +148,7 @@ void checkAlarmStates(uint16_t durationMinutes) {
         return; // Ohne gültige Uhrzeit nie auslösen
     }
     int nowMinutes = currentTimeInfo.hour * 60 + currentTimeInfo.minute;
+    const int32_t todayKey = dayKey(currentTimeInfo.year, currentTimeInfo.day);
     for(int i = 0; i < MAX_ALARMS; i++) {
         // Überspringen wenn: anderer Alarm aktiv, Alarm deaktiviert, heute schon ausgelöst oder falscher Tag
         // (wöchentlich: Wochentag; einmalig: genaues Datum inkl. Jahr → feuert nie ein zweites Mal)
@@ -123,14 +156,14 @@ void checkAlarmStates(uint16_t durationMinutes) {
         bool today = a.once ? (a.onceYear == currentTimeInfo.year && a.onceMonth == currentTimeInfo.month
                                && a.onceDay == currentTimeInfo.mday)
                             : (a.day == currentTimeInfo.dayOfWeek);
-        if(i == activeAlarmId || !a.active || !today || currentTimeInfo.day == last_triggered_day_for_alarm[i]) {
+        if(i == activeAlarmId || !a.active || !today || todayKey == s_rtc.lastTriggeredDay[i]) {
             continue;
         }
         int sinceAlarmMin = nowMinutes - (alarms[i].hour * 60 + alarms[i].minute); // Minuten seit Alarmzeit (heute)
         if(sinceAlarmMin >= 0 && sinceAlarmMin <= ALARM_GRACE_MINUTES && activeAlarmId == -1) {
             serialPrint("Alarm[" + String(i) + "]: day=" + String(alarms[i].day) + ", hour=" + String(alarms[i].hour)
                         + ", minute=" + String(alarms[i].minute)
-                        + ", last_triggered=" + String(last_triggered_day_for_alarm[i]));
+                        + ", last_triggered=" + String(s_rtc.lastTriggeredDay[i]));
 
             setActiveAlarm(i);
             break; // Nur einen Alarm gleichzeitig starten
@@ -162,7 +195,7 @@ void resetAlarms() {
     serialPrint("Resetting all alarms and active states");
     stopActiveAlarm();
     for(int i = 0; i < MAX_ALARMS; ++i) {
-        last_triggered_day_for_alarm[i] = -1;
+        s_rtc.lastTriggeredDay[i] = -1;
     }
     activeAlarmId = -1;
     alarm_start_millis = 0;
