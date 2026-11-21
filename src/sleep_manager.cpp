@@ -131,6 +131,10 @@ void enterDeepSleep(uint64_t sleepTimeMs) {
 
     // Ausstehende (debounced) Config sofort schreiben, sonst geht die letzte Änderung verloren
     flushPendingSave();
+    // Uhrzeit sichern: fällt im Schlaf der Strom aus, startet die Uhr mit diesem Stand statt einem älteren
+    time_t now = time(nullptr);
+    if(now >= 1577836800L) // nur eine plausible Zeit (ab 2020)
+        saveLastKnownTime(now);
 
     // WS2812 halten ihre Farbe ohne Datenleitung → vor dem Schlaf explizit dunkel schalten
     setBrightnessLevel(0);

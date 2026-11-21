@@ -14,6 +14,9 @@ enum ClockSyncSource : uint8_t { CLOCK_SYNC_NTP = 0, CLOCK_SYNC_RDS = 1, CLOCK_S
 void noteClockSync(ClockSyncSource source);
 // Zeitpunkt (Unix-Sekunden) des letzten Abgleichs dieser Quelle; 0 = seit dem Einschalten noch nie
 time_t lastClockSyncAt(ClockSyncSource source);
+// true, wenn seit dem Einschalten mindestens eine Quelle die Uhr gestellt hat. false = die Uhrzeit stammt
+// nur aus dem NVS (Stand vor dem Stromausfall) oder ist unbekannt → Zeitabgleich bald wiederholen.
+bool clockSyncedSincePowerOn();
 
 // Füllt das "clock"-Objekt für /get_system_info: now, ntpAt, rdsAt, tsfAt (Unix-Sekunden, 0 = noch nie),
 // lastSyncOk, staActive, nextSyncInMs (0 = läuft gerade, -1 = kein Heimnetz)

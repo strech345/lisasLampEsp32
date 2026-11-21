@@ -102,6 +102,14 @@ static void dropStaAfterSync();
 
 // Nach gescheitertem NTP-Versuch: Heimnetz erst abschalten, wenn der TSF-Fallback gerechnet hat
 static bool s_syncFailPending = false;
+
+// Gescheiterte Abgleiche seit dem Einschalten, solange noch keine Quelle die Uhr gestellt hat.
+// Im RTC-Speicher, damit der Backoff (nextSyncIntervalMs) auch über Deep Sleep weiterzählt.
+RTC_DATA_ATTR static uint8_t s_failsSincePowerOn = 0;
+// Wartezeiten (min) nach dem Einschalten, solange die Uhr nur aus dem NVS stammt: Nach einem Stromausfall
+// startet meist auch der Router neu (1–3 min), der erste Versuch scheitert dann. Ohne Backoff käme der
+// nächste erst nach syncRetryMin (Standard 5 h) — mit falscher Uhrzeit für Wecker und Feier-Modus.
+static const uint16_t POWER_ON_BACKOFF_MIN[] = {1, 2, 5, 10, 30};
 static void dropStaAfterFail();
 static void syncFailed(const char* why);
 
@@ -345,9 +353,19 @@ long msUntilNextSync() {
 // Wartezeit bis zum nächsten automatischen Zeitabgleich: nach Erfolg syncIntervalMin, nach einem
 // Fehlschlag syncRetryMin. Ohne eingetragenes Heimnetz gibt es nichts zu wiederholen → syncIntervalMin.
 // Auch der Deep Sleep schläft höchstens so lange (sleep_manager.cpp).
+// Nach dem Einschalten ohne erfolgreichen Abgleich (Uhr nur aus dem NVS): gestaffelt 1, 2, 5, 10, 30 min
+// (höchstens syncRetryMin), damit ein gleichzeitig neu startender Router die Uhr bald stellen kann.
 unsigned long nextSyncIntervalMs() {
     bool retry = !s_lastSyncOk && strlen(g_systemSettings->externalSSID) > 0;
     uint16_t minutes = retry ? g_systemSettings->syncRetryMin : g_systemSettings->syncIntervalMin;
+    if(retry && !clockSyncedSincePowerOn()) {
+        const uint8_t steps = sizeof(POWER_ON_BACKOFF_MIN) / sizeof(POWER_ON_BACKOFF_MIN[0]);
+        uint8_t idx = s_failsSincePowerOn == 0 ? 0 : s_failsSincePowerOn - 1;
+        if(idx >= steps)
+            idx = steps - 1;
+        if(POWER_ON_BACKOFF_MIN[idx] < minutes)
+            minutes = POWER_ON_BACKOFF_MIN[idx];
+    }
     return (unsigned long)minutes * 60UL * 1000UL;
 }
 
@@ -597,6 +615,8 @@ static void syncFailed(const char* why) {
     logEvent(why);
     serialPrint(why);
     s_lastSyncOk = false;
+    if(!clockSyncedSincePowerOn() && s_failsSincePowerOn < UINT8_MAX)
+        s_failsSincePowerOn++; // Backoff nach dem Einschalten (nextSyncIntervalMs)
     g_wifiTracker->staConfigValid = false;
     s_syncFailPending = true;
     WiFi.disconnect(false); // kein weiteres Verbinden, STA-Modus (Funkteil) bleibt für die Beacon-Erfassung
@@ -657,9 +677,9 @@ static void processWifiEvents() {
                 logEvent("NTP sync successful");
             g_wifiTracker->clockSynced = true;
             s_lastSyncOk = true; // nächster Abgleich nach syncIntervalMin
-            noteClockSync(CLOCK_SYNC_NTP); // für den Systemmonitor
+            noteClockSync(CLOCK_SYNC_NTP); // Systemmonitor + Zeit im NVS sichern
+            s_failsSincePowerOn = 0;
             g_wifiTracker->lastSucceededTestTime = millis();
-            saveLastKnownTime(time(NULL));
             onNtpSynced();
             s_dropStaPending = true; // Heimnetz nach dem TSF-Snapshot trennen (dropStaAfterSync)
             break;

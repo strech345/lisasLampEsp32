@@ -72,6 +72,12 @@ nächsten Prüfung, ohne WLAN-Neustart. Den Stand (letzte Abgleiche je Quelle, n
   WLAN aus → nur STA; Hotspot läuft → STA wird dazugeschaltet (APSTA), der Hotspot bleibt. Während WLAN-Suche/-Test ruht er. Ob der letzte Versuch geklappt hat, merkt sich `s_lastSyncOk`: `beginSta()` setzt
   es auf „fehlgeschlagen“, erst die NTP-Antwort auf „erfolgreich“. Danach gilt `syncIntervalMin` bzw.
   `syncRetryMin`; ohne eingetragenes Heim-WLAN immer `syncIntervalMin`.
+- **Nach dem Einschalten (Stromausfall):** Solange seit dem Einschalten noch keine Quelle (NTP, TSF, RDS)
+  die Uhr gestellt hat, stammt sie nur aus dem NVS und kann um die Dauer des Ausfalls falsch sein. Weil
+  meist auch der Router neu startet, scheitert der erste Versuch oft. Dann folgen die Versuche gestaffelt
+  nach 1, 2, 5, 10 und danach alle 30 min (höchstens `syncRetryMin`), statt erst nach `syncRetryMin`.
+  Der Zähler `s_failsSincePowerOn` liegt im RTC-Speicher und zählt über den Deep Sleep weiter
+  (`clockSyncedSincePowerOn()` in `clock_sync.cpp`).
 - **Deep Sleep:** `checkToGoSleep()` schläft höchstens `nextSyncIntervalMs()`; nach dem Timer-Wakeup
   startet `setup()` den STA-Abgleich. Der RTC-Drift-Vorlauf (5 min + Drift über die Schlafdauer) gilt nur
   für Wecker und Party-Tage. Ein langes Intervall bedeutet mehr Drift zwischen zwei Abgleichen (interner
@@ -111,7 +117,7 @@ Unbekannte URLs leiten auf die Startseite um.
 | Quelle | Wann | Genauigkeit |
 |---|---|---|
 | **NTP** (`pool.ntp.org`, `time.nist.gov`) | sobald das externe WLAN eine IP vergibt | Millisekunden |
-| **Gespeicherte Zeit** (NVS) | beim Start, wenn die Uhr noch leer ist | Stand des letzten Speicherns |
+| **Gespeicherte Zeit** (NVS) | beim Start, wenn die Uhr noch leer ist | Stand des letzten Speicherns (bei jedem Abgleich und vor jedem Deep Sleep) |
 | **TSF-Fallback** | WLAN läuft, aber kein NTP | wenige Sekunden |
 | **RDS** (optional) | kein WLAN, Schalter aktiv, Modul bestückt | Minutenauflösung |
 
@@ -122,8 +128,9 @@ Im Deep Sleep läuft die Uhr über den RTC-Takt weiter (siehe [hardware.md](hard
 
 1. IP erhalten → `syncTimeWithNTP()` merkt die aktuelle Uhrzeit und startet SNTP neu.
 2. Sync fertig → Abweichung wird geloggt (`NTP sync: Abweichung +125ms`), Status „synchronisiert“,
-   Zeit in NVS gesichert, TSF-Snapshot ausgelöst.
-3. Während der Sync gültig ist, wird die Zeit alle 30 min in NVS gesichert.
+   Zeit in NVS gesichert (`noteClockSync()`, ebenso nach RDS- und TSF-Abgleich), TSF-Snapshot ausgelöst.
+3. Während der Sync gültig ist, wird die Zeit alle 30 min in NVS gesichert, außerdem direkt vor jedem
+   Deep Sleep (`enterDeepSleep()`).
 4. Liegt der letzte NTP-Sync über 24 h zurück, gilt er als veraltet (`NTP veraltet`).
 
 Hinweis: `sntp_get_sync_status()` meldet „fertig“ nur einmal und setzt sich danach zurück. Der Status
