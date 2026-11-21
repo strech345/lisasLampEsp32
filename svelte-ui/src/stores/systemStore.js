@@ -27,7 +27,15 @@ const defaultSystemSettings = {
   externalPW: "",
   externalSSID2: "",
   externalPW2: "",
+  // Minuten: Hotspot-Laufzeit ohne Bedienung (0 = unbegrenzt), Zeitabgleich nach Erfolg / Fehlschlag
+  apTimeoutMin: 10,
+  syncIntervalMin: 300,
+  syncRetryMin: 300,
 };
+
+// Feldgruppen mit eigenem Speichern-Knopf: WLAN-Sektion bzw. Rubrik Synchronisation (System)
+export const WIFI_KEYS = ["internalSSID", "internalPW", "externalSSID", "externalPW", "externalSSID2", "externalPW2", "apTimeoutMin"];
+export const SYNC_KEYS = ["syncIntervalMin", "syncRetryMin"];
 
 function createSystemStore() {
   const systemStoreData = writable(defaultSystemSettings);
@@ -52,27 +60,34 @@ function createSystemStore() {
       }
     },
 
-    // Sendet die Systemeinstellungen; true bei Erfolg. Passwort-Maske = unverändert, leer = entfernen.
-    async post() {
+    // Sendet die Felder `keys` (WIFI_KEYS oder SYNC_KEYS); true bei Erfolg. Fehlende Felder behält die
+    // Lampe, ungespeicherte Eingaben der anderen Gruppe bleiben stehen. Passwort-Maske = unverändert,
+    // leer = entfernen.
+    async post(keys = Object.keys(defaultSystemSettings)) {
       try {
         const currentSettings = get(systemStoreData);
-        // Nur WLAN-Felder senden: Schalter, Persönliches und Debug haben eigene Speicherwege, sonst
-        // würde ein zwischenzeitlich geänderter Wert mit dem alten Stand überschrieben
+        // Schalter, Persönliches und Debug haben eigene Speicherwege, sonst würde ein zwischenzeitlich
+        // geänderter Wert mit dem alten Stand überschrieben
         const payload = {};
-        for (const key of Object.keys(defaultSystemSettings)) payload[key] = currentSettings[key];
+        for (const key of keys) payload[key] = currentSettings[key];
         await postJson("/set_system_config", payload);
         // Nach dem Speichern Passwörter wie vom Gerät maskiert zeigen (leer = kein Passwort)
         const saved = { ...currentSettings };
         for (const pw of ["internalPW", "externalPW", "externalPW2"]) {
-          if (saved[pw]) saved[pw] = "******";
+          if (keys.includes(pw) && saved[pw]) saved[pw] = "******";
         }
         systemStoreData.set(saved);
-        originalSystemSettings = JSON.parse(JSON.stringify(saved));
+        for (const key of keys) originalSystemSettings[key] = saved[key];
         return true;
       } catch (error) {
         messageStore.show("error", get(t)("system.saveFailed", { msg: error.message }));
         return false;
       }
+    },
+
+    // Setzt ein Feld auf den zuletzt gespeicherten Wert zurück (z. B. nach ungültiger Eingabe)
+    revertField(field) {
+      systemStoreData.update((settings) => ({ ...settings, [field]: originalSystemSettings[field] }));
     },
 
     updateField(field, value) {
@@ -82,12 +97,10 @@ function createSystemStore() {
       }));
     },
 
-    hasChanges() {
-      let currentSettings = get(systemStoreData);
-      return (
-        JSON.stringify(currentSettings) !==
-        JSON.stringify(originalSystemSettings)
-      );
+    // true, wenn sich eines der Felder `keys` (Standard: alle) vom gespeicherten Stand unterscheidet
+    hasChanges(keys = Object.keys(defaultSystemSettings)) {
+      const cur = get(systemStoreData);
+      return keys.some((k) => JSON.stringify(cur[k]) !== JSON.stringify(originalSystemSettings[k]));
     },
   };
 }

@@ -12,7 +12,13 @@ void initTsfClock(const SystemSettings* settings, WiFiTestTracker* tracker);
 void tsfClockLoop();
 // Löst nach einer erfolgreichen NTP-Synchronisation einen neuen TSF-Snapshot aus
 void onNtpSynced();
-// Erzwingt manuell einen neuen TSF-Snapshot (z.B. über Web-API)
+// Nach einem gescheiterten NTP-Versuch: Uhrzeit aus den Bezugspunkten berechnen (WLAN muss noch an sein)
+void requestTsfFallback();
+// true, solange ein Snapshot/Fallback angefordert ist oder die Beacon-Erfassung läuft (WLAN dann nicht umschalten)
+bool isTsfCaptureBusy();
+// true, wenn ein Snapshot von Hand erlaubt ist (NTP-Abgleich höchstens 10 min her)
+bool isTsfSnapshotAllowed();
+// Erzwingt manuell einen neuen TSF-Snapshot (z.B. über Web-API); ohne frische NTP-Zeit wirkungslos
 void triggerTsfSnapshot();
 // Gibt den aktuellen TSF-Modul-Status als JSON-String zurück
 String getTsfStatusJson();

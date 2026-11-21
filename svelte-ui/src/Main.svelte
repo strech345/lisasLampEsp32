@@ -127,9 +127,17 @@
 </main>
 
 <style>
-  :global(.btn-blue:hover) {
-    background-color: #0052a3 !important;
-    border-color: #0052a3 !important;
+  /* Blaue Knöpfe bleiben in jedem Zustand gleich blau: kein dunkleres Blau bei Hover/Fokus/Klick
+     (auf dem Handy bliebe das nach dem Antippen „hängen“). Fokusring nur bei Tastaturbedienung. */
+  :global(.btn-blue:not(:disabled)),
+  :global(.btn-blue:not(:disabled):is(:hover, :active, :focus)) {
+    background-color: var(--pico-primary-background, #0172ad) !important;
+    border-color: var(--pico-primary-background, #0172ad) !important;
+    color: #fff !important;
+  }
+
+  :global(.btn-blue:focus:not(:focus-visible)) {
+    box-shadow: none !important;
   }
 
   /* Fieldset nur als Sperr-Container, ohne eigene Optik */
@@ -146,7 +154,8 @@
     cursor: not-allowed;
   }
 
-  :global(.btn-blue:disabled) {
+  :global(.btn-blue:disabled),
+  :global(.btn-blue:disabled:is(:hover, :active, :focus)) {
     background-color: #cccccc !important;
     border-color: #cccccc !important;
     color: #666666 !important;

@@ -17,6 +17,7 @@ Smarte Nachttischlampe mit Wecker, Gute-Nacht-Modus und Weboberfläche über ein
 | Lampenzustände und Übergänge | [doc/zustaende.md](doc/zustaende.md) |
 | Hardware und GPIO-Belegung | [doc/hardware.md](doc/hardware.md) |
 | WLAN, NTP, TSF- und RDS-Uhrzeit | [doc/wlan-und-zeit.md](doc/wlan-und-zeit.md) |
+| TSF-Uhrzeit ohne Internet (mit Rechenbeispiel) | [doc/tsf-uhrzeit.md](doc/tsf-uhrzeit.md) |
 | Architektur, Threads, HTTP-API | [doc/architektur.md](doc/architektur.md) |
 | Bauen, Aufspielen, UI-Entwicklung | [doc/build-und-deploy.md](doc/build-und-deploy.md) |
 | Änderungen | [CHANGELOG.md](CHANGELOG.md) |
@@ -81,7 +82,7 @@ Weitere Details, Mock-Modus und UI-Entwicklung: [doc/build-und-deploy.md](doc/bu
 ## Entwicklung
 
 - Serieller Monitor: `pio device monitor` (Log standardmäßig über UART0/TX = GPIO21, 115200 Baud;
-  umstellbar auf USB unter Einstellungen → Debug).
+  umstellbar auf USB unter Einstellungen → System).
   Bei Problemen mit dem Wiederverbinden hilft die VS-Code-Erweiterung
   [Serial Monitor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-serial-monitor).
 - Kommentare und Doku sind auf Deutsch. Pins nur in `include/pins.h`, Zugangsdaten nur in

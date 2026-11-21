@@ -16,6 +16,9 @@
 #include <algorithm>
 #include <atomic>
 #include <ArduinoJson.h>
+#include "clock_sync.h"
+#include "wifi_controller.h" // msSinceNtpThisBoot
+#include <climits>
 
 #define MIN_VALID_EPOCH_US (1577836800ULL * 1000000ULL) // 2020-01-01: alles davor gilt als "Uhrzeit unbekannt"
 #define MAX_DEVIATION_US 30000000ULL // Schätzungen weiter als 30 s vom Median entfernt sind Ausreißer
@@ -44,13 +47,25 @@ static volatile bool g_captureRunning = false;
 
 static volatile bool g_ntpSyncedTrigger = false;
 static bool g_snapshotScheduled = false;
-static bool g_fallbackAttempted = false;
+static volatile bool g_fallbackTrigger = false; // Auftrag nach gescheitertem NTP-Versuch (requestTsfFallback)
 static bool g_fallbackScheduled = false;
 
 static unsigned long g_lastSnapshotMs = 0;
 static const char* g_lastCalcResult = "none"; // nur String-Literale zuweisen (wird aus dem Web-Task gelesen)
 static uint8_t g_lastCalcAps = 0;
-static uint32_t g_lastCalcDeviationMs = 0;
+static uint32_t g_lastCalcDeviationMs = 0; // mittlere Abweichung der AP-Schätzungen vom Median
+static uint32_t g_lastCalcMaxDevMs = 0;    // größte Abweichung einer AP-Schätzung vom Median (schlechtester Fall)
+static uint8_t g_lastCalcGen = 0;          // Generation der verwendeten Bezüge (0 = nur NTP-Anker)
+
+// Snapshot von Hand nur so kurz nach einem NTP-Abgleich: dann ist die Systemzeit noch NTP-genau und
+// darf als Generation-0-Anker gespeichert werden (sonst landete eine driftende Zeit als „NTP“ in der Liste)
+#define MANUAL_SNAPSHOT_MAX_NTP_AGE_S 600
+
+// Genauigkeitstest beim Snapshot: TSF-Zeit aus den bisherigen Bezugspunkten gegen die (per NTP gestellte)
+// Systemzeit. Zeigt, wie weit TSF seit dem vorigen Snapshot höchstens danebengelegen hätte.
+static uint8_t g_checkAps = 0;         // Anzahl verglichener APs (0 = noch kein Test)
+static uint32_t g_checkMaxDevMs = 0;   // größte Abweichung eines APs
+static uint32_t g_checkSpanS = 0;      // längster Abstand zum vorigen Bezugspunkt (s)
 
 // Läuft im WiFi-Task (nicht in einer ISR) für jedes empfangene Management-Frame; filtert auf
 // Beacon-Frames und speichert pro AP (BSSID) genau einen TSF-Wert, RSSI und Empfangszeitpunkt
@@ -137,6 +152,109 @@ static int calcScore(int8_t rssi, uint64_t tsf_us) {
     return rssi_score + (int)days;
 }
 
+#define DRIFT_MIN_SPAN_US (2ULL * 3600ULL * 1000000ULL) // Gang erst ab 2 h Abstand messen (NTP-Schwankung ~ms)
+#define DRIFT_MAX_PPB 200000                              // > 200 ppm ist kein plausibler Quarz → verwerfen
+
+// Uhrzeit (µs) beim Empfang eines Beacons mit Zählerstand tsfNow, gerechnet aus dem Bezugspunkt e.
+// Mit bekannter Gangabweichung wird die Zählerdifferenz auf echte Zeit umgerechnet (Gangkorrektur).
+// Voraussetzung: tsfNow >= e.tsf_us (sonst wurde der AP neu gestartet).
+static uint64_t estimateUnixUs(const TsfEntry& e, uint64_t tsfNow) {
+    const int64_t d = (int64_t)(tsfNow - e.tsf_us);
+    int64_t real = d;
+    if(e.drift_ppb != TSF_DRIFT_UNKNOWN)
+        real = d - d / 1000 * (int64_t)e.drift_ppb / 1000000; // d·(1 − drift); /1000 zuerst gegen Überlauf
+    return e.unix_us + (uint64_t)real;
+}
+
+// Genauigkeitstest (vor dem Überschreiben der Bezugspunkte aufrufen): Für jeden gescannten, bereits
+// gespeicherten AP die Uhrzeit so ausrechnen, wie der Fallback es täte, und mit der Systemzeit zum
+// Empfangszeitpunkt vergleichen. APs mit zurückgesetztem Zähler oder > 30 s daneben (Neustart) zählen
+// nicht. Ergebnis: größte Abweichung, Anzahl APs und längster Abstand zum vorigen Bezugspunkt.
+static void checkAgainstSystemTime(uint8_t count) {
+    uint8_t aps = 0;
+    uint64_t maxDevUs = 0;
+    uint64_t maxSpanUs = 0;
+    for(uint8_t n = 0; n < count; n++) {
+        const CapturedBeacon& b = g_capturedBeacons[n];
+        for(uint8_t s = 0; s < g_storedCount; s++) {
+            const TsfEntry& e = g_storedEntries[s];
+            if(memcmp(e.bssid, b.bssid, 6) != 0)
+                continue;
+            // Nur NTP-Anker (Generation 0) zählen: abgeleitete Bezüge tragen schon einen Fehler in sich
+            if(e.gen == 0 && b.tsf_us >= e.tsf_us) {
+                const uint64_t actualUs = g_captureUnixUs + (uint64_t)(b.monoUs - g_captureMonoUs);
+                const uint64_t estUs = estimateUnixUs(e, b.tsf_us); // wie der Fallback, mit Gangkorrektur
+                const uint64_t devUs = estUs > actualUs ? estUs - actualUs : actualUs - estUs;
+                if(devUs <= MAX_DEVIATION_US) {
+                    aps++;
+                    if(devUs > maxDevUs)
+                        maxDevUs = devUs;
+                    if(actualUs > e.unix_us && actualUs - e.unix_us > maxSpanUs)
+                        maxSpanUs = actualUs - e.unix_us;
+                }
+            }
+            break;
+        }
+    }
+    if(aps == 0)
+        return; // nichts vergleichbar (z. B. erster Snapshot) → vorigen Test stehen lassen
+    g_checkAps = aps;
+    g_checkMaxDevMs = (uint32_t)(maxDevUs / 1000ULL);
+    g_checkSpanS = (uint32_t)(maxSpanUs / 1000000ULL);
+    char msg[52];
+    snprintf(msg, sizeof(msg), "TSF: check %u APs max +-%lums", (unsigned)aps, (unsigned long)g_checkMaxDevMs);
+    logEvent(msg);
+    serialPrint(msg);
+}
+
+// Formatiert ppb als ppm mit Vorzeichen und 2 Nachkommastellen, z. B. 12400 → "+12.40"
+static void formatPpm(char* buf, size_t len, int64_t ppb) {
+    const char sign = ppb < 0 ? '-' : '+';
+    const uint64_t a = (uint64_t)(ppb < 0 ? -ppb : ppb);
+    snprintf(buf, len, "%c%lu.%02lu", sign, (unsigned long)(a / 1000), (unsigned long)((a % 1000) / 10));
+}
+
+// Protokolliert eine Gangmessung (zur Beobachtung, ob die Router-Zähler stabil laufen oder springen):
+// letzte 3 Bytes der BSSID, gemessener Gang, Messdauer in Stunden, gemittelter (verwendeter) Gang.
+// Beispiel: "TSF: drift 3a:4f:c1 +12.40ppm 5h avg +12.20"
+static void logDrift(const uint8_t* bssid, int64_t measuredPpb, uint64_t spanUs, int32_t usedPpb) {
+    char m[12], u[12], msg[52];
+    formatPpm(m, sizeof(m), measuredPpb);
+    formatPpm(u, sizeof(u), usedPpb);
+    snprintf(msg, sizeof(msg), "TSF: drift %02x:%02x:%02x %sppm %luh avg %s", bssid[3], bssid[4], bssid[5], m,
+             (unsigned long)((spanUs + 1800000000ULL) / 3600000000ULL), u);
+    logEvent(msg);
+    serialPrint(msg);
+}
+
+// Gangmessung beim Snapshot eines schon bekannten APs: neu = frischer NTP-Bezugspunkt (Messpunkt = er
+// selbst, Gang unbekannt), alt = gespeicherter Eintrag. Ohne Neustart und mit Messpunkt ≥ 2 h zurück wird
+// der Gang gemessen (Zählerlauf gegen NTP-Zeit) und mit dem bisherigen Wert gemittelt. Zu kurzer Abstand:
+// alter Messpunkt und Gang bleiben, damit die nächste Messung über einen langen Abstand läuft.
+// Nach einem Neustart (Zähler kleiner) bleibt der Gang (gleicher Quarz), der Messpunkt beginnt neu.
+static void updateDrift(const TsfEntry& old, TsfEntry& neu) {
+    neu.drift_ppb = old.drift_ppb;
+    memcpy(neu.drift_hist, old.drift_hist, sizeof(neu.drift_hist)); // Verlauf bleibt erhalten
+    if(old.rate_unix_us == 0 || neu.tsf_us < old.rate_tsf_us || neu.unix_us <= old.rate_unix_us)
+        return; // kein Messpunkt oder AP neu gestartet → neuer Messpunkt (neu.rate_* = jetzt)
+    const uint64_t spanUs = neu.unix_us - old.rate_unix_us;
+    if(spanUs < DRIFT_MIN_SPAN_US) {
+        neu.rate_tsf_us = old.rate_tsf_us; // Abstand noch zu kurz: alten Messpunkt behalten
+        neu.rate_unix_us = old.rate_unix_us;
+        return;
+    }
+    const int64_t tsfSpan = (int64_t)(neu.tsf_us - old.rate_tsf_us);
+    const int64_t measured = (tsfSpan - (int64_t)spanUs) * 1000 / (int64_t)(spanUs / 1000000ULL) ; // ppb
+    if(measured > DRIFT_MAX_PPB || measured < -DRIFT_MAX_PPB)
+        return; // unplausibel → nicht übernehmen, neuer Messpunkt
+    neu.drift_ppb = old.drift_ppb == TSF_DRIFT_UNKNOWN ? (int32_t)measured
+                                                         : (int32_t)((old.drift_ppb + measured) / 2);
+    // Messung vorne in den Verlauf schieben (wird mit der Liste im Flash gespeichert)
+    memmove(&neu.drift_hist[1], &neu.drift_hist[0], (TSF_DRIFT_HIST - 1) * sizeof(int32_t));
+    neu.drift_hist[0] = (int32_t)measured;
+    logDrift(neu.bssid, measured, spanUs, neu.drift_ppb);
+}
+
 // Verarbeitet einen NTP-Snapshot: mergt neue APs per Quality-Score in die gespeicherte Liste.
 // Bekannte APs werden aktualisiert (frischerer Messzeitpunkt = besserer Score).
 // Unbekannte APs verdrängen nur den schwächsten Eintrag wenn ihr Score höher ist.
@@ -157,6 +275,8 @@ static void processSnapshot() {
         return;
     }
 
+    checkAgainstSystemTime(count);
+
     uint8_t newAdded = 0;
     uint8_t updated = 0;
 
@@ -168,12 +288,19 @@ static void processSnapshot() {
         // Unix-Zeit zum Empfangszeitpunkt dieses Beacons (nicht zum Scan-Start)
         newEntry.unix_us = g_captureUnixUs + (uint64_t)(b.monoUs - g_captureMonoUs);
         newEntry.rssi = b.rssi;
+        newEntry.gen = 0; // Snapshot nur mit NTP-genauer Systemzeit (automatisch nach NTP oder frisch von Hand)
+        newEntry.drift_ppb = TSF_DRIFT_UNKNOWN;
+        newEntry.rate_tsf_us = newEntry.tsf_us; // dieser NTP-Punkt ist Messpunkt für die nächste Gangmessung
+        newEntry.rate_unix_us = newEntry.unix_us;
+        for(uint8_t h = 0; h < TSF_DRIFT_HIST; h++)
+            newEntry.drift_hist[h] = TSF_DRIFT_UNKNOWN;
         int newScore = calcScore(newEntry.rssi, newEntry.tsf_us);
 
         // Bereits bekannter AP: Eintrag mit frischen Messwerten überschreiben
         bool found = false;
         for(uint8_t s = 0; s < g_storedCount; s++) {
             if(memcmp(g_storedEntries[s].bssid, newEntry.bssid, 6) == 0) {
+                updateDrift(g_storedEntries[s], newEntry);
                 g_storedEntries[s] = newEntry;
                 updated++;
                 found = true;
@@ -227,15 +354,21 @@ struct Estimate {
     uint64_t unixUs;  // geschätzte Unix-Zeit zum Zeitpunkt nowMonoUs
     uint8_t stored;   // Index in g_storedEntries
     uint8_t captured; // Index in g_capturedBeacons
+    uint8_t gen;      // Generation des verwendeten Bezugs
 };
 
-// Berechnet die aktuelle Unix-Zeit aus TSF-Differenzen zwischen gespeichertem Snapshot
-// und neuen Beacon-Messungen. Ausreißer (> 30 s vom Median) werden verworfen, dann wird
-// der Median der übrigen Schätzungen genommen. Einträge mit zurückgesetztem TSF-Zähler
-// und Ausreißer werden neu basiert.
+// Berechnet die aktuelle Unix-Zeit aus TSF-Differenzen zwischen gespeicherten Bezugspunkten und neuen
+// Beacon-Messungen — immer absolut aus den Bezügen, nie aufbauend auf einer früheren TSF-Uhrzeit.
+// Alle gehörten Bezüge zählen (NTP-Anker und abgeleitete): Der Median verhindert, dass ein abgeleiteter
+// Bezug Fehler weiterträgt, und mehr APs machen das Ergebnis robuster. Eine Simulation (7 Tage ohne NTP,
+// Berechnung alle 5 h) zeigte: Fehler addieren sich so nicht; der Langzeitfehler ist die Quarz-Drift der
+// APs seit dem letzten NTP. Eine Beschränkung auf NTP-Anker brachte keine Genauigkeit, aber 20× öfter
+// „zu wenige APs“.
+//  1. Ausreißer (> 30 s vom Median) werden verworfen, der Median der übrigen wird Systemzeit.
+//  2. Neu gestartete APs (Zähler zurückgesetzt) und Ausreißer werden neu basiert, mit Generation
+//     = höchste Generation der verwendeten Bezüge + 1 (nur zur Information: wie weit vom NTP-Anker).
 static void processFallback() {
     g_fallbackScheduled = false;
-    g_fallbackAttempted = true;
     const uint8_t newCount = g_capturedBeaconCount;
     std::atomic_thread_fence(std::memory_order_acquire); // Gegenstück zur Barriere im Callback
 
@@ -253,6 +386,7 @@ static void processFallback() {
     uint8_t estCount = 0;
     uint8_t rebaseStored[MAX_TSF_ENTRIES];
     uint8_t rebaseCaptured[MAX_TSF_ENTRIES];
+    bool rebaseOutlier[MAX_TSF_ENTRIES]; // true = Ausreißer (evtl. anderes Gerät), false = Neustart (gleicher Quarz)
     uint8_t rebaseCount = 0;
 
     // Jeder gespeicherte AP kommt höchstens einmal vor (Schätzung ODER Rebase)
@@ -268,10 +402,11 @@ static void processFallback() {
                 // TSF-Zähler zurückgesetzt (AP neu gestartet) → neu basieren
                 rebaseStored[rebaseCount] = s;
                 rebaseCaptured[rebaseCount] = n;
+                rebaseOutlier[rebaseCount] = false;
                 rebaseCount++;
             } else {
                 // Zeit beim Empfang = Snapshot-Zeit + TSF-Differenz; plus die Zeit seit dem Empfang
-                est[estCount++] = {e.unix_us + (b.tsf_us - e.tsf_us) + (uint64_t)(nowMonoUs - b.monoUs), s, n};
+                est[estCount++] = {estimateUnixUs(e, b.tsf_us) + (uint64_t)(nowMonoUs - b.monoUs), s, n, e.gen};
             }
             break;
         }
@@ -293,6 +428,7 @@ static void processFallback() {
         if(dev > MAX_DEVIATION_US) {
             rebaseStored[rebaseCount] = est[i].stored;
             rebaseCaptured[rebaseCount] = est[i].captured;
+            rebaseOutlier[rebaseCount] = true;
             rebaseCount++;
         } else {
             kept[keptCount++] = est[i];
@@ -305,6 +441,12 @@ static void processFallback() {
     }
 
     const uint64_t medianNowUs = kept[keptCount / 2].unixUs; // kept ist weiterhin sortiert
+    // Höchste Generation der verwendeten Bezüge (0 = nur NTP-Anker); neu basierte liegen eine Stufe darüber
+    uint8_t gStar = 0;
+    for(uint8_t i = 0; i < keptCount; i++)
+        if(kept[i].gen > gStar)
+            gStar = kept[i].gen;
+    const uint8_t rebaseGen = gStar < 254 ? gStar + 1 : 255;
     if(medianNowUs < MIN_VALID_EPOCH_US) {
         g_lastCalcResult = "invalid";
         g_lastCalcAps = keptCount;
@@ -312,9 +454,13 @@ static void processFallback() {
         return;
     }
 
-    uint64_t devSum = 0;
+    // Abweichung jeder verwendeten AP-Schätzung vom Median: Mittelwert (Log) und Maximum (Anzeige)
+    uint64_t devSum = 0, devMax = 0;
     for(uint8_t i = 0; i < keptCount; i++) {
-        devSum += kept[i].unixUs > medianNowUs ? kept[i].unixUs - medianNowUs : medianNowUs - kept[i].unixUs;
+        uint64_t dev = kept[i].unixUs > medianNowUs ? kept[i].unixUs - medianNowUs : medianNowUs - kept[i].unixUs;
+        devSum += dev;
+        if(dev > devMax)
+            devMax = dev;
     }
     uint32_t deviationMs = (uint32_t)(devSum / keptCount / 1000ULL);
 
@@ -324,6 +470,7 @@ static void processFallback() {
     tv.tv_sec = (time_t)(setUs / 1000000ULL);
     tv.tv_usec = (suseconds_t)(setUs % 1000000ULL);
     settimeofday(&tv, nullptr);
+    noteClockSync(CLOCK_SYNC_TSF); // für den Systemmonitor
     // Zeit gilt jetzt als gültig → keine "Zeit veraltet"-Warnung; clockSynced (= NTP) bleibt bewusst unverändert
     if(g_tracker != nullptr)
         g_tracker->lastSucceededTestTime = millis();
@@ -335,6 +482,14 @@ static void processFallback() {
             e.tsf_us = b.tsf_us;
             e.unix_us = medianNowUs - (uint64_t)(nowMonoUs - b.monoUs); // Zeit beim Empfang dieses Beacons
             e.rssi = b.rssi;                                            // aktuellerer Messwert
+            e.gen = rebaseGen; // abgeleitet: eine Stufe schlechter als die verwendeten Bezüge
+            e.rate_unix_us = 0; // kein NTP-Messpunkt mehr (Zeit nur aus TSF)
+            // Neustart: gleicher Quarz → Gang bleibt. Ausreißer: womöglich anderes Gerät → Gang verwerfen
+            if(rebaseOutlier[i]) {
+                e.drift_ppb = TSF_DRIFT_UNKNOWN;
+                for(uint8_t h = 0; h < TSF_DRIFT_HIST; h++)
+                    e.drift_hist[h] = TSF_DRIFT_UNKNOWN; // Verlauf gehörte womöglich zu einem anderen Gerät
+            }
         }
         saveTsfEntries(g_storedEntries, g_storedCount);
         char msg[52];
@@ -345,9 +500,12 @@ static void processFallback() {
     g_lastCalcResult = "success";
     g_lastCalcAps = keptCount;
     g_lastCalcDeviationMs = deviationMs;
+    g_lastCalcMaxDevMs = (uint32_t)(devMax / 1000ULL);
+    g_lastCalcGen = gStar;
 
     char msg[52];
-    snprintf(msg, sizeof(msg), "TSF: time set, %d APs +-%lums", keptCount, (unsigned long)deviationMs);
+    snprintf(msg, sizeof(msg), "TSF: time set, %d APs gen %u +-%lums", keptCount, (unsigned)gStar,
+             (unsigned long)g_lastCalcMaxDevMs);
     logEvent(msg);
     serialPrint(msg);
 }
@@ -370,21 +528,46 @@ void onNtpSynced() {
     g_ntpSyncedTrigger = true;
 }
 
-// Manueller Snapshot-Auslöser (z.B. per Web-API); ignoriert laufende Scans
+// Meldet, ob ein Snapshot aussteht oder die Erfassung läuft; bei abgeschaltetem Modul nie beschäftigt
+bool isTsfCaptureBusy() {
+    if(g_settings == nullptr || !g_settings->tsfFallbackEnabled)
+        return false;
+    return g_ntpSyncedTrigger || g_fallbackTrigger || g_captureRunning;
+}
+
+// Nach einem gescheiterten NTP-Versuch: Beacons erfassen, Uhrzeit aus den Bezugspunkten berechnen und
+// neu gestartete/abweichende APs neu basieren. Ohne gespeicherte Bezugspunkte gibt es nichts zu rechnen.
+// Das WLAN muss dafür noch an sein (der Aufrufer wartet über isTsfCaptureBusy()).
+void requestTsfFallback() {
+    if(g_settings == nullptr || !g_settings->tsfFallbackEnabled || g_storedCount == 0)
+        return;
+    g_fallbackTrigger = true;
+}
+
+// true, wenn ein Snapshot von Hand erlaubt ist: NTP-Abgleich in dieser Wachphase höchstens 10 min her.
+// Wach läuft die Systemzeit über den Hauptquarz (≤ ~20 ppm → ≤ ~12 ms in 10 min); nach einem Deep Sleep
+// ist sie über den RC-Takt gelaufen (≈ 1,5 %) und darf nicht als NTP-Anker gespeichert werden.
+bool isTsfSnapshotAllowed() {
+    return msSinceNtpThisBoot() <= MANUAL_SNAPSHOT_MAX_NTP_AGE_S * 1000UL;
+}
+
+// Manueller Snapshot-Auslöser (z.B. per Web-API); ignoriert laufende Scans und zu alte NTP-Zeit
 void triggerTsfSnapshot() {
+    if(!isTsfSnapshotAllowed())
+        return;
     if(g_captureRunning)
         return;
     g_ntpSyncedTrigger = true;
 }
 
-// Hauptschleife: startet Snapshot-Scans nach NTP-Sync und Fallback-Scans wenn keine Uhrzeit verfügbar
+// Hauptschleife: startet nach jedem Sync-Versuch eine Beacon-Erfassung — nach NTP-Erfolg als Snapshot
+// (neue Bezugspunkte), nach Fehlschlag als Fallback (Uhrzeit berechnen) — und wertet sie nach 2 s aus
 void tsfClockLoop() {
     if(g_settings == nullptr || !g_settings->tsfFallbackEnabled)
         return;
 
     if(g_ntpSyncedTrigger && !g_snapshotScheduled && !g_captureRunning) {
         g_ntpSyncedTrigger = false;
-        g_fallbackAttempted = false;
         if(startCapture()) {
             g_snapshotScheduled = true;
             serialPrint("TSF: Starte Snapshot-Scan");
@@ -394,20 +577,15 @@ void tsfClockLoop() {
         return;
     }
 
-    bool staActive = WiFi.getMode() == WIFI_MODE_APSTA;
-    if(!g_snapshotScheduled && !g_captureRunning && !g_fallbackAttempted && !g_fallbackScheduled && g_storedCount > 0
-       && staActive && g_tracker != nullptr && !g_tracker->clockSynced) {
-        static unsigned long lastFallbackCheckMs = 0;
-        if(isTimeForAction(&lastFallbackCheckMs, 60 * 1000)) {
-            if(startCapture()) {
-                g_fallbackScheduled = true;
-                serialPrint("TSF: Starte Fallback-Scan");
-            } else {
-                g_fallbackAttempted = true;
-                logEvent("TSF: scan start failed");
-            }
-            return;
+    if(g_fallbackTrigger && !g_snapshotScheduled && !g_captureRunning) {
+        g_fallbackTrigger = false;
+        if(startCapture()) {
+            g_fallbackScheduled = true;
+            serialPrint("TSF: Starte Fallback-Scan");
+        } else {
+            logEvent("TSF: scan start failed");
         }
+        return;
     }
 
     if(g_captureRunning && millis() - g_captureStartMs >= 2000) {
@@ -420,8 +598,9 @@ void tsfClockLoop() {
     }
 }
 
-// Gibt TSF-Modul-Status als JSON zurück: aktiviert, gespeicherte APs, letzter Snapshot,
-// Berechnungsergebnis sowie Score-Bereich (min/max) der gespeicherten Einträge
+// Gibt TSF-Modul-Status als JSON zurück: aktiviert, gespeicherte APs, letzter Snapshot (ms her),
+// Ergebnis der letzten Berechnung mit Anzahl APs, mittlerer und größter Abweichung (ms),
+// Genauigkeitstest beim letzten Snapshot (APs, größte Abweichung in ms, Abstand zum vorigen Bezugspunkt in s)
 String getTsfStatusJson() {
     JsonDocument doc;
     doc["enabled"] = g_settings != nullptr && g_settings->tsfFallbackEnabled;
@@ -430,20 +609,39 @@ String getTsfStatusJson() {
     doc["lastCalcResult"] = g_lastCalcResult;
     doc["lastCalcAps"] = g_lastCalcAps;
     doc["lastCalcDeviationMs"] = g_lastCalcDeviationMs;
-
-    if(g_storedCount > 0) {
-        int minSc = calcScore(g_storedEntries[0].rssi, g_storedEntries[0].tsf_us);
-        int maxSc = minSc;
-        for(uint8_t i = 1; i < g_storedCount; i++) {
-            int sc = calcScore(g_storedEntries[i].rssi, g_storedEntries[i].tsf_us);
-            if(sc < minSc)
-                minSc = sc;
-            if(sc > maxSc)
-                maxSc = sc;
-        }
-        doc["minScore"] = minSc;
-        doc["maxScore"] = maxSc;
+    doc["lastCalcMaxDevMs"] = g_lastCalcMaxDevMs;
+    doc["lastCalcGen"] = g_lastCalcGen;
+    uint8_t gen0 = 0;
+    for(uint8_t i = 0; i < g_storedCount; i++)
+        if(g_storedEntries[i].gen == 0)
+            gen0++;
+    doc["storedNtpAps"] = gen0; // davon mit NTP-Anker (Generation 0)
+    uint8_t withDrift = 0;
+    for(uint8_t i = 0; i < g_storedCount; i++)
+        if(g_storedEntries[i].drift_ppb != TSF_DRIFT_UNKNOWN)
+            withDrift++;
+    doc["storedDriftAps"] = withDrift; // davon mit gemessener Gangabweichung
+    // Je AP: Kennung (letzte 3 BSSID-Bytes), Generation, verwendeter Gang und Verlauf der Messungen (ppb)
+    JsonArray aps = doc["aps"].to<JsonArray>();
+    for(uint8_t i = 0; i < g_storedCount; i++) {
+        const TsfEntry& e = g_storedEntries[i];
+        JsonObject o = aps.add<JsonObject>();
+        char id[9];
+        snprintf(id, sizeof(id), "%02x:%02x:%02x", e.bssid[3], e.bssid[4], e.bssid[5]);
+        o["id"] = id;
+        o["gen"] = e.gen;
+        if(e.drift_ppb != TSF_DRIFT_UNKNOWN)
+            o["drift"] = e.drift_ppb;
+        JsonArray h = o["hist"].to<JsonArray>();
+        for(uint8_t k = 0; k < TSF_DRIFT_HIST; k++)
+            if(e.drift_hist[k] != TSF_DRIFT_UNKNOWN)
+                h.add(e.drift_hist[k]);
     }
+    doc["snapshotAllowed"] = isTsfSnapshotAllowed();
+    // Genauigkeitstest beim letzten Snapshot (checkAps = 0: noch keiner)
+    doc["checkAps"] = g_checkAps;
+    doc["checkMaxDevMs"] = g_checkMaxDevMs;
+    doc["checkSpanS"] = g_checkSpanS;
 
     String out;
     serializeJson(doc, out);

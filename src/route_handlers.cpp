@@ -8,6 +8,7 @@
 #include <ESPAsyncWebServer.h>
 #include "debug_utils.h"
 #include "json_utils.h"
+#include "system_info.h" // getSystemInfoJson
 #include "types.h"
 #include "store.h"
 #include "event_log.h"
@@ -222,6 +223,7 @@ static void handleSetSystemConfig(AsyncWebServerRequest* request, const String& 
                   "{\"status\":\"success\",\"message\":\"System configuration updated\"}");
 }
 
+// GET /get_status: Uhr- und Abgleich-Status (NTP, Heimnetz gerade an, letzter Versuch, nächster Abgleich)
 static void handleGetStatus(AsyncWebServerRequest* request, const String&) {
 
     if(g_wifiTracker == nullptr) {
@@ -235,6 +237,10 @@ static void handleGetStatus(AsyncWebServerRequest* request, const String&) {
     status.clockSynced = g_wifiTracker->clockSynced;
     status.lastStaConnectionTime = g_wifiTracker->lastStaConnectionTime;
     status.staConfigValid = g_wifiTracker->staConfigValid;
+    status.staActive = isStaActive();
+    status.lastSyncOk = lastSyncOk();
+    status.everSynced = g_wifiTracker->lastSucceededTestTime != 0;
+    status.nextSyncInMs = msUntilNextSync();
     status.systemTime = time(NULL);
 
     if(g_wifiTracker->clockSynced) {
@@ -291,8 +297,13 @@ static void handleGetTsfFallback(AsyncWebServerRequest* request, const String&) 
 }
 
 // TSF-Snapshot als Auftrag (wird in loop() ausgeführt)
+// POST /trigger_tsf_snapshot: nur bis 10 min nach einem NTP-Abgleich (sonst 409 mit Meldung)
 static void handleTriggerTsfSnapshot(AsyncWebServerRequest* request, const String&) {
-
+    if(!isTsfSnapshotAllowed()) {
+        request->send(409, "application/json",
+                      "{\"status\":\"error\",\"message\":\"Snapshot nur bis 10 min nach einem NTP-Abgleich (ohne Deep Sleep dazwischen) möglich – erst „Uhr jetzt synchronisieren“.\"}");
+        return;
+    }
     g_stateCallback(STATE_CHANGE_TSF_SNAPSHOT, nullptr);
     request->send(200, "application/json", "{\"status\":\"ok\"}");
 }
@@ -351,6 +362,11 @@ static void handleGetWifiTest(AsyncWebServerRequest* request, const String&) {
     request->send(200, "application/json", getWifiTestJson());
 }
 
+// Live-Systemdaten (Heap, CPU, Flash, Temperatur, Hotspot-Geräte …); die Absender-IP markiert das eigene Gerät
+static void handleGetSystemInfo(AsyncWebServerRequest* request, const String&) {
+    request->send(200, "application/json", getSystemInfoJson(request->client()->remoteIP()));
+}
+
 // Initialisiert Handler-Zustand und gibt alle Routen zurück
 std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSettings* systemSettings,
                                      const WiFiTestTracker* wifiTracker, GenericStateUpdateCallback stateCallback) {
@@ -368,6 +384,7 @@ std::vector<Route> initRouteHandlers(const FullConfig* config, const SystemSetti
             {"/get_system_config", HTTP_GET, handleGetSystemConfig},
             {"/set_system_config", HTTP_POST, handleSetSystemConfig},
             {"/get_status", HTTP_GET, handleGetStatus},
+            {"/get_system_info", HTTP_GET, handleGetSystemInfo},
             {"/meerkat.avif", HTTP_GET, handleMeerkatImage},
             {"/set_option", HTTP_POST, handleSetOption},
             {"/set_led_count", HTTP_POST, handleSetLedCount},

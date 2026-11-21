@@ -51,6 +51,9 @@ export const mockSystemSettings = {
   serialLogEnabled: true,
   eventLogEnabled: true,
   logToUsb: false,
+  apTimeoutMin: 10,
+  syncIntervalMin: 300,
+  syncRetryMin: 300,
 };
 
 // Check if mocking is enabled via URL parameter
@@ -84,6 +87,15 @@ export const mockFetch = (url, options) => {
           { ssid: "Nachbar", rssi: -71, secure: true },
           { ssid: "Cafe offen", rssi: -84, secure: false },
         ] }) });
+      } else if (url.includes("/get_tsf_fallback")) {
+        resolve({ ok: true, json: () => Promise.resolve({ enabled: false, storedAps: 16, lastSnapshotMs: 3600000,
+          lastCalcResult: "success", lastCalcAps: 5, lastCalcDeviationMs: 4, lastCalcMaxDevMs: 12,
+          checkAps: 7, checkMaxDevMs: 38, checkSpanS: 18120,
+          storedNtpAps: 12, storedDriftAps: 9, lastCalcGen: 0, snapshotAllowed: false,
+          aps: [{ id: "3a:4f:c1", gen: 0, drift: 12200, hist: [12400, 12100, 13000, 11900] },
+                { id: "9e:02:7b", gen: 0, drift: -8150, hist: [-8300, -8000] },
+                { id: "51:aa:10", gen: 1, drift: 3000, hist: [3000] },
+                { id: "c4:e9:84", gen: 0, hist: [] }] }) });
       } else if (url.includes("/get_wifi_test")) {
         resolve({ ok: true, json: () => Promise.resolve({ status: "done", result: "wrong_password", slot: 1 }) });
       } else if (options && options.method === "POST") {
@@ -94,7 +106,23 @@ export const mockFetch = (url, options) => {
       } else if (url.includes("/ping")) {
         resolve({ ok: true, text: () => Promise.resolve("pong") });
       } else if (url.includes("/get_status")) {
-        resolve({ ok: true, json: () => Promise.resolve({ clockSynced: true, staConfigValid: false, timeSinceLastSucceededTestMs: 120000, systemTime: Math.floor(Date.now() / 1000) }) });
+        resolve({ ok: true, json: () => Promise.resolve({ clockSynced: true, staConfigValid: false, staActive: false, lastSyncOk: true, everSynced: true, nextSyncInMs: 17880000, timeSinceLastSucceededTestMs: 120000, systemTime: Math.floor(Date.now() / 1000) }) });
+      } else if (url.includes("/get_system_info")) {
+        // Leicht schwankende Zufallswerte für den Systemmonitor
+        const r = (a, b) => a + Math.random() * (b - a);
+        resolve({ ok: true, json: () => Promise.resolve({
+          uptimeMs: Math.floor(performance.now()) + 90061000, cpuLoad: r(5, 35),
+          heapTotal: 320000, heapFree: Math.floor(r(150000, 190000)), heapMinFree: 120000, heapMaxAlloc: 110000,
+          fsTotal: 1441792, fsUsed: Math.floor(r(400000, 420000)),
+          sketchSize: 1100000, sketchFree: 900000, flashSize: 4194304,
+          rssi: Math.floor(r(-70, -55)),
+          apClients: [
+            { ip: "192.168.4.2", rssi: Math.floor(r(-60, -50)), you: true },
+            { ip: "192.168.4.3", rssi: Math.floor(r(-78, -68)), you: false },
+          ], tempC: r(38, 44), resetReason: "poweron",
+          clock: { now: Math.floor(Date.now() / 1000), ntpAt: Math.floor(Date.now() / 1000) - 1260, rdsAt: 0,
+            tsfAt: Math.floor(Date.now() / 1000) - 7400, lastSyncOk: true, staActive: false, nextSyncInMs: 17880000 },
+        }) });
       } else if (url.includes("/get_event_log")) {
         resolve({ ok: true, json: () => Promise.resolve({ uptimeMs: 60000, unixTime: 0, events: [] }) });
       } else if (/\/get_(tsf_fallback|rds_clock|rtc_crystal)/.test(url)) {

@@ -7,29 +7,37 @@
 #include "types.h"
 #include <DNSServer.h>
 
-static const unsigned long STOP_WIFI_AFTER_MS = 1 * 60 * 1000;       // 1 Minute ohne Client → WiFi abschalten
-static const unsigned long START_WIFI_AFTER_MS = 5 * 60 * 60 * 1000; // alle 5h automatisch für NTP-Sync starten
+static const unsigned long STOP_WIFI_AFTER_MS = 1 * 60 * 1000;    // Hotspot: 1 min ohne Gerät → Hotspot aus
+static const unsigned long STA_SYNC_TIMEOUT_MS = 1 * 60 * 1000;   // Heimnetz: Abgleich nach 1 min ohne Erfolg abbrechen
 
 void wifiLoop();                  // Muss in loop() aufgerufen werden
 void initWiFiController(const SystemSettings& settings, const std::vector<Route>& routes, WiFiTestTracker& tracker);
 
-// withAP=true  → APSTA: Hotspot sichtbar, Web-UI erreichbar (manuell oder bei Systemeinstellungsänderung)
-// withAP=false → nur STA: stiller NTP-Sync ohne sichtbaren Hotspot
+// Hotspot und Heimnetz sind getrennte Modi, die gleichzeitig laufen dürfen (APSTA):
+// withAP=true  → Hotspot an (Web-UI erreichbar), Heimnetz bleibt wie es ist
+// withAP=false → Heimnetz für den NTP-Abgleich an, Hotspot bleibt wie er ist
 void startWifi(bool withAP = true);
-void stopWifi();
-void stopAccessPoint(); // nur Hotspot aus; Heimnetz (APSTA → STA) bleibt verbunden
+void stopWifi();          // beides aus
+void stopAccessPoint();   // nur Hotspot aus; Heimnetz (APSTA → STA) bleibt verbunden
+void restartAccessPoint(); // Hotspot neu starten (nur wenn er läuft), Heimnetz unberührt
+void restartStaSync();    // Heimnetz mit neuen Daten neu verbinden, Hotspot unberührt
+void requestTimeSync();   // Abgleich von Hand: Heimnetz verbinden (falls aus), sonst NTP neu anfragen
 
 void handleClientRequests();  // DNS-Captive-Portal-Anfragen verarbeiten
-void checkWifiStart();        // Automatischer Start nach START_WIFI_AFTER_MS
-void checkWifiStop();         // Automatischer Stop nach STOP_WIFI_AFTER_MS ohne Client
+void checkWifiStart();        // Zeitabgleich übers Heimnetz nach nextSyncIntervalMs(), unabhängig vom Hotspot
+unsigned long nextSyncIntervalMs(); // nach Erfolg syncIntervalMin, nach Fehlschlag syncRetryMin (in ms)
+bool isStaActive();           // Heimnetz gerade verbunden/im Aufbau (nur während Abgleich oder Test)
+bool lastSyncOk();            // letzter Abgleich-Versuch erfolgreich
+unsigned long msSinceNtpThisBoot(); // ms seit NTP-Erfolg in dieser Wachphase; ULONG_MAX = keiner
+long msUntilNextSync();       // Restzeit bis zum nächsten Abgleich; 0 = läuft gerade, -1 = kein Heimnetz
+void checkWifiStop();         // Hotspot und Heimnetz getrennt nach ihren Regeln abschalten
 bool isWiFiActive();
-void noteWebActivity();       // echte Bedienung der Weboberfläche: Hotspot-Laufzeit (10 min) neu starten
+void noteWebActivity();       // echte Bedienung der Weboberfläche: Hotspot-Laufzeit (apTimeoutMin) neu starten
 uint8_t wifiStatusBlinkCount(); // Status-LED: 0 = WLAN aus, 1 = Heimnetz, 2 = Hotspot, 3 = beides
 bool isApWaitingForClient();  // Hotspot an, aber noch kein Gerät verbunden
 bool hasWifiClients();        // Gibt true zurück wenn mindestens ein Gerät verbunden ist
 
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info); // Intern: reagiert auf STA-Verbindungsereignisse
-void tryReconnectSta();       // Alle 5min: versucht STA-Verbindung wiederherzustellen (Primär/Fallback-Wechsel)
 void initClock();             // Zeitzone setzen, Uhr aus NVS falls leer (früh in setup())
 void syncTimeWithNTP();       // SNTP-Sync neu starten; Drift wird im Callback berechnet
 void updateTelemetryWiFiStatus(); // minütlich: NTP-Alter (24 h) prüfen, alle 30 min Zeit in NVS sichern

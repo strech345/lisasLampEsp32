@@ -166,6 +166,10 @@ String createWiFiStatusJson(const WiFiStatus& status) {
     doc["systemTime"]                   = status.systemTime;
     doc["clockSynced"]                  = status.clockSynced;
     doc["staConfigValid"]               = status.staConfigValid;
+    doc["staActive"]                    = status.staActive;
+    doc["lastSyncOk"]                   = status.lastSyncOk;
+    doc["everSynced"]                   = status.everSynced;
+    doc["nextSyncInMs"]                 = status.nextSyncInMs;
 
     String jsonString;
     serializeJson(doc, jsonString);
@@ -200,6 +204,10 @@ String createSystemConfigJson(const SystemSettings& systemSettings) {
     doc["serialLogEnabled"] = systemSettings.serialLogEnabled;
     doc["eventLogEnabled"]  = systemSettings.eventLogEnabled;
     doc["logToUsb"]         = systemSettings.logToUsb;
+    // Hotspot-Laufzeit und Zeitabgleich (Minuten)
+    doc["apTimeoutMin"]    = systemSettings.apTimeoutMin;
+    doc["syncIntervalMin"] = systemSettings.syncIntervalMin;
+    doc["syncRetryMin"]    = systemSettings.syncRetryMin;
     String jsonResponse;
     serializeJson(doc, jsonResponse);
     return jsonResponse;
@@ -234,7 +242,8 @@ static bool applySsid(JsonVariantConst value, char* dst, size_t dstSize, size_t 
 
 // Parst /set_system_config auf einer Kopie; Felder die fehlen behalten ihren Wert.
 // Regeln: AP-SSID 1–32 Zeichen; externe SSID 0–32; Passwörter: Maske "******" = unverändert,
-// leer = kein Passwort (Hotspot dann offen), sonst 8–63 Zeichen.
+// leer = kein Passwort (Hotspot dann offen), sonst 8–63 Zeichen. Hotspot-Laufzeit 0–1440 min
+// (0 = unbegrenzt), Sync-Intervalle (Erfolg/Fehlschlag) je 5–720 min.
 bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSettings, String* error) {
     JsonDocument doc;
 
@@ -262,6 +271,18 @@ bool parseSystemConfigJson(const String& jsonString, SystemSettings& systemSetti
 
     tmp.warningsEnabled  = doc["warningsEnabled"]  | tmp.warningsEnabled;
     tmp.deepSleepEnabled = doc["deepSleepEnabled"] | tmp.deepSleepEnabled;
+
+    // Hotspot-Laufzeit (0 = unbegrenzt) und Sync-Intervalle in Minuten; fehlende Felder bleiben
+    long v;
+    if(!readIntRange(doc["apTimeoutMin"], tmp.apTimeoutMin, 0, MAX_AP_TIMEOUT_MIN, v))
+        return fail(error, "Hotspot-Laufzeit muss 0–1440 Minuten sein.");
+    tmp.apTimeoutMin = v;
+    if(!readIntRange(doc["syncIntervalMin"], tmp.syncIntervalMin, MIN_SYNC_INTERVAL_MIN, MAX_SYNC_INTERVAL_MIN, v))
+        return fail(error, "Sync-Intervall muss 5–720 Minuten sein.");
+    tmp.syncIntervalMin = v;
+    if(!readIntRange(doc["syncRetryMin"], tmp.syncRetryMin, MIN_SYNC_INTERVAL_MIN, MAX_SYNC_INTERVAL_MIN, v))
+        return fail(error, "Wiederholungs-Intervall muss 5–720 Minuten sein.");
+    tmp.syncRetryMin = v;
 
     // Name der Lampe: fehlt das Feld, bleibt er; sonst 1–20 Zeichen
     if(doc["lampName"].is<const char*>()) {

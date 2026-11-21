@@ -24,9 +24,10 @@ _Stand: November 2026_
 | `src/json_utils.cpp` | JSON ↔ Strukturen inkl. Wertebereichsprüfung |
 | `src/store.cpp` | NVS-Persistenz, Standardwerte (aus `secrets.h`), verzögertes Speichern |
 | `src/event_log.cpp` | Ringpuffer (200 Einträge) für das Ereignisprotokoll, Mutex-geschützt |
-| `src/tsf_clock.cpp` | TSF-Uhrzeit-Fallback über WLAN-Beacons |
+| `src/tsf_clock.cpp` | TSF-Uhrzeit-Fallback über WLAN-Beacons, Gangkorrektur ([tsf-uhrzeit.md](tsf-uhrzeit.md)) |
 | `src/rds_clock.cpp` | RDS-Uhrzeit über RDA5807M (optional) |
 | `src/rtc_crystal.cpp` | optionaler 32-kHz-Uhrenquarz |
+| `src/clock_sync.cpp` | Zeitpunkte der letzten Uhr-Abgleiche je Quelle (NTP, RDS, TSF) im RTC-Speicher, für den Systemmonitor |
 | `src/system_utils.cpp`, `src/debug_utils.cpp` | `isTimeForAction()`, `serialPrint()` |
 | `include/types.h` | gemeinsame Strukturen (`FullConfig`, `SystemSettings`, `LampState`, …) |
 | `include/pins.h` | alle GPIOs (siehe [hardware.md](hardware.md)) |
@@ -91,7 +92,13 @@ checkLampState()           aktiven Zustand bestimmen (muss nach den Modi laufen)
 updateLed()                LEDs beim Zustandswechsel setzen, Helligkeitsverläufe alle 5 s
 checkToSave()              verzögertes Speichern (5 s)
 checkToGoSleep()           Deep Sleep prüfen (alle 10 s)
+vTaskDelayUntil()          Rest des 2-ms-Takts schlafen (LOOP_PERIOD_MS)
 ```
+
+Der Takt am Ende verhindert, dass `loop()` ohne Pause kreist (vorher ~98 % CPU-Last im Systemmonitor).
+`vTaskDelayUntil` schläft nur die bis zum nächsten Taktpunkt verbleibende Zeit: Ein Durchlauf, der länger
+als 2 ms dauert, wird nicht zusätzlich verzögert. So bekommt der Leerlauf-Task Rechenzeit, ohne die Lampe unter
+Last zu bremsen.
 
 ---
 
@@ -100,7 +107,7 @@ checkToGoSleep()           Deep Sleep prüfen (alle 10 s)
 | Schlüssel | Inhalt |
 |---|---|
 | `fullConfig` | `FullConfig`: bis zu 6 Szenen + aktive Szene, Helligkeit, 16 Wecker (wöchentlich oder einmaliges Datum), Dauern |
-| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz, LED-Anzahl, Lampenname, Party-Tage, Debug-Schalter |
+| `systemSettings` | `SystemSettings`: Hotspot, 2 externe WLANs, Schalter, RDS-Kanal, Quarz, LED-Anzahl, Lampenname, Party-Tage, Debug-Schalter, Hotspot-Laufzeit und Sync-Intervalle (`apTimeoutMin`, `syncIntervalMin`, `syncRetryMin`) |
 | `tsfData` | bis zu 16 TSF-Referenzen |
 | `lastKnownTime` | letzte gültige Uhrzeit (alle 30 min bei gültigem NTP) |
 
@@ -122,13 +129,14 @@ POSTs ohne Nutzdaten senden `{}`.
 | `/get_config` | GET | `FullConfig` als JSON |
 | `/set_config` | POST | Teil-Update der `FullConfig`; fehlende Felder bleiben, `brightnessMode` wird ignoriert (Drehknopf ist Master), Wertebereiche geprüft |
 | `/get_system_config` | GET | Hotspot/WLAN (Passwörter maskiert `******`), alle Schalter, `ledCount`, `lampName`, `celebrations` (`[{month, day}]`), Debug-Schalter (`statusLedEnabled`, `serialLogEnabled`, `eventLogEnabled`, `logToUsb`) |
-| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32; Passwort `******` (= unverändert), leer (= entfernen) oder 8–63; `lampName` (1–20 Zeichen) und `celebrations` (0–8, ersetzt die Liste) optional, WLAN-Neustart nur bei geänderten Netzwerkdaten |
+| `/set_system_config` | POST | Hotspot/WLAN; SSID 1–32; Passwort `******` (= unverändert), leer (= entfernen) oder 8–63; `lampName` (1–20 Zeichen), `celebrations` (0–8, ersetzt die Liste), `apTimeoutMin` (0–1440, 0 = unbegrenzt), `syncIntervalMin` und `syncRetryMin` (je 5–720) optional; neu gestartet wird nur der betroffene Modus (Hotspot-Daten → `restartAccessPoint()`, externe WLANs → `restartStaSync()`) |
 | `/set_led_count` | POST | `{"count": 1–16}` → Anzahl der LEDs, sofort wirksam (in `SystemSettings`) |
 | `/set_option` | POST | `{"option": "warnings\|deepSleep\|tsfFallback\|rdsClock\|rtcCrystal\|statusLed\|serialLog\|eventLog\|logUsb", "enabled": bool}`; `rtcCrystal` startet neu, Debug-Optionen wirken sofort |
-| `/get_status` | GET | Uhrzeit, NTP-Status, externe WLAN-Verbindung |
+| `/get_status` | GET | Uhrzeit, NTP-Status, `staConfigValid` (Heimnetz verbunden), `staActive` (Heimnetz an/im Aufbau), `lastSyncOk` (letzter Versuch), `everSynced`, `nextSyncInMs` (0 = läuft gerade, -1 = kein Heimnetz) |
+| `/get_system_info` | GET | Live-Systemdaten: `uptimeMs`, `cpuLoad` (0–100, 1 Nachkommastelle, Mittel seit vorigem Aufruf, -1 = nicht messbar), `heapTotal/heapFree/heapMinFree/heapMaxAlloc`, `fsTotal/fsUsed`, `sketchSize/sketchFree/flashSize`, `rssi` (Lampe→Router, 0 ohne STA-Verbindung), `apClients` (Geräte am Hotspot: `[{ip, rssi, you}]`, `ip` leer wenn unbekannt, `you` = IP des Anfragenden, leeres Array ohne AP/Geräte, keine MACs), `tempC`, `resetReason` (`poweron\|software\|panic\|int_wdt\|task_wdt\|wdt\|brownout\|deepsleep\|ext\|unknown`); `clock` (`now`, `ntpAt`/`rdsAt`/`tsfAt` in Unix-Sekunden, 0 = noch nie; `lastSyncOk`, `staActive`, `nextSyncInMs` mit 0 = läuft gerade, -1 = kein Heimnetz; `clock_sync.cpp`); Sketch-/Flash-Größen und Reset-Grund werden einmalig gecacht (`system_info.cpp`) |
 | `/get_event_log` | GET | Ereignisprotokoll (neueste zuerst) |
-| `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal` | GET | Detailstatus der Zeitquellen |
-| `/trigger_ntp_sync`, `/trigger_tsf_snapshot` | POST | Aktion auslösen |
+| `/get_tsf_fallback`, `/get_rds_clock`, `/get_rtc_crystal` | GET | Detailstatus der Zeitquellen; TSF: `storedAps`, `lastSnapshotMs` (ms her), `lastCalcResult`, `lastCalcAps`, `lastCalcDeviationMs` (Mittel), `lastCalcMaxDevMs` (Maximum), Genauigkeitstest beim Snapshot `checkAps` (0 = noch keiner), `checkMaxDevMs`, `checkSpanS`, `storedNtpAps` (Generation 0), `storedDriftAps` (mit Gangkorrektur), `lastCalcGen`, `snapshotAllowed`, `aps` (`[{id, gen, drift, hist}]`, Gang in ppb, `hist` = letzte Messungen, neueste zuerst); `/trigger_tsf_snapshot` antwortet 409, wenn NTP > 10 min her (siehe [tsf-uhrzeit.md](tsf-uhrzeit.md)) |
+| `/trigger_ntp_sync`, `/trigger_tsf_snapshot` | POST | Aktion auslösen; NTP: `requestTimeSync()` verbindet bei Bedarf das Heimnetz (Ergebnis über `/get_system_info` → `clock.ntpAt`) |
 | `/trigger_wifi_scan` | POST | WLAN-Suche starten (409 wenn Suche/Test läuft) |
 | `/get_wifi_scan` | GET | `{"status":"idle\|running\|done\|failed","networks":[{ssid,rssi,secure}]}`, stärkstes zuerst, max. 20 |
 | `/test_wifi` | POST | `{"slot":1\|2,"ssid":…,"password":…}` Verbindungstest; `******` = gespeichertes Passwort des Feldes |

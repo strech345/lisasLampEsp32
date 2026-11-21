@@ -79,8 +79,10 @@ void checkToGoSleep() {
     if(isWiFiActive())
         return;
 
-    // Standardmäßig bis zum nächsten periodischen WiFi-Sync schlafen
-    unsigned long sleepTimeMs = START_WIFI_AFTER_MS;
+    // Standardmäßig bis zum nächsten Zeitabgleich schlafen (nach dem Aufwachen startet setup() den
+    // STA-Sync): nach Erfolg syncIntervalMin, nach Fehlschlag syncRetryMin. Der RTC-Drift-Vorlauf unten
+    // gilt nur für Wecker/Feiern; ein zu früher/später Sync-Zeitpunkt ist unkritisch.
+    unsigned long sleepTimeMs = nextSyncIntervalMs();
 
     // Deep Sleep vermeiden, wenn ein Ereignis im Vorlauffenster liegt
     auto preventSleepIfImminent = [&](int64_t msToEvent) {

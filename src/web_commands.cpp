@@ -7,7 +7,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "alarm.h"
-#include "alerts.h"
 #include "debug_utils.h"
 #include "event_log.h"
 #include "lamp_state.h"
@@ -52,6 +51,8 @@ static SemaphoreHandle_t s_pendingMutex = xSemaphoreCreateMutexStatic(&s_pending
 
 // Verzögerte Aktionen (damit die HTTP-Antwort noch rausgeht): 0 = nichts geplant
 static unsigned long s_wifiRestartAt = 0;  // WLAN-Neustart nach Netzwerkeinstellungs-Änderung
+static bool s_restartAp = false;           // … davon Hotspot betroffen (Name/Passwort geändert)
+static bool s_restartSta = false;          // … davon Heimnetz betroffen (externe WLANs geändert)
 static unsigned long s_restartAt = 0;      // ESP.restart() (ggf. mit vorherigem Werksreset)
 static bool s_factoryResetOnRestart = false;
 static const unsigned long DEFERRED_ACTION_DELAY_MS = 500;
@@ -160,9 +161,10 @@ void processWebCommands() {
         }
         if(cmd.hasSystem) {
             // Nur Netzwerk- und Warn-/Sleep-Felder übernehmen (andere Flags gehören anderen Modulen)
-            bool networkChanged = strcmp(s_systemSettings->internalSSID, cmd.system.internalSSID) != 0 ||
-                                  strcmp(s_systemSettings->internalPW, cmd.system.internalPW) != 0 ||
-                                  strcmp(s_systemSettings->externalSSID, cmd.system.externalSSID) != 0 ||
+            // Hotspot und Heimnetz getrennt: nur den Modus neu starten, dessen Daten sich geändert haben
+            bool apChanged = strcmp(s_systemSettings->internalSSID, cmd.system.internalSSID) != 0 ||
+                             strcmp(s_systemSettings->internalPW, cmd.system.internalPW) != 0;
+            bool staChanged = strcmp(s_systemSettings->externalSSID, cmd.system.externalSSID) != 0 ||
                                   strcmp(s_systemSettings->externalPW, cmd.system.externalPW) != 0 ||
                                   strcmp(s_systemSettings->externalSSID2, cmd.system.externalSSID2) != 0 ||
                                   strcmp(s_systemSettings->externalPW2, cmd.system.externalPW2) != 0;
@@ -174,13 +176,19 @@ void processWebCommands() {
             memcpy(s_systemSettings->externalPW2, cmd.system.externalPW2, sizeof(s_systemSettings->externalPW2));
             s_systemSettings->warningsEnabled = cmd.system.warningsEnabled;
             s_systemSettings->deepSleepEnabled = cmd.system.deepSleepEnabled;
+            // Hotspot-Laufzeit und Sync-Intervalle: wirken ab der nächsten Prüfung, kein Neustart nötig
+            s_systemSettings->apTimeoutMin = cmd.system.apTimeoutMin;
+            s_systemSettings->syncIntervalMin = cmd.system.syncIntervalMin;
+            s_systemSettings->syncRetryMin = cmd.system.syncRetryMin;
             // Persönliches (kein WLAN-Neustart nötig)
             memcpy(s_systemSettings->lampName, cmd.system.lampName, sizeof(s_systemSettings->lampName));
             s_systemSettings->celebrationCount = cmd.system.celebrationCount;
             memcpy(s_systemSettings->celebrations, cmd.system.celebrations, sizeof(s_systemSettings->celebrations));
             saveSystemSettings(*s_systemSettings);
-            startAlert(ALERT_OK, 200);
-            if(networkChanged) {
+            // Kein grünes Aufblitzen: die Oberfläche speichert jetzt bei jeder Feldänderung (wie set_config)
+            if(apChanged || staChanged) {
+                s_restartAp |= apChanged;
+                s_restartSta |= staChanged;
                 s_wifiRestartAt = millis() + DEFERRED_ACTION_DELAY_MS; // WLAN verzögert neu starten
                 if(s_wifiRestartAt == 0) s_wifiRestartAt = 1;
             }
@@ -242,7 +250,7 @@ void processWebCommands() {
         }
         if(cmd.ntpResync) {
             logEvent("NTP sync triggered via web");
-            syncTimeWithNTP();
+            requestTimeSync(); // verbindet bei Bedarf erst das Heimnetz
         }
         if(cmd.tsfSnapshot) {
             triggerTsfSnapshot();
@@ -258,8 +266,11 @@ void processWebCommands() {
     // --- Verzögerte Aktionen ---
     if(s_wifiRestartAt != 0 && (long)(millis() - s_wifiRestartAt) >= 0) {
         s_wifiRestartAt = 0;
-        stopWifi();
-        startWifi();
+        if(s_restartAp)
+            restartAccessPoint(); // nur wenn der Hotspot läuft; Heimnetz unberührt
+        if(s_restartSta)
+            restartStaSync();     // neuer Abgleich mit den neuen Daten; Hotspot unberührt
+        s_restartAp = s_restartSta = false;
     }
     if(s_restartAt != 0 && (long)(millis() - s_restartAt) >= 0) {
         if(s_factoryResetOnRestart) {

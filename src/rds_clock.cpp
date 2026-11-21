@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <ArduinoJson.h>
+#include "clock_sync.h"
 
 // Pins (SDA/SCL/Strom) kommen aus include/pins.h
 
@@ -182,6 +183,7 @@ static bool tryParseCt(uint16_t blockB, uint16_t blockC, uint16_t blockD, uint16
 
     struct timeval tv = { utc, 0 };
     settimeofday(&tv, nullptr);
+    noteClockSync(CLOCK_SYNC_RDS); // für den Systemmonitor
     // Zeit gilt jetzt als gültig → keine "Zeit veraltet"-Warnung; clockSynced (= NTP) bleibt unverändert
     if (g_tracker != nullptr) g_tracker->lastSucceededTestTime = millis();
     return true;

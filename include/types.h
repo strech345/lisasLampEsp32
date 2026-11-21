@@ -64,8 +64,17 @@ struct CelebrationDay {
 #define MAX_CELEBRATIONS 8
 #define LAMP_NAME_MAX_LEN 20
 
+// Hotspot-Laufzeit und Zeitabgleich (Minuten, in der Weboberfläche einstellbar).
+// Standardwerte = bisheriges festes Verhalten: Hotspot 10 min ohne Bedienung, Zeitabgleich alle 5 h.
+#define DEFAULT_AP_TIMEOUT_MIN 10      // 0 = Hotspot bleibt an, bis er von Hand ausgeschaltet wird
+#define MAX_AP_TIMEOUT_MIN 1440        // höchstens 24 h
+#define DEFAULT_SYNC_INTERVAL_MIN 300  // nach erfolgreichem Abgleich: alle 5 h
+#define DEFAULT_SYNC_RETRY_MIN 300     // nach Fehlschlag: neuer Versuch nach 5 h
+#define MIN_SYNC_INTERVAL_MIN 5        // kürzer lohnt nicht (Deep Sleep braucht ≥ 2 min Fenster)
+#define MAX_SYNC_INTERVAL_MIN 720      // höchstens 12 h: NTP-Zeit gilt nach 24 h als veraltet
+
 // Systemeinstellungen: eigener Hotspot (AP), zwei externe WLANs (mit Fallback), Schalter,
-// persönliche Daten (Name, Party-Tage) und Debug-Optionen
+// persönliche Daten (Name, Party-Tage), Debug-Optionen und Zeiten für Hotspot/Zeitabgleich.
 struct SystemSettings {
     char internalSSID[SSID_MAX_LEN + 1]; // Eigener Hotspot-Name
     char internalPW[PWD_MAX_LEN + 1];
@@ -90,15 +99,33 @@ struct SystemSettings {
     bool serialLogEnabled; // serielle Logs (serialPrint)
     bool eventLogEnabled;  // Ereignisprotokoll aufzeichnen
     bool logToUsb;         // serielle Logs über USB statt UART (RX/TX)
+    // --- Hotspot und Zeitabgleich (Minuten) ---
+    uint16_t apTimeoutMin;    // Hotspot aus nach so vielen Minuten ohne Bedienung; 0 = unbegrenzt
+    uint16_t syncIntervalMin; // nächster Zeitabgleich nach erfolgreichem Sync
+    uint16_t syncRetryMin;    // nächster Versuch, wenn der letzte Sync fehlgeschlagen ist
 };
 
 #define MAX_TSF_ENTRIES 16
 
+// TSF-Bezugspunkt eines Access Points: Zählerstand und Uhrzeit zum selben Moment.
+// gen = Herkunft der Uhrzeit: 0 = direkt aus NTP (genauester Anker), n > 0 = aus einer TSF-Berechnung
+// neu basiert, die Bezüge der Generation n−1 (oder besser) benutzt hat. Damit lassen sich abgeleitete
+// Bezüge von NTP-Ankern trennen, und Fehler addieren sich nicht unbemerkt über mehrere Berechnungen.
+// Gangkorrektur: drift_ppb = wie viel schneller (+) oder langsamer (−) der AP-Zähler gegenüber echter Zeit
+// läuft, in Milliardstel. Gemessen zwischen zwei NTP-Snapshots (Messpunkt rate_*, Abstand ≥ 2 h).
+#define TSF_DRIFT_UNKNOWN INT32_MIN
+#define TSF_DRIFT_HIST 4 // so viele Gangmessungen je AP bleiben gespeichert (zur Beobachtung der Stabilität)
+
 struct TsfEntry {
     uint8_t  bssid[6];
-    uint64_t tsf_us;   // TSF-Wert zum Messzeitpunkt (Mikrosekunden)
-    uint64_t unix_us;  // Unix-Zeit zum Messzeitpunkt (Mikrosekunden)
-    int8_t   rssi;     // Empfangsstärke bei der Messung (dBm)
+    uint64_t tsf_us;       // TSF-Wert zum Messzeitpunkt (Mikrosekunden)
+    uint64_t unix_us;      // Unix-Zeit zum Messzeitpunkt (Mikrosekunden)
+    int8_t   rssi;         // Empfangsstärke bei der Messung (dBm)
+    uint8_t  gen;          // Generation (siehe oben)
+    int32_t  drift_ppb;    // Gangabweichung des AP-Zählers; TSF_DRIFT_UNKNOWN = noch nicht gemessen
+    uint64_t rate_tsf_us;  // NTP-Messpunkt für die nächste Gangmessung: Zählerstand …
+    uint64_t rate_unix_us; // … und Unix-Zeit dazu; 0 = kein gültiger Messpunkt (z. B. nach AP-Neustart)
+    int32_t  drift_hist[TSF_DRIFT_HIST]; // letzte gemessene Gänge (ppb), neueste zuerst; TSF_DRIFT_UNKNOWN = leer
 };
 
 // Art der Zustandsänderung / des Auftrags vom Webserver an die loop().
@@ -146,7 +173,11 @@ struct WiFiStatus {
     unsigned long lastStaConnectionTime;
     unsigned long systemTime;
     bool clockSynced;
-    bool staConfigValid;
+    bool staConfigValid;  // Heimnetz verbunden (mit IP) — nur kurz während des Abgleichs
+    bool staActive;       // Heimnetz gerade an (Verbindung oder Aufbau)
+    bool lastSyncOk;      // letzter Abgleich-Versuch erfolgreich
+    bool everSynced;      // seit dem Start mindestens einmal per NTP abgeglichen
+    long nextSyncInMs;    // Restzeit bis zum nächsten Abgleich; 0 = läuft gerade, -1 = kein Heimnetz
 };
 
 // Interner Tracker für WiFi/NTP-Zustand (läuft im Hintergrund)

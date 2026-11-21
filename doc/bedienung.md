@@ -52,7 +52,9 @@ Die Wirkung hängt vom aktuellen Zustand ab (Details: [zustaende.md](zustaende.m
 - Hotspot einschalten (Weboberfläche erreichbar); er startet noch während des Haltens nach 2 s.
   Das ist der **einzige** Weg zum Hotspot — beim
   Start verbindet sich die Lampe nur mit dem Heim-WLAN.
-- Ist die Lampe gerade mit dem Heim-WLAN verbunden, kommt der Hotspot dazu (beides gleichzeitig).
+- Hotspot und Heim-WLAN sind getrennt: Der lange Druck schaltet nur den Hotspot ein und verbindet
+  nicht mit dem Heim-WLAN. Läuft gerade ein Zeitabgleich übers Heim-WLAN, kommt der Hotspot dazu
+  (beides gleichzeitig); ebenso kann ein fälliger Abgleich bei laufendem Hotspot dazukommen.
 - Kurzer gelber Blitz als Bestätigung, danach läuft ein **blauer Komet** über die Pixel, bis sich ein
   Gerät verbindet. Dann kehrt die Lampe in ihren vorherigen Zustand zurück (aus bleibt aus).
 - Die Animation hat Vorrang vor einem Wecker; der läuft im Hintergrund weiter.
@@ -99,7 +101,7 @@ Bis zu **16 Wecker**, je Zeile: Ein/Aus, Wochentag bzw. Datum, Uhrzeit, Löschen
 
 ## Einstellungen in der Weboberfläche
 
-**Sprache:** Unter **Einstellungen → System → Sprache / Language** zwischen Deutsch und Englisch wählen.
+**Sprache:** Unter **Einstellungen → Persönlich → Sprache / Language** zwischen Deutsch und Englisch wählen.
 Die Wahl wird im Browser gespeichert (pro Gerät/Browser). Das Ereignisprotokoll schreibt die Firmware
 einheitlich auf Englisch; bei Deutsch übersetzt die Weboberfläche die Meldungen
 (`svelte-ui/src/lib/logTranslations.js`).
@@ -108,31 +110,67 @@ Die Weboberfläche prüft alle 10 s die Verbindung zur Lampe (`/ping`). Ist sie 
 „Verbindung zur Lampe verloren“ und **alle Felder und Knöpfe sind gesperrt** (nur ⚙ und „Zurück“ bleiben
 bedienbar); kommt die Verbindung zurück, wird die Konfiguration neu geladen.
 
-Unter **Einstellungen → System** lässt sich die **Anzahl der LEDs** (1–16, Standard 4) einstellen;
-die Änderung wirkt sofort. Weitere Einstellungen: WLAN, Energie & Uhr, Warnungen, Ereignisprotokoll.
+Bereiche der Einstellungen:
+
+| Bereich | Inhalt |
+|---|---|
+| Persönlich | Sprache, Name der Lampe, Party-Tage |
+| WLAN | Hotspot (inkl. Laufzeit), externes WLAN, Fallback |
+| Synchronisation | Zeitabgleich übers Heimnetz (Intervalle nach Erfolg/Fehlschlag); externer 32-kHz-Quarz (hält die Uhr zwischen den Abgleichen genau, Umschalten mit Neustart); TSF-Zeitfallback mit gespeicherten APs, letztem Snapshot, Genauigkeit beim letzten Snapshot (max. Abweichung gegenüber NTP seit dem vorigen Snapshot), letzter Berechnung und Knopf **Snapshot jetzt erstellen**; RDS-Zeitfallback; letzter Abgleich (NTP/RDS) und Knopf **Uhr jetzt synchronisieren** — verbindet das Heimnetz, fragt bis 60 s nach und meldet Erfolg oder Fehlschlag, das Datum aktualisiert sich |
+| LEDs | **Anzahl der LEDs** (1–16, Standard 4), LED-Warnungen, Status-LED auf der Platine |
+| System | Deep Sleep, Ereignisprotokoll, serielle Logs (siehe unten), Werksreset |
+| Systemmonitor | Verlauf und Kennzahlen (siehe unten) |
+| Ereignisprotokoll | letzte 200 Ereignisse |
+
+**Speichern ohne Knopf:** Zahlen- und Textfelder (Name, Party-Tage, Hotspot-Laufzeit, Sync-Intervalle,
+LED-Anzahl) werden gespeichert, sobald man das Feld verlässt — wie die Dauer-Felder der Startseite.
+Schalter, Monatsauswahl sowie Party-Tag hinzufügen/entfernen speichern sofort. Ungültige Eingaben werden
+gemeldet und auf den gespeicherten Wert zurückgesetzt. Nur die WLAN-Zugangsdaten haben Haken (siehe unten).
+
+Der **Systemmonitor** zeigt (alle 5 s aktualisiert, solange er offen ist) CPU-Last, RAM-Belegung und WLAN-Signalqualität zum Router sowie vom eigenen Gerät zum Hotspot (je in %, Lücke wenn nicht verbunden bzw. über den Router verbunden) als Verlauf der letzten 30 Minuten. Darunter stehen die Kennzahlen in Gruppen:
+
+| Gruppe | Inhalt |
+|---|---|
+| Uhr | Systemzeit zum Zeitpunkt der letzten Abfrage (alle 5 s), letzter **absoluter** Abgleich (NTP oder RDS, mit Quelle), letzter **relativer** Abgleich (TSF über WLAN-Beacons), letzter NTP-Versuch (erfolgreich/fehlgeschlagen), nächster NTP-Abgleich |
+| WLAN | Heimnetz (verbunden/getrennt — getrennt ist der Normalfall, es wird nur zum Abgleich verbunden), Signal zum Router, Geräte am Hotspot (IP und Signalstärke, das eigene fett mit „(du)“) |
+| Speicher | RAM frei/gesamt, RAM-Minimum, größter freier Block, Dateisystem, Firmware, Flash-Chip |
+| System | CPU-Last, Temperatur, Laufzeit, letzter Neustartgrund |
+
+Die Abgleich-Zeitpunkte überstehen den Deep Sleep, nach Reset/Stromausfall steht dort „noch nie“. Der Verlauf liegt nur im Browser und ist nach einem Seiten-Reload leer.
 
 **WLAN:** `******` im Passwortfeld steht für das gespeicherte Passwort. Wer das Feld leert, löscht das
-Passwort beim Speichern (Hotspot dann offen). Die Sektion ist in die Rubriken **Hotspot**, **Externes WLAN** und **Externes WLAN Fallback** gegliedert, je eine Zeile SSID und Passwort. Hinter den Feldern der beiden externen WLANs:
+Passwort beim Speichern (Hotspot dann offen). Die Sektion ist in die Rubriken **Hotspot**, **Externes WLAN** und **Externes WLAN Fallback** gegliedert, je eine Zeile SSID und Passwort. Einen allgemeinen Speichern-Knopf gibt es nicht: Jede Zeilengruppe speichert über ihren eigenen **Haken** (`CheckButton.svelte`).
+Ein **voller** Haken heißt „so gespeichert“, ein **gestrichelter** „ungespeicherte Änderung“.
 
 | Knopf | Wirkung |
 |---|---|
-| Lupe (hinter SSID) | Lampe sucht WLANs in der Nähe; Auswahlliste mit Signalstärke und 🔒, Auswahl übernimmt die SSID |
-| gestrichelter Haken (hinter Passwort) | Lampe verbindet sich testweise mit SSID + Passwort aus den Feldern (auch ungespeichert; leeres Passwort = offenes Netz); Meldung: erfolgreich, Passwort falsch, Netz nicht gefunden oder Zeitüberschreitung |
+| Lupe (hinter SSID, externe WLANs) | Lampe sucht WLANs in der Nähe; Auswahlliste mit Signalstärke und 🔒, Auswahl übernimmt die SSID |
+| Haken (hinter Passwort, externe WLANs) | Lampe verbindet sich testweise mit SSID + Passwort aus den Feldern (leeres Passwort = offenes Netz); Meldung: erfolgreich, Passwort falsch, Netz nicht gefunden oder Zeitüberschreitung. **Bei Erfolg** und ungespeicherten Änderungen wird dieses WLAN gleich gespeichert („erfolgreich – gespeichert“) und ein neuer Zeitabgleich startet. Leere SSID + Haken = WLAN entfernen (ohne Test) |
+| Haken (hinter Passwort, Hotspot) | speichert Name und Passwort des Hotspots (testen lässt er sich nicht); bei Änderung startet der Hotspot neu, das Handy muss sich neu verbinden |
 
 Suche und Test dauern einige Sekunden (Test höchstens 15 s). Danach stellt die Lampe ihre gespeicherte
 Verbindung wieder her. Während des Tests kann der Hotspot kurz den Kanal wechseln; das Handy verbindet
 sich dann meist von selbst neu.
 
+Zeiten in Minuten (gespeichert beim Verlassen des Feldes, ohne WLAN-Neustart; Hotspot-Laufzeit unter **WLAN → Hotspot**, die beiden Intervalle unter **Synchronisation**):
+
+| Feld | Standard | Bereich | Bedeutung |
+|---|---|---|---|
+| Hotspot → Laufzeit (ohne Bedienung) | 10 | 0–1440 | danach schaltet sich der Hotspot aus; 0 = bleibt an, bis er per Drehknopf ausgeschaltet wird (kein Deep Sleep, solange er läuft) |
+| Synchronisation → Nach Erfolg alle | 300 | 5–720 | so oft holt sich die Lampe die Uhrzeit aus dem Internet |
+| Synchronisation → Nach Fehlschlag alle | 300 | 5–720 | so schnell versucht sie es erneut, wenn der letzte Abgleich nicht geklappt hat |
+
+Im Deep Sleep wacht die Lampe spätestens zum nächsten Abgleich auf.
+
 **Persönlich:** Name der Lampe (1–20 Zeichen, erscheint im Seitentitel, z. B. „Liza's Lampe“) und bis
 zu 8 **Party-Tage** (Tag + Monat). An diesen Tagen startet um 7:00 der Feier-Modus und die Hauptseite
-zeigt Ballons. Speichern über den eigenen Knopf; das WLAN wird dabei nicht neu gestartet. Standardwerte
+zeigt Ballons. Gespeichert wird beim Verlassen des Feldes bzw. sofort beim Hinzufügen/Entfernen; das WLAN wird dabei nicht neu gestartet. Standardwerte
 (nach Werksreset) stehen in `include/secrets.h`.
 
-**Debug** (jeder Schalter wirkt sofort und wird gespeichert):
+**System** (jeder Schalter wirkt sofort und wird gespeichert; die Status-LED steht unter **LEDs**, blaue LED auf dem Board an/aus):
 
 | Schalter | Wirkung |
 |---|---|
-| Status-LED | blaue LED auf dem Board an/aus (aus = bleibt dunkel) |
 | Ereignisprotokoll aufzeichnen | aus = keine neuen Einträge, vorhandene bleiben |
 | Serielle Logs (Monitor) | Textausgabe für `pio device monitor` an/aus |
 | Ausgabe über | **UART** (TX = GPIO21, RX = GPIO20, z. B. FTDI) oder **USB** (USB-CDC des ESP32-C3) |
@@ -175,9 +213,10 @@ Kurzes Blinken: 0,1 s an, 0,2 s Abstand, danach 2 s Pause (`statusLedTick()` in 
 
 | Bedingung | Aktion |
 |---|---|
-| WLAN an, 1 min kein Gerät im Hotspot | WLAN aus |
-| Hotspot an, 10 min keine Bedienung der Weboberfläche | WLAN aus (auch mit verbundenem Gerät) |
-| WLAN aus, 5 h vergangen | WLAN kurz ohne Hotspot an (Uhrzeit per NTP) |
+| Hotspot an, 1 min kein Gerät verbunden (nicht bei Hotspot-Laufzeit 0) | Hotspot aus (ein laufender Zeitabgleich bleibt) |
+| Zeitabgleich übers Heim-WLAN nach 1 min ohne Erfolg | Heim-WLAN getrennt (Hotspot bleibt) |
+| Hotspot an, Laufzeit ohne Bedienung abgelaufen (Standard 10 min, 0 = nie) | Hotspot aus (auch mit verbundenem Gerät) |
+| Sync-Intervall vergangen (Standard 5 h; nach Erfolg bzw. Fehlschlag getrennt einstellbar), egal ob der Hotspot läuft | kurz mit dem Heim-WLAN verbinden (Uhrzeit per NTP); ein laufender Hotspot bleibt an |
 | Lampe aus (Sleep oder Helligkeit 0), WLAN aus, Deep Sleep aktiviert | Deep Sleep bis zum nächsten Wecker/WLAN-Sync (wacht ca. 5 min plus erwartete Uhrabweichung vorher auf) |
 | Wecker in weniger als 5 min | kein Deep Sleep |
 | Wecker-Zeit erreicht (bis 10 min verspätet) | Wecker startet: Farbe der aktiven Szene, Helligkeit steigt von 1 auf 7 |

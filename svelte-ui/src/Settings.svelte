@@ -2,8 +2,10 @@
 <script>
   import { onMount } from "svelte";
   import { messageStore } from "./stores/messageStore.js";
-  import { systemStore, lampName, celebrations } from "./stores/systemStore.js";
+  import CheckButton from "./components/CheckButton.svelte";
+  import { WIFI_KEYS, systemStore, lampName, celebrations } from "./stores/systemStore.js";
   import { getJson, postJson } from "./lib/api.js";
+  import SystemMonitor from "./components/SystemMonitor.svelte";
   import EventLog from "./components/EventLog.svelte";
   import { online } from "./stores/connectionStore.js";
   import MessageAlert from "./components/MessageAlert.svelte";
@@ -19,7 +21,9 @@
     openSection = openSection === name ? null : name;
   }
 
-  $: hasChanges = $systemStore && systemStore.hasChanges();
+  // WLAN-Sektion und Rubrik Synchronisation speichern getrennt (je eigene Felder, eigener Knopf)
+  $: hasChanges = $systemStore && systemStore.hasChanges(WIFI_KEYS);
+
 
   let warningsEnabled = true;
   let deepSleepEnabled = true;
@@ -33,7 +37,6 @@
   let rtcCrystalEnabled = false;
   let rtcCrystalStatus = null;
   let rtcCrystalChanged = false;
-  let statusInfo = null;
   let restarting = false;
 
   // Persönliches: Name der Lampe und Party-Tage (eigener Speichern-Knopf)
@@ -42,7 +45,6 @@
   let personalName = "";
   let personalDays = [];        // [{month, day}], Monat 1–12
   let personalOriginal = "";    // gespeicherter Stand als JSON (Änderungsanzeige)
-  $: personalChanged = JSON.stringify({ n: personalName, d: personalDays }) !== personalOriginal;
 
   // Debug-Schalter (wirken sofort)
   let statusLedEnabled = true;
@@ -61,9 +63,9 @@
   // Komponente wird nur gerendert, wenn der Dialog offen ist → einmal laden.
   onMount(() => {
     systemStore.load();
-    loadStatusInfo();
     loadSwitches();
     loadTsfStatus();
+    loadClockInfo();
     loadRdsStatus();
     loadRtcCrystalStatus();
     // Beim Verlassen Intervall aufräumen
@@ -147,11 +149,13 @@
     if (personalDays.length >= MAX_CELEBRATIONS) return;
     const now = new Date();
     personalDays = [...personalDays, { month: now.getMonth() + 1, day: now.getDate() }];
+    savePersonal();
   }
 
   // Entfernt einen Party-Tag
   function removePartyDay(index) {
     personalDays = personalDays.filter((_, i) => i !== index);
+    savePersonal();
   }
 
   // Monat geändert: Tag ggf. auf das Monatsende kürzen
@@ -159,32 +163,43 @@
     const d = personalDays[index];
     if (d.day > daysInMonth(d.month)) d.day = daysInMonth(d.month);
     personalDays = personalDays;
+    savePersonal();
   }
 
   // Monatsnamen in der gewählten Sprache
   $: monthNames = Array.from({ length: 12 }, (_, i) =>
     new Date(2024, i, 1).toLocaleString(localeFor($lang), { month: "long" }));
 
-  // Speichert Name und Party-Tage (kein WLAN-Neustart)
-  async function handlePersonalSave() {
+  // Speichert Name und Party-Tage sofort nach jeder Änderung (Feld verlassen, Monat gewählt, Tag
+  // hinzugefügt/entfernt) — wie die Dauer-Felder der Startseite, ohne Erfolgsmeldung. Ungültig → Meldung
+  // und gespeicherten Stand wiederherstellen. Kein WLAN-Neustart.
+  async function savePersonal() {
     const name = personalName.trim();
+    const restore = () => {
+      const o = JSON.parse(personalOriginal);
+      personalName = o.n;
+      personalDays = o.d;
+    };
     if (name.length < 1 || byteLength(name) > NAME_MAX_LEN) {
       messageStore.show("error", $t("set.val.lampName", { max: NAME_MAX_LEN }));
+      restore();
       return;
     }
     for (const d of personalDays) {
       if (!Number.isInteger(d.day) || d.day < 1 || d.day > daysInMonth(d.month)) {
         messageStore.show("error", $t("set.val.partyDay"));
+        restore();
         return;
       }
     }
+    const state = JSON.stringify({ n: name, d: personalDays });
+    if (state === personalOriginal) return; // nichts geändert
     try {
       await postJson("/set_system_config", { lampName: name, celebrations: personalDays });
       personalName = name;
-      personalOriginal = JSON.stringify({ n: personalName, d: personalDays });
+      personalOriginal = state;
       lampName.set(name);
       celebrations.set(personalDays.map((d) => ({ ...d })));
-      messageStore.show("success", $t("set.msg.personalSaved"));
     } catch (e) {
       showError($t("set.err.saveFailed"), e);
     }
@@ -231,14 +246,26 @@
     }
   }
 
-  // Löst einen TSF-Snapshot aus und lädt den Status nach 3 s neu
+  // Löst einen TSF-Snapshot aus (dauert ca. 2 s) und fragt nach, bis er da ist; dann steht der neue
+  // Zeitpunkt in der Anzeige. Kommt nach 10 s keiner, Meldung (z. B. WLAN aus → kein Empfang möglich).
+  let tsfBusy = false;
   async function handleTsfSnapshot() {
+    tsfBusy = true;
+    const start = Date.now();
     try {
       await postJson("/trigger_tsf_snapshot");
-      setTimeout(loadTsfStatus, 3000);
+      let done = false;
+      while (!done && Date.now() - start < 10000) {
+        await sleep(1000);
+        await loadTsfStatus();
+        // lastSnapshotMs = ms seit dem Snapshot: kleiner als die Zeit seit dem Klick → neuer Snapshot
+        done = tsfStatus && tsfStatus.lastSnapshotMs > 0 && tsfStatus.lastSnapshotMs < Date.now() - start;
+      }
+      messageStore.show(done ? "success" : "error", $t(done ? "set.clock.tsfDone" : "set.clock.tsfFailed"));
     } catch (e) {
       showError($t("set.err.snapshot"), e);
     }
+    tsfBusy = false;
   }
 
   // Lädt Zustand und Status des externen RTC-Quarzes
@@ -305,6 +332,17 @@
     return $lang === "en" ? `${p(d.getMonth() + 1)}/${p(d.getDate())} ${time}` : `${p(d.getDate())}.${p(d.getMonth() + 1)}. ${time}`;
   }
 
+  // Gang in ppb als ppm mit Vorzeichen und einer Nachkommastelle, z. B. 12400 → "+12.4"
+  const fmtPpb = (ppb) => (ppb >= 0 ? "+" : "−") + (Math.abs(ppb) / 1000).toFixed(1);
+
+  // Zeitspanne in Sekunden kurz: "45 min", "5 h 10 min", "3 Tage"
+  function fmtSpan(sec) {
+    const m = Math.round((sec || 0) / 60);
+    if (m < 60) return `${m} min`;
+    if (m < 2880) return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}`;
+    return $t("set.clock.days", { n: Math.round(m / 1440) });
+  }
+
   // Länge eines Strings in UTF-8-Bytes (SSID/Passwort-Grenzen gelten in Bytes)
   function byteLength(str) {
     return new TextEncoder().encode(str).length;
@@ -320,49 +358,88 @@
     return "";
   }
 
-  // Prüft die Systemeinstellungen wie die Firmware; gibt Fehlertext oder null zurück
-  function validateSystemSettings(s) {
-    if (byteLength(s.internalSSID) < 1 || byteLength(s.internalSSID) > 32) {
-      return $t("set.val.hotspotSsid");
-    }
-    if (byteLength(s.externalSSID) > 32 || byteLength(s.externalSSID2) > 32) {
-      return $t("set.val.extSsid");
-    }
-    const pwChecks = [
-      ["internalPW", $t("set.val.pwHotspot")],
-      ["externalPW", $t("set.val.pwExt")],
-      ["externalPW2", $t("set.val.pwFallback")],
-    ];
-    for (const [field, label] of pwChecks) {
-      const pw = s[field] || "";
-      if (pw === "" || pw === MASK) continue; // leer = kein Passwort, Maske = unverändert
-      const len = byteLength(pw);
-      if (len < 8 || len > 63) {
-        return $t("set.val.pw", { label });
+  // Prüft Minutenfelder ([Feld, min, max, Bezeichnung]) wie die Firmware (json_utils.cpp); Fehlertext oder null
+  function checkMinutes(s, checks) {
+    for (const [field, min, max, label] of checks) {
+      const v = s[field];
+      if (!Number.isInteger(v) || v < min || v > max) {
+        return $t("set.val.minutes", { label, min, max });
       }
     }
     return null;
   }
 
-  // Speichert die Systemeinstellungen nach Prüfung; das Gerät startet danach den Hotspot neu
-  async function handleSave() {
-    // Passwortfehler stehen schon unter dem Feld → nur dorthin springen, keine Meldung oben
-    for (const field of ["internalPW", "externalPW", "externalPW2"]) {
-      if (pwProblem($systemStore[field])) {
-        const el = document.getElementById(field);
-        el?.scrollIntoView({ block: "center", behavior: "smooth" });
-        el?.focus();
-        return;
-      }
-    }
-    const problem = validateSystemSettings($systemStore);
-    if (problem) {
-      messageStore.show("error", problem);
+  // --- WLAN-Sektion: jede Zeilengruppe hat ihren eigenen Haken (voll = gespeichert, gestrichelt = Änderung) ---
+  const AP_KEYS = ["internalSSID", "internalPW"];
+  const EXT_KEYS = { 1: ["externalSSID", "externalPW"], 2: ["externalSSID2", "externalPW2"] };
+  $: dirtyAp = $systemStore && systemStore.hasChanges(AP_KEYS);
+  $: dirty1 = $systemStore && systemStore.hasChanges(EXT_KEYS[1]);
+  $: dirty2 = $systemStore && systemStore.hasChanges(EXT_KEYS[2]);
+  let apBusy = false;
+
+  // Springt zum Passwortfeld, wenn dort ein Fehler steht (der Text steht schon unter dem Feld); true = Fehler
+  function focusPwProblem(field) {
+    if (!pwProblem($systemStore[field])) return false;
+    const el = document.getElementById(field);
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    el?.focus();
+    return true;
+  }
+
+  // Hotspot-Haken: Name/Passwort prüfen und speichern (testen lässt sich der eigene Hotspot nicht).
+  // Bei Änderung startet die Lampe den Hotspot neu → Handy muss sich neu verbinden.
+  async function saveHotspot() {
+    if (focusPwProblem("internalPW")) return;
+    const len = byteLength($systemStore.internalSSID);
+    if (len < 1 || len > 32) {
+      messageStore.show("error", $t("set.val.hotspotSsid"));
       return;
     }
-    const success = await systemStore.post();
-    if (success) {
-      messageStore.show("success", $t("set.msg.saved"));
+    if (!dirtyAp) {
+      messageStore.show("success", $t("set.wifi.alreadySaved"));
+      return;
+    }
+    apBusy = true;
+    if (await systemStore.post(AP_KEYS)) messageStore.show("success", $t("set.msg.savedApRestart"));
+    apBusy = false;
+  }
+
+  // Minutenfeld beim Verlassen speichern (wie die Dauer-Felder der Startseite): ungültig → Meldung und
+  // gespeicherten Wert wieder anzeigen; gültig → sofort senden, ohne Erfolgsmeldung
+  async function saveMinutes(field, min, max, label, event) {
+    const raw = event.target.value;
+    const value = Number(raw);
+    if (raw === "" || !Number.isInteger(value) || value < min || value > max) {
+      messageStore.show("error", $t("set.val.minutes", { label, min, max }));
+      systemStore.revertField(field);
+      event.target.value = $systemStore[field];
+      return;
+    }
+    systemStore.updateField(field, value);
+    await systemStore.post([field]);
+  }
+
+  // Haken eines externen WLANs (1 = Haupt, 2 = Fallback): Verbindung testen; bei Erfolg und ungespeicherten
+  // Änderungen gleich speichern. Leere SSID mit Änderung = Netz entfernen (ohne Test).
+  async function checkExternal(slot) {
+    const [ssidField, pwField] = EXT_KEYS[slot];
+    const dirty = slot === 1 ? dirty1 : dirty2;
+    if (focusPwProblem(pwField)) return;
+    if (byteLength($systemStore[ssidField]) > 32) {
+      messageStore.show("error", $t("set.val.extSsid"));
+      return;
+    }
+    if (!$systemStore[ssidField]) {
+      if (dirty && (await systemStore.post(EXT_KEYS[slot]))) {
+        testSlot = slot;
+        testError = "";
+        testResult = "removed";
+      }
+      return;
+    }
+    await startTest(slot, ssidField, pwField);
+    if (testResult === "ok" && dirty && (await systemStore.post(EXT_KEYS[slot]))) {
+      testResult = "okSaved";
     }
   }
 
@@ -467,38 +544,54 @@
     }
   }
 
-  // Lädt den Gerätestatus und bereitet ihn für die Anzeige auf
-  async function loadStatusInfo() {
+  // --- Uhr-Abgleich: Stand aus /get_system_info (Objekt clock, siehe clock_sync.h) ---
+  let clockInfo = null; // { now, ntpAt, rdsAt, tsfAt, lastSyncOk, staActive, nextSyncInMs }
+  let syncBusy = false;
+
+  // Lädt den Stand der Uhr-Abgleiche; Fehler still (Verbindung kann beim Abgleich kurz wackeln)
+  async function loadClockInfo() {
     try {
-      const rawStatus = await getJson("/get_status");
-
-      // Zeit seit dem letzten erfolgreichen Test aus ms formatieren
-      const ms = rawStatus.timeSinceLastSucceededTestMs;
-      let lastTestTime;
-      if (ms < 60000) lastTestTime = $t("set.sys.secAgo", { n: Math.floor(ms / 1000) });
-      else if (ms < 3600000) lastTestTime = $t("set.sys.minAgo", { n: Math.floor(ms / 60000) });
-      else lastTestTime = $t("set.sys.hourAgo", { n: Math.floor(ms / 3600000) });
-
-      // Systemzeit (Epoch-Sekunden) als lokale Zeit
-      let formattedSystemTime = "";
-      if (rawStatus.systemTime && !isNaN(rawStatus.systemTime)) {
-        formattedSystemTime = new Date(rawStatus.systemTime * 1000).toLocaleString(localeFor($lang));
-      }
-
-      statusInfo = { ...rawStatus, lastTestTime, systemTime: formattedSystemTime };
+      const d = await getJson("/get_system_info");
+      if (d.clock) clockInfo = d.clock;
     } catch (e) {
-      showError($t("set.err.status"), e);
+      // nächster Versuch beim nächsten Aufruf
     }
   }
 
-  // Startet eine NTP-Synchronisation
+  // Text „Letzter Abgleich: 20.11. 21:21 (NTP)“ aus dem jüngeren der echten Zeitquellen NTP und RDS
+  function syncInfoText(c, _t) {
+    if (!c) return "";
+    if (c.nextSyncInMs === -1 && !c.ntpAt && !c.rdsAt) return $t("set.clock.noHomeWifi");
+    const at = Math.max(c.ntpAt || 0, c.rdsAt || 0);
+    if (!at) return $t("set.clock.lastSyncNever");
+    const src = (c.ntpAt || 0) >= (c.rdsAt || 0) ? "NTP" : "RDS";
+    return $t("set.clock.lastSync", { at: formatAt(Math.max(0, (c.now - at) * 1000)), src });
+  }
+
+  // „Uhr jetzt synchronisieren“: Lampe verbindet das Heimnetz und fragt NTP. Danach alle 2 s nachfragen
+  // (bis 60 s): neuer NTP-Zeitpunkt = Erfolg; Heimnetz wieder aus ohne neuen Zeitpunkt = Fehlschlag.
   async function handleNtpResync() {
+    syncBusy = true;
+    await loadClockInfo();
+    const before = clockInfo ? clockInfo.ntpAt || 0 : 0;
+    const start = Date.now();
     try {
       await postJson("/trigger_ntp_sync");
-      messageStore.show("success", $t("set.msg.ntpStarted"));
+      let result = null;
+      while (!result && Date.now() - start < 60000) {
+        await sleep(2000);
+        await loadClockInfo();
+        if (!clockInfo) continue;
+        if ((clockInfo.ntpAt || 0) > before) result = "ok";
+        else if (!clockInfo.staActive && Date.now() - start > 6000) result = "failed";
+      }
+      messageStore.show(result === "ok" ? "success" : "error",
+        $t(result === "ok" ? "set.clock.syncOk" : "set.clock.syncFailed"));
+      if (tsfFallbackEnabled) loadTsfStatus(); // nach NTP: neuer Snapshot, Snapshot-Knopf wieder frei
     } catch (e) {
       showError($t("set.err.ntp"), e);
     }
+    syncBusy = false;
   }
 
   // Übersetzt einen Rohstatus der Firmware (z. B. "locked"); unbekannte Werte bleiben unverändert
@@ -521,19 +614,26 @@
   <!-- Ohne Verbindung zur Lampe sind alle Eingaben gesperrt (je Sektion ein fieldset); nur die
        Sprachauswahl liegt außerhalb und bleibt immer bedienbar -->
   <div class="acc-scroll">
-  <!-- Accordion: Persönlich (Name der Lampe, Party-Tage) -->
+  <!-- Accordion: Persönlich (Sprache, Name der Lampe, Party-Tage) -->
   <div class="acc-item" class:open={openSection === "personal"}>
     <button class="acc-head" type="button" on:click={() => toggleSection("personal")}>
       <span class="acc-icon">{openSection === "personal" ? "▾" : "▸"}</span>
       {$t("set.acc.personal")}
-      {#if personalChanged}<span class="acc-badge">●</span>{/if}
     </button>
     {#if openSection === "personal"}
       <div class="acc-body">
+        <!-- Sprachauswahl: bewusst außerhalb des fieldsets, auch ohne Verbindung zur Lampe bedienbar -->
+        <div class="group lang-group">
+          <label for="langSelect">{$t("set.sys.language")}</label>
+          <select id="langSelect" bind:value={$lang}>
+            <option value="de">Deutsch</option>
+            <option value="en">English</option>
+          </select>
+        </div>
         <fieldset class="plain" disabled={!$online}>
         <div class="group">
           <label for="lampName">{$t("set.personal.name")}</label>
-          <input type="text" id="lampName" maxlength={NAME_MAX_LEN} bind:value={personalName} />
+          <input type="text" id="lampName" maxlength={NAME_MAX_LEN} bind:value={personalName} on:change={savePersonal} />
         </div>
 
         <div class="group">
@@ -542,7 +642,7 @@
           {#each personalDays as d, i}
             <div class="party-row">
               <input type="number" min="1" max={daysInMonth(d.month)} bind:value={d.day}
-                aria-label={$t("set.personal.day")} />
+                on:change={savePersonal} aria-label={$t("set.personal.day")} />
               <select bind:value={d.month} on:change={() => handleMonthChange(i)} aria-label={$t("set.personal.month")}>
                 {#each monthNames as m, mi}<option value={mi + 1}>{m}</option>{/each}
               </select>
@@ -554,13 +654,8 @@
           {:else}
             <small class="hint">{$t("set.personal.none")}</small>
           {/each}
-          <button type="button" class="btn-tiny add-day" disabled={personalDays.length >= MAX_CELEBRATIONS}
-            on:click={addPartyDay}>{$t("set.personal.add", { max: MAX_CELEBRATIONS })}</button>
-        </div>
-
-        <div class="acc-actions group">
-          <button class="btn-small btn-blue" type="button" on:click={handlePersonalSave}
-            disabled={!personalChanged}>{$t("set.personal.save")}</button>
+          <button type="button" class="btn-small btn-blue add-day" disabled={personalDays.length >= MAX_CELEBRATIONS}
+            on:click={addPartyDay}>{$t("set.personal.add")}</button>
         </div>
         </fieldset>
       </div>
@@ -577,7 +672,7 @@
     {#if openSection === "wifi"}
       <div class="acc-body">
         <fieldset class="plain" disabled={!$online}>
-        <form on:submit|preventDefault={handleSave}>
+        <form on:submit|preventDefault>
           <div class="group">
             <div class="rubric">{$t("set.wifi.secHotspot")}</div>
             <div class="wrow">
@@ -590,9 +685,17 @@
               <input autocomplete="off" type={pwFocus.internalPW ? "text" : "password"} id="internalPW" value={$systemStore.internalPW}
                 on:focus={() => pwFocus.internalPW = true} on:blur={() => pwFocus.internalPW = false}
                 on:input={(e) => handleFieldChange("internalPW", e)} />
-              <span></span>
+              <CheckButton title={$t("set.wifi.saveHotspot")} dirty={dirtyAp} busy={apBusy}
+                disabled={apBusy || !!pwProblem($systemStore.internalPW)} on:click={saveHotspot} />
               {#if pwProblem($systemStore.internalPW)}<small class="test-result bad wrow-under">{pwProblem($systemStore.internalPW)}</small>{/if}
+
+              <!-- Laufzeit im selben Raster wie SSID/Passwort; „min“ steht in der Spalte der Haken -->
+              <label for="apTimeoutMin">{$t("set.wifi.apTimeout")}</label>
+              <input type="number" id="apTimeoutMin" min="0" max="1440" step="1" value={$systemStore.apTimeoutMin}
+                on:change={(e) => saveMinutes("apTimeoutMin", 0, 1440, $t("set.wifi.apTimeout"), e)} />
+              <span class="unit wunit">{$t("main.min")}</span>
             </div>
+            <small class="nrow-hint">{$t("set.wifi.apTimeoutHint")}</small>
           </div>
 
           <div class="group">
@@ -618,13 +721,12 @@
               <input autocomplete="off" type={pwFocus.externalPW ? "text" : "password"} id="externalPW" value={$systemStore.externalPW}
                 on:focus={() => pwFocus.externalPW = true} on:blur={() => pwFocus.externalPW = false}
                 on:input={(e) => handleFieldChange("externalPW", e)} />
-              <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
-                disabled={scanBusy || testBusy || !$systemStore.externalSSID || !!pwProblem($systemStore.externalPW)} on:click={() => startTest(1, "externalSSID", "externalPW")}>
-                {#if testBusy && testSlot === 1}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="2 1.4"><path d="M2.8 12.6 L5 10.4 L9.9 15.3 L18.9 4.6 L21.3 6.6 L10.1 19.9 Z" /></svg>{/if}
-              </button>
+              <CheckButton title={$t("set.wifi.test")} dirty={dirty1} busy={testBusy && testSlot === 1}
+                disabled={scanBusy || testBusy || (!$systemStore.externalSSID && !dirty1) || !!pwProblem($systemStore.externalPW)}
+                on:click={() => checkExternal(1)} />
               {#if pwProblem($systemStore.externalPW)}<small class="test-result bad wrow-under">{pwProblem($systemStore.externalPW)}</small>{/if}
               {#if testSlot === 1 && testResult}
-                <small class="test-result wrow-under {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
+                <small class="test-result wrow-under {['ok', 'okSaved', 'removed'].includes(testResult) ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
               {/if}
             </div>
           </div>
@@ -652,46 +754,48 @@
               <input autocomplete="off" type={pwFocus.externalPW2 ? "text" : "password"} id="externalPW2" value={$systemStore.externalPW2} placeholder={$t("set.wifi.optional")}
                 on:focus={() => pwFocus.externalPW2 = true} on:blur={() => pwFocus.externalPW2 = false}
                 on:input={(e) => handleFieldChange("externalPW2", e)} />
-              <button class="icon-btn" type="button" title={$t("set.wifi.test")} aria-label={$t("set.wifi.test")}
-                disabled={scanBusy || testBusy || !$systemStore.externalSSID2 || !!pwProblem($systemStore.externalPW2)} on:click={() => startTest(2, "externalSSID2", "externalPW2")}>
-                {#if testBusy && testSlot === 2}<span class="spin"></span>{:else}<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-dasharray="2 1.4"><path d="M2.8 12.6 L5 10.4 L9.9 15.3 L18.9 4.6 L21.3 6.6 L10.1 19.9 Z" /></svg>{/if}
-              </button>
+              <CheckButton title={$t("set.wifi.test")} dirty={dirty2} busy={testBusy && testSlot === 2}
+                disabled={scanBusy || testBusy || (!$systemStore.externalSSID2 && !dirty2) || !!pwProblem($systemStore.externalPW2)}
+                on:click={() => checkExternal(2)} />
               {#if pwProblem($systemStore.externalPW2)}<small class="test-result bad wrow-under">{pwProblem($systemStore.externalPW2)}</small>{/if}
               {#if testSlot === 2 && testResult}
-                <small class="test-result wrow-under {testResult === 'ok' ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
+                <small class="test-result wrow-under {['ok', 'okSaved', 'removed'].includes(testResult) ? 'ok' : testResult === 'running' ? '' : 'bad'}">{testError || $t("set.wifi.result." + testResult)}</small>
               {/if}
             </div>
           </div>
 
           <small class="hint">{$t("set.wifi.hint")}</small>
-
-          <div class="acc-actions group">
-            <button class="btn-small btn-blue" type="button" on:click={handleSave}
-              disabled={!hasChanges}>{$t("set.wifi.save")}</button>
-          </div>
         </form>
         </fieldset>
       </div>
     {/if}
   </div>
 
-  <!-- Accordion: Energie & Uhr -->
-  <div class="acc-item" class:open={openSection === "clock"}>
-    <button class="acc-head" type="button" on:click={() => toggleSection("clock")}>
-      <span class="acc-icon">{openSection === "clock" ? "▾" : "▸"}</span>
-      {$t("set.acc.clock")}
+  <!-- Accordion: Synchronisation (NTP-Intervalle, 32-kHz-Quarz, TSF-/RDS-Fallback, Abgleich von Hand) -->
+  <div class="acc-item" class:open={openSection === "sync"}>
+    <button class="acc-head" type="button" on:click={() => toggleSection("sync")}>
+      <span class="acc-icon">{openSection === "sync" ? "▾" : "▸"}</span>
+      {$t("set.acc.sync")}
     </button>
-    {#if openSection === "clock"}
+    {#if openSection === "sync"}
       <div class="acc-body">
         <fieldset class="plain" disabled={!$online}>
-        <section class="warnings-section group">
-          <label class="warnings-label">
-            <input type="checkbox" bind:checked={deepSleepEnabled} on:change={handleDeepSleepToggle} />
-            {$t("set.clock.deepSleep")}
-          </label>
-          <small>{$t("set.clock.deepSleepHint")}</small>
-        </section>
+        <!-- Zeitabgleich übers Heimnetz (NTP): Intervalle nach Erfolg / Fehlschlag, speichern beim Verlassen -->
+        <div class="group">
+          <div class="nrow nrow-unit">
+            <label for="syncIntervalMin">{$t("set.wifi.syncInterval")}</label>
+            <input type="number" id="syncIntervalMin" min="5" max="720" step="1" value={$systemStore.syncIntervalMin}
+              on:change={(e) => saveMinutes("syncIntervalMin", 5, 720, $t("set.wifi.syncInterval"), e)} />
+            <span class="unit">{$t("main.min")}</span>
 
+            <label for="syncRetryMin">{$t("set.wifi.syncRetry")}</label>
+            <input type="number" id="syncRetryMin" min="5" max="720" step="1" value={$systemStore.syncRetryMin}
+              on:change={(e) => saveMinutes("syncRetryMin", 5, 720, $t("set.wifi.syncRetry"), e)} />
+            <span class="unit">{$t("main.min")}</span>
+          </div>
+        </div>
+
+        <!-- 32-kHz-Quarz: hält die Uhr zwischen den Abgleichen genau (v. a. im Deep Sleep) -->
         <section class="warnings-section group">
           <label class="warnings-label">
             <!-- Nur aktivierbar, wenn beim Einschalten ein Quarz erkannt wurde (ausschalten geht immer) -->
@@ -729,20 +833,51 @@
           </label>
           <small>{$t("set.clock.tsfHint")}</small>
           {#if tsfFallbackEnabled && tsfStatus}
-            <div class="fallback-status">
-              <span>{$t("set.clock.tsfStored", { n: tsfStatus.storedAps })}</span>
-              {#if tsfStatus.lastSnapshotMs > 0}<span>{$t("set.clock.tsfSnapshotAt", { at: formatAt(tsfStatus.lastSnapshotMs) })}</span>{/if}
-              {#if tsfStatus.lastCalcResult !== "none"}
-                <span>· {tsfStatus.lastCalcResult === "success"
-                  ? $t("set.clock.tsfOk", { aps: tsfStatus.lastCalcAps, dev: tsfStatus.lastCalcDeviationMs })
-                  : `✗ ${statusText("tsf", tsfStatus.lastCalcResult)}`}</span>
-              {/if}
-              {#if tsfStatus.minScore !== undefined}<span>{$t("set.clock.tsfScore", { min: tsfStatus.minScore, max: tsfStatus.maxScore })}</span>{/if}
-              <button class="btn-tiny" type="button" on:click={handleTsfSnapshot}>{$t("set.clock.tsfButton")}</button>
-            </div>
+            <!-- Stand: gespeicherte APs, letzter Snapshot, letzte Berechnung mit größter Abweichung -->
             <small>
-              {$t("set.clock.tsfScoreHelp")}
+              {$t("set.clock.tsfStored", { n: tsfStatus.storedAps ?? 0, ntp: tsfStatus.storedNtpAps ?? 0, drift: tsfStatus.storedDriftAps ?? 0 })} ·
+              {tsfStatus.lastSnapshotMs > 0 ? $t("set.clock.tsfSnapshotAt", { at: formatAt(tsfStatus.lastSnapshotMs) }) : $t("set.clock.tsfNoSnapshot")}
             </small>
+            <!-- Gangverlauf je AP (aus dem Flash): zeigt, ob die Router-Zähler stabil laufen oder springen -->
+            {#if tsfStatus.aps && tsfStatus.aps.length}
+              <details class="tsf-aps">
+                <summary>{$t("set.clock.tsfApsTitle", { n: tsfStatus.aps.length })}</summary>
+                <table>
+                  <thead><tr><th>AP</th><th>{$t("set.clock.tsfApsHist")}</th><th>{$t("set.clock.tsfApsUsed")}</th></tr></thead>
+                  <tbody>
+                    {#each tsfStatus.aps as ap}
+                      <tr>
+                        <td>…{ap.id}{ap.gen > 0 ? ` (${$t("set.clock.tsfApsGen", { g: ap.gen })})` : ""}</td>
+                        <td>{ap.hist && ap.hist.length ? ap.hist.map(fmtPpb).join(" · ") : "–"}</td>
+                        <td>{ap.drift !== undefined ? fmtPpb(ap.drift) : "–"}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+                <small>{$t("set.clock.tsfApsHint")}</small>
+              </details>
+            {/if}
+            <!-- Genauigkeitstest beim Snapshot: TSF-Zeit gegen die per NTP gestellte Uhr -->
+            <small>
+              {tsfStatus.checkAps > 0
+                ? $t("set.clock.tsfCheck", { dev: tsfStatus.checkMaxDevMs, span: fmtSpan(tsfStatus.checkSpanS), aps: tsfStatus.checkAps })
+                : $t("set.clock.tsfNoCheck")}
+            </small>
+            {#if tsfStatus.lastCalcResult && tsfStatus.lastCalcResult !== "none"}
+              <small>
+                {tsfStatus.lastCalcResult === "success"
+                  ? $t("set.clock.tsfOk", { aps: tsfStatus.lastCalcAps, dev: tsfStatus.lastCalcMaxDevMs ?? tsfStatus.lastCalcDeviationMs,
+                      src: tsfStatus.lastCalcGen > 0 ? $t("set.clock.tsfSrcDerived", { g: tsfStatus.lastCalcGen }) : $t("set.clock.tsfSrcNtp") })
+                  : $t("set.clock.tsfFail", { reason: statusText("tsf", tsfStatus.lastCalcResult) })}
+              </small>
+            {/if}
+            <div class="acc-actions">
+              <button class="btn-small btn-blue" type="button" disabled={tsfBusy || tsfStatus.snapshotAllowed === false}
+                on:click={handleTsfSnapshot}>
+                {tsfBusy ? $t("set.clock.tsfRunning") : $t("set.clock.tsfButton")}
+              </button>
+            </div>
+            {#if tsfStatus.snapshotAllowed === false}<small>{$t("set.clock.tsfNeedNtp")}</small>{/if}
           {/if}
         </section>
 
@@ -777,25 +912,39 @@
           {/if}
         </section>
 
-        <div class="acc-actions group">
-          <button class="btn-small btn-blue" type="button" on:click={handleNtpResync}>
-            {$t("set.clock.syncNow")}
-          </button>
+        <!-- Letzter absoluter Abgleich (NTP/RDS) und Abgleich von Hand mit Rückmeldung -->
+        <div class="warnings-section group">
+          <small>{syncInfoText(clockInfo, $t)}</small>
+          <div class="acc-actions">
+            <button class="btn-small btn-blue" type="button" disabled={syncBusy || clockInfo?.nextSyncInMs === -1}
+              on:click={handleNtpResync}>
+              {syncBusy ? $t("set.clock.syncRunning") : $t("set.clock.syncNow")}
+            </button>
+          </div>
         </div>
         </fieldset>
       </div>
     {/if}
   </div>
 
-  <!-- Accordion: Warnungen -->
-  <div class="acc-item" class:open={openSection === "warnings"}>
-    <button class="acc-head" type="button" on:click={() => toggleSection("warnings")}>
-      <span class="acc-icon">{openSection === "warnings" ? "▾" : "▸"}</span>
-      {$t("set.acc.warnings")}
+  <!-- Accordion: LEDs (Anzahl LEDs, Warnungen, Status-LED) -->
+  <div class="acc-item" class:open={openSection === "leds"}>
+    <button class="acc-head" type="button" on:click={() => toggleSection("leds")}>
+      <span class="acc-icon">{openSection === "leds" ? "▾" : "▸"}</span>
+      {$t("set.acc.leds")}
     </button>
-    {#if openSection === "warnings"}
+    {#if openSection === "leds"}
       <div class="acc-body">
         <fieldset class="plain" disabled={!$online}>
+        <!-- Wie die anderen Zahlenfelder: Bezeichnung links, Feld rechts; speichert beim Verlassen -->
+        <div class="group">
+          <div class="nrow">
+            <label for="ledCount">{$t("set.sys.ledCount")}</label>
+            <input id="ledCount" type="number" min="1" max={MAX_LED_COUNT} value={ledCount}
+              on:change={handleLedCountChange} />
+          </div>
+        </div>
+
         <section class="warnings-section group">
           <label class="warnings-label">
             <input type="checkbox" bind:checked={warningsEnabled} on:change={handleWarningsToggle} />
@@ -803,85 +952,7 @@
           </label>
           <small>{$t("set.warn.hint")}</small>
         </section>
-        </fieldset>
-      </div>
-    {/if}
-  </div>
 
-  <!-- Accordion: System -->
-  <div class="acc-item" class:open={openSection === "system"}>
-    <button class="acc-head" type="button" on:click={() => toggleSection("system")}>
-      <span class="acc-icon">{openSection === "system" ? "▾" : "▸"}</span>
-      {$t("set.acc.system")}
-    </button>
-    {#if openSection === "system"}
-      <div class="acc-body">
-        <!-- Sprachauswahl: bewusst außerhalb des fieldsets, auch ohne Verbindung zur Lampe bedienbar -->
-        <div class="group lang-group">
-          <label for="langSelect">{$t("set.sys.language")}</label>
-          <select id="langSelect" bind:value={$lang}>
-            <option value="de">Deutsch</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-        <fieldset class="plain" disabled={!$online}>
-        {#if statusInfo}
-          <div class="status-info group">
-            {#if statusInfo.currentTime}
-              <div class="status-line">
-                <span class="status-label">{$t("set.sys.currentTime")}</span>
-                <span class="status-value">{statusInfo.currentTime}</span>
-              </div>
-            {/if}
-            <div class="status-line">
-              <span class="status-label">{$t("set.sys.systemTime")}</span>
-              <span class="status-value">{statusInfo.systemTime}</span>
-            </div>
-            <div class="status-line">
-              <span class="status-label">{$t("set.sys.ntpSynced")}</span>
-              <span class="status-value {statusInfo.clockSynced ? 'success' : 'connection_failed'}">
-                {statusInfo.clockSynced ? $t("set.sys.yes") : $t("set.sys.no")}
-              </span>
-            </div>
-            <div class="status-line">
-              <span class="status-label">{$t("set.sys.lastTest")}</span>
-              <span class="status-value">{statusInfo.lastTestTime}</span>
-            </div>
-            <div class="status-line">
-              <span class="status-label">{$t("set.sys.staConnected")}</span>
-              <span class="status-value {statusInfo.staConfigValid ? 'success' : 'connection_failed'}">
-                {statusInfo.staConfigValid ? $t("set.sys.yes") : $t("set.sys.no")}
-              </span>
-            </div>
-          </div>
-        {/if}
-
-        <div class="group led-count">
-          <label for="ledCount">{$t("set.sys.ledCount")}</label>
-          <input id="ledCount" type="number" min="1" max={MAX_LED_COUNT} value={ledCount}
-            on:change={handleLedCountChange} />
-          <small>{$t("set.sys.ledHint")}</small>
-        </div>
-
-        <div class="acc-actions group">
-          <button class="btn-small btn-danger" type="button" disabled={restarting} on:click={handleFactoryReset}>
-            {restarting ? $t("set.sys.resetting") : $t("set.sys.factory")}
-          </button>
-        </div>
-        </fieldset>
-      </div>
-    {/if}
-  </div>
-
-  <!-- Accordion: Debug (Status-LED, Logs, Ausgabe-Schnittstelle) -->
-  <div class="acc-item" class:open={openSection === "debug"}>
-    <button class="acc-head" type="button" on:click={() => toggleSection("debug")}>
-      <span class="acc-icon">{openSection === "debug" ? "▾" : "▸"}</span>
-      {$t("set.acc.debug")}
-    </button>
-    {#if openSection === "debug"}
-      <div class="acc-body">
-        <fieldset class="plain" disabled={!$online}>
         <section class="warnings-section group">
           <label class="warnings-label">
             <input type="checkbox" bind:checked={statusLedEnabled}
@@ -889,6 +960,27 @@
             {$t("set.debug.statusLed")}
           </label>
           <small>{$t("set.debug.statusLedHint")}</small>
+        </section>
+        </fieldset>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Accordion: System (Deep Sleep, Ereignisprotokoll, serielle Logs, Werksreset) -->
+  <div class="acc-item" class:open={openSection === "system"}>
+    <button class="acc-head" type="button" on:click={() => toggleSection("system")}>
+      <span class="acc-icon">{openSection === "system" ? "▾" : "▸"}</span>
+      {$t("set.acc.system")}
+    </button>
+    {#if openSection === "system"}
+      <div class="acc-body">
+        <fieldset class="plain" disabled={!$online}>
+        <section class="warnings-section group">
+          <label class="warnings-label">
+            <input type="checkbox" bind:checked={deepSleepEnabled} on:change={handleDeepSleepToggle} />
+            {$t("set.clock.deepSleep")}
+          </label>
+          <small>{$t("set.clock.deepSleepHint")}</small>
         </section>
 
         <section class="warnings-section group">
@@ -915,7 +1007,26 @@
           </select>
           <small>{$t("set.debug.outputHint")}</small>
         </section>
+
+        <div class="acc-actions group">
+          <button class="btn-small btn-danger" type="button" disabled={restarting} on:click={handleFactoryReset}>
+            {restarting ? $t("set.sys.resetting") : $t("set.sys.factory")}
+          </button>
+        </div>
         </fieldset>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Accordion: Systemmonitor -->
+  <div class="acc-item" class:open={openSection === "sysmon"}>
+    <button class="acc-head" type="button" on:click={() => toggleSection("sysmon")}>
+      <span class="acc-icon">{openSection === "sysmon" ? "▾" : "▸"}</span>
+      {$t("set.acc.sysmon")}
+    </button>
+    {#if openSection === "sysmon"}
+      <div class="acc-body">
+        <SystemMonitor />
       </div>
     {/if}
   </div>
@@ -1014,35 +1125,6 @@
     margin-top: 0;
   }
 
-  .status-info {
-    font-size: 0.75rem;
-    color: var(--secondary-text-color);
-  }
-
-  .status-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .status-label {
-    font-weight: 500;
-    min-width: 80px;
-  }
-
-  .status-value {
-    color: var(--text-color);
-  }
-
-  .status-value.success {
-    color: #22c55e;
-  }
-
-  .status-value.connection_failed {
-    color: #ef4444;
-  }
-
   .warnings-section {
     margin-bottom: 0.5rem;
   }
@@ -1124,8 +1206,22 @@
     gap: 0.4rem;
   }
 
+  /* Kein Pico-Knopfstil am Rubrik-Kopf: kein grauer Hintergrund, kein Rand bei Hover/Fokus/Klick */
+  .acc-head:is(:hover, :focus, :active) {
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: inherit;
+  }
+
   .acc-head:hover {
     opacity: 0.8;
+  }
+
+  /* Offene Rubrik: nur der Titel in der Primärfarbe (wechselt im Dark Mode selbst auf helleres Blau) */
+  .acc-item.open > .acc-head,
+  .acc-item.open > .acc-head:is(:hover, :focus, :active) {
+    color: var(--pico-primary, #0172ad);
   }
 
   .acc-icon {
@@ -1152,11 +1248,13 @@
   }
 
 
-  .hint {
+  /* Hinweistexte: überall wie unter den Schaltern (TSF, RDS, …) — klein, grau */
+  .hint,
+  .nrow-hint {
     display: block;
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
     font-size: 0.75rem;
-    color: var(--pico-muted-color, #888);
+    color: var(--secondary-text-color, #888);
   }
   /* Sprachauswahl steht außerhalb des fieldsets → Trennlinie nach unten statt über .group + .group */
   /* Eingabefeld mit quadratischem Icon-Knopf dahinter (Finden / Testen) */
@@ -1184,6 +1282,25 @@
   }
 
   /* Rubrik innerhalb einer Sektion (Hotspot, Externes WLAN, …) */
+  /* Minutenfelder: Bezeichnung links, schmales Zahlenfeld rechts */
+  .nrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 5.5rem;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+  }
+
+  /* Minutenzeile: Bezeichnung | Feld | Einheit (wie die Dauer auf der Startseite) */
+  .nrow.nrow-unit {
+    grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+  }
+
+  .nrow > label,
+  .nrow input {
+    margin: 0;
+  }
+
   .rubric {
     font-weight: 600;
     margin-bottom: 0.5rem;
@@ -1252,13 +1369,61 @@
     margin-top: 0.6rem;
   }
 
+  /* Laufzeit im WLAN-Raster: schmal wie die anderen Zahlenfelder (5.5rem), rechts bündig mit SSID/Passwort */
+  .wrow #apTimeoutMin {
+    justify-self: end;
+    width: 5.5rem;
+  }
+
+  /* „min“ in der Knopf-Spalte des WLAN-Rasters: mittig */
+  .wunit {
+    text-align: center;
+    color: var(--pico-muted-color);
+  }
+
+  /* Gangverlauf je AP: kleine, aufklappbare Tabelle im Stil der Hinweistexte */
+  .tsf-aps {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color, #888);
+  }
+
+  .tsf-aps summary {
+    cursor: pointer;
+  }
+
+  .tsf-aps table {
+    width: 100%;
+    table-layout: fixed; /* feste Spaltenbreiten: nie breiter als die Seite */
+    margin: 0.35rem 0 0;
+    font-size: 0.75rem;
+  }
+
+  .tsf-aps th,
+  .tsf-aps td {
+    padding: 0.15rem 0.25rem;
+    color: inherit;
+    background: none;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+
+  .tsf-aps th {
+    overflow-wrap: normal; /* Überschriften nur an Leerzeichen umbrechen */
+  }
+
+  .tsf-aps th:nth-child(1) { width: 30%; }
+  .tsf-aps th:nth-child(3) { width: 24%; }
+
+  /* Einheit „min“ hinter Minutenfeldern */
+  .nrow .unit {
+    color: var(--pico-muted-color);
+  }
+
   .sub-label {
     display: block;
     margin: 0.6rem 0 0.35rem;
     font-size: 0.85rem;
   }
 
-  .led-count input[type="number"] {
-    width: 80px;
-  }
 </style>

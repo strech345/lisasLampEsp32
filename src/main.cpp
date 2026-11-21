@@ -24,6 +24,10 @@
 #include "web_commands.h"
 #include "wifi_controller.h"
 
+// Taktzeit der Hauptschleife in ms (Tick-Rate 1000 Hz): genug für LED-Animationen (≈ 10–20 ms je Bild),
+// Drehknopf läuft über Interrupts
+static const uint32_t LOOP_PERIOD_MS = 2;
+
 // --- Globaler Zustand (die Module erhalten Zeiger darauf) ---
 static FullConfig appConfig;
 static SystemSettings systemSettings;
@@ -127,4 +131,10 @@ void loop() {
     updateLed();
     checkToSave();
     checkToGoSleep();
+
+    // --- Takt: Rest der Taktzeit schlafen, damit der Leerlauf-Task (und damit die CPU-Ruhe) drankommt ---
+    // vTaskDelayUntil schläft nur bis zum nächsten Taktpunkt: Dauerte der Durchlauf länger als der Takt,
+    // geht es sofort weiter — unter Last wird also nicht gebremst, nur das Leerlauf-Kreisen entfällt.
+    static TickType_t lastWake = xTaskGetTickCount();
+    vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(LOOP_PERIOD_MS));
 }

@@ -51,7 +51,7 @@ Die Lampe muss für das Aufspielen **wach** sein: Im Deep Sleep ist ihr USB-Ansc
 Kurz auf den Drehknopf drücken, dann erscheint der Port.
 
 Das serielle Log läuft standardmäßig über UART0 (TX = GPIO21, z. B. FTDI-Adapter). Unter
-**Einstellungen → Debug** lässt es sich auf USB umstellen oder ganz abschalten.
+**Einstellungen → System** lässt es sich auf USB umstellen oder ganz abschalten.
 
 ---
 
@@ -95,9 +95,9 @@ Alle Requests laufen über `svelte-ui/src/lib/api.js` (`getJson`, `postJson`): P
 svelte-ui/src/
 ├── App.svelte              Seitenwechsel Hauptseite ↔ Einstellungen
 ├── Main.svelte             Farbe, Dauern, Wecker
-├── Settings.svelte         Persönlich, WLAN, Energie & Uhr, Warnungen, System, Debug, Ereignisprotokoll
-├── components/             AlarmTable, ColorPicker, EventLog, MessageAlert, Snowfall, Balloons
-├── stores/                 configStore (Lampe), systemStore (WLAN), messageStore (Meldungen)
+├── Settings.svelte         Persönlich, WLAN, Synchronisation, LEDs, System, Systemmonitor, Ereignisprotokoll
+├── components/             AlarmTable, CheckButton, ColorPicker, EventLog, SystemMonitor, MessageAlert, Snowfall, Balloons
+├── stores/                 configStore (Lampe), systemStore (WLAN), systemInfoStore (Monitor-Verlauf), messageStore (Meldungen)
 └── lib/                    api.js (Fetch-Helfer), mockData.js (Mock-Modus), i18n.js + i18n/de.js, en.js
                             (Sprachen), logTranslations.js (Protokoll-Meldungen → Deutsch)
 ```

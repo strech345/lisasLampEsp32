@@ -48,13 +48,30 @@ Stromversorgung der Peripherie:
 | 8 | `PIN_STATUS_LED` | Status-LED | Onboard (blau) | OUT | invertiert (LOW = an) |
 | 9 | `PIN_BOOT_BUTTON` | Boot-Taster | Onboard | IN | gedrückt = LOW; 1 s halten = Werksreset |
 | 10 | `PIN_LED_STRIP` | LED-Daten | WS2812B GRBW (Anzahl einstellbar, Standard 4) | OUT | 300–500 Ω Serienwiderstand empfohlen |
-| 18–19 | — | USB D−/D+ | USB-JTAG | BIDIR | Aufspielen; im Deep Sleep abgeschaltet |
+| 18 | — | USB D− | USB-JTAG | BIDIR | Aufspielen + USB-Log; im Deep Sleep abgeschaltet · **Reserve-Pin**, siehe unten |
+| 19 | — | USB D+ | USB-JTAG | BIDIR | Aufspielen + USB-Log; im Deep Sleep abgeschaltet · **Reserve-Pin**, siehe unten |
 | 20 | — | RX0 | UART0 | IN | frei |
 | 21 | — | TX0 | UART0 | OUT | serielles Log (115200 Baud, z. B. FTDI-Adapter); alternativ USB, Einstellungen → Debug |
 | 12–17 | — | Flash-SPI | internes Flash | — | reserviert, nie als GPIO verwenden |
 
 **Deep-Sleep-Wakeup** funktioniert nur an RTC-fähigen GPIOs (0–5). `PIN_ENCODER_SW` und `PIN_ENCODER_CLK`
 müssen deshalb dort liegen. CLK weckt nur, wenn der Pin vor dem Schlaf HIGH ist (Encoder in Rastung).
+
+### Reserve-Pins GPIO18/19 (USB D−/D+)
+
+Noch nicht belegt. Beide lassen sich als normale GPIOs nutzen, wenn die Pins knapp werden. Dabei gilt:
+
+- **Kein USB, solange die Pins anders genutzt werden.** USB-Log und Aufspielen per USB fallen dann weg.
+  Aufspielen geht weiter über den Download-Modus (BOOT halten, Reset), denn der ROM-Bootloader schaltet
+  USB dort wieder ein.
+- **USB-Pad vorher abschalten.** Sonst bleibt der interne 1,5-kΩ-Pullup an D+ aktiv.
+- **Ist ein PC angesteckt, liegt USB-Datenverkehr auf den Leitungen.** Passend sind deshalb nur Signale
+  ohne Pullups, die Störimpulse vertragen und selten gebraucht werden, z. B. I2S-Ton (MAX98357A).
+  Ungeeignet sind WS2812B-Daten, I²C (wegen der Pullups) und Wakeup-Pins.
+- `HWCDC::isPlugged()` erkennt einen angeschlossenen Host an den SOF-Paketen. Damit kann die Firmware
+  die Pins nur dann umschalten, wenn kein PC dran ist. Das funktioniert nur, solange die Pins im USB-Modus sind.
+- **Beim Super Mini nicht auf der Stiftleiste:** Man muss an die USB-Buchse oder die Pads daneben löten.
+  Die Drähte möglichst kurz halten.
 
 ---
 
@@ -88,5 +105,5 @@ müssen deshalb dort liegen. CLK weckt nur, wenn der Pin vor dem Schlaf HIGH ist
 `src/rtc_crystal.cpp` prüft bei **jedem Einschalten** (nicht nach Deep Sleep) per `rtc_clk_cal()`, ob ein
 Quarz schwingt (32.000–33.000 Hz) — auch wenn er deaktiviert ist. Ohne erkannten Quarz ist der Schalter
 in der Weboberfläche gesperrt; ist er aktiviert, aber nicht vorhanden, bleibt der RC-Oszillator aktiv. Ein- und ausschalten über die Weboberfläche
-(Einstellungen → Energie & Uhr); die Umschaltung erfordert einen Neustart.
+(Einstellungen → Synchronisation); die Umschaltung erfordert einen Neustart.
 Der Deep-Sleep-Vorlauf rechnet mit 1,5 % (RC) bzw. 100 ppm (Quarz) Abweichung.

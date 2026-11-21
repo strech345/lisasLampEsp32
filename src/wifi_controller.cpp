@@ -29,9 +29,12 @@
 #include "event_log.h"
 #include "esp_sntp.h"
 #include "tsf_clock.h"
+#include "clock_sync.h"
 
 #define MAX_CLIENTS 4
-#define WIFI_AP_TX_POWER WIFI_POWER_17dBm
+// Sendeleistung für Hotspot UND Heimnetz: 17 dBm (aus Messungen). Mit der Standardleistung des
+// C3 Super Mini scheitert die Anmeldung am Router oft mit Grund 2 (Anmeldung abgelaufen).
+#define WIFI_TX_POWER WIFI_POWER_17dBm
 #define DNS_INTERVAL 30             // DNS-Anfragen alle 30ms verarbeiten
 #define TIMEZONE "CET-1CEST,M3.5.0,M10.5.0/3" // Mitteleuropäische Zeit mit Sommerzeit
 #define MIN_VALID_EPOCH 1577836800L // 2020-01-01: alles davor gilt als "Uhrzeit unbekannt"
@@ -87,15 +90,33 @@ static unsigned long s_toolQuietUntilMs = 0;          // kurz nach Ende noch Tre
 static volatile uint8_t s_lastDisconnectReason = 0;   // aus dem Event-Task (Grund der letzten Trennung)
 static void wifiToolsLoop();
 
+// Nach erfolgreichem NTP-Abgleich: Heimnetz-Verbindung trennen, sobald der TSF-Snapshot fertig ist
+static bool s_dropStaPending = false;
+
+// Ergebnis des letzten Sync-Versuchs: beim Verbindungsaufbau false, bei NTP-Erfolg true.
+// Bestimmt, ob der nächste automatische Abgleich nach syncIntervalMin oder syncRetryMin startet.
+static bool s_lastSyncOk = false;
+static unsigned long s_staStartMs = 0; // Beginn des aktuellen Verbindungsversuchs (für STA_SYNC_TIMEOUT_MS)
+static unsigned long s_syncTimerMs = 0; // Ende der letzten Heimnetz-Phase (Startpunkt des Sync-Intervalls)
+static void dropStaAfterSync();
+
+// Nach gescheitertem NTP-Versuch: Heimnetz erst abschalten, wenn der TSF-Fallback gerechnet hat
+static bool s_syncFailPending = false;
+static void dropStaAfterFail();
+static void syncFailed(const char* why);
+
 // Verbindet mit dem externen WLAN an Index idx; fällt auf primäres zurück wenn kein Fallback konfiguriert
 static void beginSta(uint8_t idx) {
     bool useFallback = (idx == 1 && strlen(g_systemSettings->externalSSID2) > 0);
     const char* ssid = useFallback ? g_systemSettings->externalSSID2 : g_systemSettings->externalSSID;
     const char* pw = useFallback ? g_systemSettings->externalPW2 : g_systemSettings->externalPW;
     s_staIdx = useFallback ? 1 : 0;
+    s_lastSyncOk = false; // neuer Versuch: gilt als fehlgeschlagen, bis NTP antwortet
+    s_staStartMs = millis();
     char buf[52]; // passt zu EVENT_MSG_LEN: 24 Zeichen Präfix + 27 SSID-Zeichen
     snprintf(buf, sizeof(buf), "STA connect%s: %.27s", useFallback ? " (fallback)" : "", ssid);
     logEvent(buf);
+    WiFi.setTxPower(WIFI_TX_POWER); // nach WiFi.mode(): sonst Standardleistung → Anmeldung scheitert
     WiFi.begin(ssid, pw);
 }
 
@@ -103,9 +124,9 @@ static void beginSta(uint8_t idx) {
 static bool startAccessPoint(const char* tag) {
     const SystemSettings* s = g_systemSettings;
     esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT40);
-    WiFi.setTxPower(WIFI_AP_TX_POWER);
+    WiFi.setTxPower(WIFI_TX_POWER);
     delay(100);
-    serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_AP_TX_POWER));
+    serialPrint("setTxPower=" + String(WiFi.getTxPower()) + " target=" + String(WIFI_TX_POWER));
     WiFi.softAPConfig(localIP, localIP, subnetMask);
     const char* pw = strlen(s->internalPW) > 0 ? s->internalPW : nullptr;
     bool ok = WiFi.softAP(s->internalSSID, pw, s_wifiChannel, 0, MAX_CLIENTS);
@@ -125,7 +146,7 @@ enum WifiMsgType : uint8_t { MSG_STA_START, MSG_GOT_IP, MSG_DISCONNECTED, MSG_NT
 struct WifiMsg {
     WifiMsgType type;
     bool hasDrift;
-    int32_t driftMs;
+    int32_t driftMs; // MSG_NTP_SYNCED: Abweichung in ms; MSG_DISCONNECTED: Trennungsgrund (wifi_err_reason_t)
 };
 
 static QueueHandle_t s_msgQueue = nullptr;
@@ -197,12 +218,13 @@ void initWiFiController(const SystemSettings& settings, const std::vector<Route>
 // Läuft in der Hauptschleife: Events, DNS-Anfragen, Auto-Start/Stop, Telemetrie, Reconnect
 void wifiLoop() {
     processWifiEvents();
+    dropStaAfterSync();
+    dropStaAfterFail();
     wifiToolsLoop();
     handleClientRequests();
     checkWifiStart();
     checkWifiStop();
     updateTelemetryWiFiStatus();
-    tryReconnectSta();
 
     // WLAN-Status jede Minute auf Serial (Debug)
     static unsigned long lastStatusMs = 0;
@@ -239,7 +261,7 @@ static unsigned long s_wifiStopTimerMs = 0;
 
 // Hotspot-Bedienzeit: letzte echte Web-Anfrage (Seite laden, Einstellungen lesen/speichern).
 // Wird aus dem async_tcp-Task geschrieben; 32-Bit-Zugriffe sind auf dem ESP32 atomar.
-#define AP_IDLE_TIMEOUT_MS (10UL * 60UL * 1000UL) // Hotspot aus nach 10 min ohne Bedienung
+// Die Laufzeit ohne Bedienung steht in SystemSettings::apTimeoutMin (0 = unbegrenzt).
 static volatile unsigned long s_lastWebActivityMs = 0;
 
 // Merkt sich eine echte Bedienung der Weboberfläche (verlängert die Hotspot-Laufzeit)
@@ -247,45 +269,114 @@ void noteWebActivity() {
     s_lastWebActivityMs = millis();
 }
 
-// Schaltet WiFi ab wenn STOP_WIFI_AFTER_MS (1min) lang kein Client verbunden war
-void checkWifiStop() {
-    // Hotspot 10 min ohne Bedienung → aus, auch wenn noch ein Gerät verbunden ist (Handys bleiben oft
-    // im Hintergrund verbunden; sonst liefe der Hotspot ewig und verhinderte den Deep Sleep)
+// Schaltet nur den Hotspot ab: APSTA → STA (Heimnetz bleibt), AP → WLAN aus. Ohne Hotspot nichts.
+static void apOff(const char* logMsg) {
     wifi_mode_t mode = WiFi.getMode();
-    if((mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) && millis() - s_lastWebActivityMs >= AP_IDLE_TIMEOUT_MS) {
-        logEvent("Hotspot off: 10 min idle");
-        stopWifi();
-        s_wifiStopTimerMs = millis();
+    if(mode != WIFI_MODE_AP && mode != WIFI_MODE_APSTA)
         return;
-    }
-    if(!isWiFiActive() || hasWifiClients()) {
-        s_wifiStopTimerMs = millis();
+    logEvent(logMsg);
+    dnsServer.stop();
+    WiFi.mode(mode == WIFI_MODE_APSTA ? WIFI_MODE_STA : WIFI_MODE_NULL);
+}
+
+// Schaltet nur das Heimnetz ab: APSTA → AP (Hotspot bleibt), STA → WLAN aus. Ohne STA nichts.
+static void staOff(const char* logMsg) {
+    wifi_mode_t mode = WiFi.getMode();
+    if(mode != WIFI_MODE_STA && mode != WIFI_MODE_APSTA)
         return;
+    logEvent(logMsg);
+    g_wifiTracker->staConfigValid = false;
+    WiFi.mode(mode == WIFI_MODE_APSTA ? WIFI_MODE_AP : WIFI_MODE_NULL);
+}
+
+// Automatisches Abschalten — Hotspot und Heimnetz getrennt, jeder Modus nach eigenen Regeln:
+// Hotspot: nach apTimeoutMin ohne Bedienung oder STOP_WIFI_AFTER_MS (1 min) ohne verbundenes Gerät;
+//          apTimeoutMin = 0 → bleibt an, bis er von Hand ausgeschaltet wird.
+// Heimnetz: nach STA_SYNC_TIMEOUT_MS ohne abgeschlossenen Abgleich (Erfolg trennt dropStaAfterSync()).
+void checkWifiStop() {
+    wifi_mode_t mode = WiFi.getMode();
+    bool apOn = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
+    bool staOn = (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA);
+
+    // --- Hotspot ---
+    unsigned long apTimeoutMs = (unsigned long)g_systemSettings->apTimeoutMin * 60UL * 1000UL;
+    if(!apOn || apTimeoutMs == 0 || hasWifiClients()) {
+        s_wifiStopTimerMs = millis();
+    } else if(isTimeForAction(&s_wifiStopTimerMs, STOP_WIFI_AFTER_MS)) {
+        apOff("Hotspot off: no client");
     }
-    if(isTimeForAction(&s_wifiStopTimerMs, STOP_WIFI_AFTER_MS)) {
-        serialPrint("checkWifiStop: 1min ohne Client — stoppe AP");
-        stopWifi();
-        s_wifiStopTimerMs = 0;
+    // Ohne Bedienung → aus, auch wenn noch ein Gerät verbunden ist (Handys bleiben oft im Hintergrund
+    // verbunden; sonst liefe der Hotspot ewig und verhinderte den Deep Sleep)
+    if(apOn && apTimeoutMs > 0 && millis() - s_lastWebActivityMs >= apTimeoutMs) {
+        apOff("Hotspot off: idle timeout");
+    }
+
+    // --- Heimnetz (nur für den Zeitabgleich) ---
+    // Nicht während WLAN-Suche/-Test und nicht, solange nach Erfolg noch der TSF-Snapshot läuft
+    if(staOn && !s_toolActive && !s_dropStaPending && !s_syncFailPending && !isTsfCaptureBusy()
+       && millis() - s_staStartMs >= STA_SYNC_TIMEOUT_MS) {
+        syncFailed("STA failed: sync timeout");
     }
 }
 
-// Startet WiFi automatisch alle 5 Stunden für eine NTP-Zeitsynchronisation (ohne AP)
+// Heimnetz-Verbindung gerade aktiv (STA oder APSTA) — nur während eines Zeitabgleichs bzw. Tests
+bool isStaActive() {
+    wifi_mode_t mode = WiFi.getMode();
+    return mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA;
+}
+
+// Ergebnis des letzten Abgleich-Versuchs (true = NTP hat geantwortet)
+bool lastSyncOk() {
+    return s_lastSyncOk;
+}
+
+// Restzeit bis zum nächsten automatischen Abgleich in ms (für die Statusanzeige):
+// 0 = läuft gerade, -1 = kein Heimnetz eingetragen
+long msUntilNextSync() {
+    if(strlen(g_systemSettings->externalSSID) == 0)
+        return -1;
+    if(isStaActive())
+        return 0;
+    unsigned long elapsed = millis() - s_syncTimerMs;
+    unsigned long interval = nextSyncIntervalMs();
+    return elapsed >= interval ? 0 : (long)(interval - elapsed);
+}
+
+// Wartezeit bis zum nächsten automatischen Zeitabgleich: nach Erfolg syncIntervalMin, nach einem
+// Fehlschlag syncRetryMin. Ohne eingetragenes Heimnetz gibt es nichts zu wiederholen → syncIntervalMin.
+// Auch der Deep Sleep schläft höchstens so lange (sleep_manager.cpp).
+unsigned long nextSyncIntervalMs() {
+    bool retry = !s_lastSyncOk && strlen(g_systemSettings->externalSSID) > 0;
+    uint16_t minutes = retry ? g_systemSettings->syncRetryMin : g_systemSettings->syncIntervalMin;
+    return (unsigned long)minutes * 60UL * 1000UL;
+}
+
+// Einziger Zeitgeber für den Zeitabgleich übers Heimnetz — unabhängig vom Hotspot. Gezählt wird ab
+// dem Ende der letzten Heimnetz-Phase (STA aus); nach nextSyncIntervalMs() folgt ein neuer Versuch:
+// WLAN aus → nur STA starten, Hotspot läuft → STA dazuschalten (APSTA). Während WLAN-Suche/-Test ruht er.
 void checkWifiStart() {
-    static unsigned long lastRunMs = 0;
-    if(isWiFiActive()) {
-        lastRunMs = millis();
+    if(isStaActive() || s_toolActive || strlen(g_systemSettings->externalSSID) == 0) {
+        s_syncTimerMs = millis();
         return;
     }
+    if(!isTimeForAction(&s_syncTimerMs, nextSyncIntervalMs()))
+        return;
 
-    if(isTimeForAction(&lastRunMs, START_WIFI_AFTER_MS)) {
-        startWifi(false); // Nur STA — kein AP-Hotspot für automatische Sync
-        lastRunMs = 0;
-    }
+    startWifi(false); // nur Heimnetz; ein laufender Hotspot bleibt unberührt
 }
 
 // Zeitpunkt (millis) des letzten erfolgreichen NTP-Syncs; nur im Hauptthread (processWifiEvents) gesetzt.
 // Eigenes Flag, weil sntp_get_sync_status() COMPLETED nur einmal meldet und danach auf RESET fällt.
 static unsigned long s_lastNtpSyncMs = 0;
+
+// Millisekunden seit dem letzten NTP-Erfolg in dieser Wachphase; ULONG_MAX = keiner seit Start/Aufwachen.
+// Bewusst über millis() (Hauptquarz, beginnt nach jedem Deep Sleep neu): Nach einem Deep Sleep ist die
+// Systemzeit über den ungenauen RC-Takt gelaufen und taugt nicht mehr als NTP-genauer TSF-Anker.
+unsigned long msSinceNtpThisBoot() {
+    if(!g_wifiTracker || !g_wifiTracker->clockSynced || s_lastNtpSyncMs == 0)
+        return ULONG_MAX;
+    return millis() - s_lastNtpSyncMs;
+}
 
 #define NTP_STALE_AFTER_MS (24UL * 60UL * 60UL * 1000UL)   // älter als 24 h → NTP-Zeit gilt als veraltet
 #define NTP_SAVE_INTERVAL_MS (30UL * 60UL * 1000UL)        // NVS-Zeitstempel nur alle 30 min (schont den Flash)
@@ -310,104 +401,77 @@ void updateTelemetryWiFiStatus() {
     }
 }
 
-// Versucht alle 5 Minuten eine neue STA-Verbindung wenn die letzte fehlgeschlagen ist
-// Wechselt abwechselnd zwischen primärem und Fallback-WLAN
-void tryReconnectSta() {
-    if(g_wifiTracker->staConfigValid || s_toolActive) {
-        return;
-    }
-    if(strlen(g_systemSettings->externalSSID) == 0) {
-        return;
-    }
-
-    static unsigned long lastRunMs = 0;
-    if(!isTimeForAction(&lastRunMs, 5 * 60 * 1000))
-        return;
-
-    // Bei jedem Versuch zwischen primärem und Fallback wechseln
-    uint8_t nextIdx = (strlen(g_systemSettings->externalSSID2) > 0) ? (1 - s_staIdx) : 0;
-
-    wifi_mode_t mode = WiFi.getMode();
-    if(mode == WIFI_MODE_APSTA) {
-        serialPrint("tryReconnectSta: reconnecting STA...");
-        beginSta(nextIdx);
-    } else if(mode == WIFI_MODE_AP) {
-        // AP läuft (Nutzer-sichtbar) → STA zusätzlich starten
-        serialPrint("tryReconnectSta: restoring STA in APSTA mode...");
-        WiFi.mode(WIFI_MODE_APSTA);
-        beginSta(nextIdx);
-    } else if(mode == WIFI_MODE_NULL) {
-        // STA-only wurde nach Fehler gestoppt → neu starten
-        serialPrint("tryReconnectSta: restarting STA-only...");
-        WiFi.mode(WIFI_MODE_STA);
-        beginSta(nextIdx);
-    }
-}
-
 // Startet den DNS-Server fürs Captive-Portal und den 1-min-Abschalttimer (nach dem AP-Start aufrufen)
 static void startCaptivePortal() {
     dnsServer.start(53, "*", localIP);
     s_wifiStopTimerMs = millis();
-    s_lastWebActivityMs = millis(); // 10-min-Bedienzeit beginnt mit dem Hotspot-Start
+    s_lastWebActivityMs = millis(); // Hotspot-Laufzeit (apTimeoutMin) beginnt mit dem Hotspot-Start
 }
 
-// Startet WiFi: withAP=true → APSTA (Nutzer-sichtbar, Weboberfläche erreichbar),
-// withAP=false → nur STA für automatischen NTP-Sync ohne sichtbaren Hotspot
+// Startet genau einen Modus; der andere bleibt, wie er ist (beide dürfen gleichzeitig laufen):
+// withAP=true  → Hotspot (Weboberfläche erreichbar); läuft gerade das Heimnetz, wird es APSTA.
+// withAP=false → Heimnetz für den NTP-Abgleich (nur mit eingetragenem WLAN); läuft der Hotspot, wird es APSTA.
+// Läuft der gewünschte Modus schon, passiert nichts.
 void startWifi(bool withAP) {
     const SystemSettings* s = g_systemSettings;
-
-    if(isWiFiActive()) {
-        // Bereits aktiv — bei Bedarf von STA-only auf APSTA hochstufen
-        if(withAP && WiFi.getMode() == WIFI_MODE_STA) {
-            serialPrint("Upgrading STA → APSTA");
-            WiFi.mode(WIFI_MODE_APSTA);
-            startAccessPoint("upgrade");
-            startCaptivePortal();
-            logEvent("AP activated (upgrade)");
-        }
-        return;
-    }
-
-    bool hasExternal = strlen(s->externalSSID) > 0;
-    // Kein externes WLAN und kein AP gewünscht → es gibt nichts zu starten
-    if(!hasExternal && !withAP)
-        return;
-
-    logEvent(withAP ? "WiFi started (AP+STA)" : "WiFi started (STA sync)");
+    wifi_mode_t mode = WiFi.getMode();
+    bool apOn = (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA);
+    bool staOn = (mode == WIFI_MODE_STA || mode == WIFI_MODE_APSTA);
 
     if(withAP) {
-        WiFi.mode(hasExternal ? WIFI_MODE_APSTA : WIFI_MODE_AP);
-        startAccessPoint(hasExternal ? "APSTA" : "AP");
+        if(apOn)
+            return;
+        logEvent(staOn ? "Hotspot started (STA stays)" : "Hotspot started");
+        WiFi.mode(staOn ? WIFI_MODE_APSTA : WIFI_MODE_AP);
+        startAccessPoint(staOn ? "APSTA" : "AP");
+        startCaptivePortal();
+        serialPrint("AP aktiv — SSID: '" + String(s->internalSSID) + "'  IP: " + WiFi.softAPIP().toString()
+                    + "  mode=" + String(WiFi.getMode()) + "  ch=" + String(s_wifiChannel));
     } else {
-        WiFi.mode(WIFI_MODE_STA);
+        if(staOn || strlen(s->externalSSID) == 0)
+            return; // läuft schon bzw. kein Heimnetz eingetragen
+        logEvent(apOn ? "STA started (sync, hotspot stays)" : "WiFi started (STA sync)");
+        WiFi.mode(apOn ? WIFI_MODE_APSTA : WIFI_MODE_STA);
+        beginSta(0); // Fallback-WLAN übernimmt handleStaDisconnected() nach 3 Fehlversuchen
     }
-    if(hasExternal)
-        beginSta(0);
 
     // server.begin() nur beim ersten Mal aufrufen — AsyncWebServer unterstützt kein Neustart
     if(!serverStarted) {
         server.begin();
         serverStarted = true;
     }
-    if(withAP) {
-        startCaptivePortal();
-        wifi_mode_t actualMode = WiFi.getMode();
-        serialPrint("AP aktiv — SSID: '" + String(s->internalSSID) + "'  IP: " + WiFi.softAPIP().toString()
-                    + "  mode=" + String(actualMode) + "  ch=" + String(s_wifiChannel));
+}
+
+// Schaltet nur den Hotspot ab (Drehknopf): bei APSTA bleibt das Heimnetz verbunden
+void stopAccessPoint() {
+    apOff("Hotspot off (user action)");
+}
+
+// Startet den Hotspot neu (z. B. nach geändertem Hotspot-Namen/-Passwort), nur wenn er gerade läuft;
+// das Heimnetz bleibt unberührt
+void restartAccessPoint() {
+    wifi_mode_t mode = WiFi.getMode();
+    if(mode != WIFI_MODE_AP && mode != WIFI_MODE_APSTA)
+        return;
+    apOff("Hotspot restart (settings)");
+    startWifi(true);
+}
+
+// Abgleich von Hand („Uhr jetzt synchronisieren“): Heimnetz verbinden, falls es nicht schon läuft —
+// NTP startet dann bei GOT_IP. Ist es schon verbunden, nur die NTP-Abfrage neu starten.
+// Der Hotspot bleibt an; die Oberfläche fragt das Ergebnis über /get_system_info (clock) ab.
+void requestTimeSync() {
+    if(g_wifiTracker->staConfigValid) {
+        syncTimeWithNTP();
+    } else {
+        startWifi(false); // ohne eingetragenes Heimnetz passiert nichts
     }
 }
 
-// Schaltet nur den Hotspot ab: bei APSTA bleibt das Heimnetz verbunden, bei reinem AP geht das WLAN aus
-void stopAccessPoint() {
-    wifi_mode_t mode = WiFi.getMode();
-    if(mode == WIFI_MODE_APSTA) {
-        dnsServer.stop();
-        WiFi.mode(WIFI_MODE_STA);
-        logEvent("Hotspot off (user action)");
-    } else if(mode == WIFI_MODE_AP) {
-        logEvent("Hotspot off (user action)");
-        stopWifi();
-    }
+// Startet einen neuen Abgleich mit den (geänderten) Heimnetz-Daten; der Hotspot bleibt unberührt
+void restartStaSync() {
+    staOff("STA restart (settings)");
+    startWifi(false);
 }
 
 // Stoppt alle WiFi-Dienste (AP, STA, DNS)
@@ -486,13 +550,21 @@ void syncTimeWithNTP() {
     sntp_restart();
 }
 
-// Verbindung verloren (läuft im Hauptthread): Wiederholungen, Fallback-WLAN, dann STA aufgeben
-static void handleStaDisconnected() {
+// Verbindung verloren (läuft im Hauptthread): Wiederholungen, Fallback-WLAN, dann STA aufgeben.
+// reason = Trennungsgrund des WLAN-Treibers (z. B. 201 = Netz nicht gefunden, 15 = Passwort falsch);
+// steht im Protokoll, die Weboberfläche übersetzt ihn (logTranslations.js).
+static void handleStaDisconnected(uint8_t reason) {
     // Während (und kurz nach) Suche/Test gehören Trennungen zum Test, nicht zur normalen Verbindung
     if(s_toolActive || (long)(millis() - s_toolQuietUntilMs) < 0)
         return;
+    // Gescheiterter Versuch wird schon abgewickelt (TSF lauscht, danach Heimnetz aus)
+    if(s_syncFailPending)
+        return;
     // Kein Telemetrie-Update nötig: der NTP-Status hängt nicht mehr an der Verbindung
-    logEvent("STA disconnected");
+    char buf[40];
+    snprintf(buf, sizeof(buf), "STA disconnected: reason %u", (unsigned)reason);
+    logEvent(buf);
+    serialPrint(buf);
 
     wifi_mode_t curMode = WiFi.getMode();
     if(curMode != WIFI_MODE_APSTA && curMode != WIFI_MODE_STA)
@@ -515,15 +587,38 @@ static void handleStaDisconnected() {
     }
 
     s_staIdx = 0;
-    if(curMode == WIFI_MODE_APSTA) {
-        // AP weiter lassen, STA aufgeben
-        WiFi.mode(WIFI_MODE_AP);
-        serialPrint("Max retries. Keeping AP, dropping STA.");
-    } else {
-        // Kein AP aktiv → alles stoppen
-        WiFi.mode(WIFI_MODE_NULL);
-        serialPrint("Max retries. Stopping STA-only WiFi.");
-    }
+    syncFailed("STA failed: max retries"); // erst TSF-Fallback, dann Heimnetz aus (Hotspot bleibt)
+}
+
+// NTP-Versuch gescheitert (Fehlversuche oder Zeitlimit): Verbindungsversuch beenden, Funkteil aber
+// anlassen, TSF-Fallback beauftragen (Uhrzeit aus den Bezugspunkten, neu gestartete APs neu basieren)
+// und das Heimnetz erst danach abschalten (dropStaAfterFail). Ohne TSF geht es sofort aus.
+static void syncFailed(const char* why) {
+    logEvent(why);
+    serialPrint(why);
+    s_lastSyncOk = false;
+    g_wifiTracker->staConfigValid = false;
+    s_syncFailPending = true;
+    WiFi.disconnect(false); // kein weiteres Verbinden, STA-Modus (Funkteil) bleibt für die Beacon-Erfassung
+    requestTsfFallback();
+}
+
+// Schaltet nach gescheitertem Versuch das Heimnetz ab, sobald der TSF-Fallback fertig ist
+static void dropStaAfterFail() {
+    if(!s_syncFailPending || isTsfCaptureBusy())
+        return;
+    s_syncFailPending = false;
+    staOff("STA off after failed sync");
+}
+
+// Trennt nach dem NTP-Abgleich die Heimnetz-Verbindung: APSTA → nur Hotspot, STA-only → WLAN aus.
+// Wartet, bis der TSF-Snapshot (2 s Beacon-Erfassung auf dem aktuellen Kanal) und eine WLAN-Suche/-Test
+// fertig sind, damit diesen nicht das Funkteil weggeschaltet wird.
+static void dropStaAfterSync() {
+    if(!s_dropStaPending || s_toolActive || isTsfCaptureBusy())
+        return;
+    s_dropStaPending = false;
+    staOff(WiFi.getMode() == WIFI_MODE_APSTA ? "STA off after NTP, hotspot stays" : "STA off after NTP");
 }
 
 // Arbeitet die Nachrichten aus den Event-Handlern im Hauptthread ab
@@ -545,7 +640,7 @@ static void processWifiEvents() {
             syncTimeWithNTP();
             break;
         case MSG_DISCONNECTED:
-            handleStaDisconnected();
+            handleStaDisconnected((uint8_t)m.driftMs);
             break;
         case MSG_NTP_SYNCED:
             if(m.hasDrift) {
@@ -561,9 +656,12 @@ static void processWifiEvents() {
             if(!g_wifiTracker->clockSynced)
                 logEvent("NTP sync successful");
             g_wifiTracker->clockSynced = true;
+            s_lastSyncOk = true; // nächster Abgleich nach syncIntervalMin
+            noteClockSync(CLOCK_SYNC_NTP); // für den Systemmonitor
             g_wifiTracker->lastSucceededTestTime = millis();
             saveLastKnownTime(time(NULL));
             onNtpSynced();
+            s_dropStaPending = true; // Heimnetz nach dem TSF-Snapshot trennen (dropStaAfterSync)
             break;
         }
     }
@@ -590,7 +688,7 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
         serialPrint("STA Disconnected");
         s_lastDisconnectReason = info.wifi_sta_disconnected.reason;
-        postMsg(MSG_DISCONNECTED);
+        postMsg(MSG_DISCONNECTED, false, info.wifi_sta_disconnected.reason);
         break;
     default:
         break;
@@ -840,6 +938,7 @@ static void wifiToolsLoop() {
             pw = s_testSlot == 2 ? g_systemSettings->externalPW2 : g_systemSettings->externalPW;
         WiFi.disconnect(false);
         s_lastDisconnectReason = 0;
+        WiFi.setTxPower(WIFI_TX_POWER);
         WiFi.begin(s_testSsid, pw[0] ? pw : nullptr);
         s_toolStartMs = millis();
         xSemaphoreTake(s_toolMutex, portMAX_DELAY);

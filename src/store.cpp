@@ -193,6 +193,9 @@ SystemSettings getDefaultSystemSettings() {
     defaultSettings.serialLogEnabled = true;
     defaultSettings.eventLogEnabled = true;
     defaultSettings.logToUsb = false;
+    defaultSettings.apTimeoutMin = DEFAULT_AP_TIMEOUT_MIN;
+    defaultSettings.syncIntervalMin = DEFAULT_SYNC_INTERVAL_MIN;
+    defaultSettings.syncRetryMin = DEFAULT_SYNC_RETRY_MIN;
     return defaultSettings;
 }
 
@@ -233,7 +236,8 @@ bool resetSystemSettings() {
     return true;
 }
 
-static const char* TSF_DATA_KEY = "tsfData";
+// "tsfData4": seit Gangverlauf in TsfEntry (ältere Stände haben ein anderes Format und werden verworfen)
+static const char* TSF_DATA_KEY = "tsfData4";
 
 // Speichert die TSF-Zeitstempel-Einträge (count Stück) in den Flash-Speicher
 bool saveTsfEntries(const TsfEntry* entries, uint8_t count) {
@@ -307,4 +311,10 @@ void loadSystemSettingsOrDefault(SystemSettings& settings) {
     if(settings.celebrationCount > MAX_CELEBRATIONS)
         settings.celebrationCount = 0;
     settings.lampName[LAMP_NAME_MAX_LEN] = '\0';
+    if(settings.apTimeoutMin > MAX_AP_TIMEOUT_MIN)
+        settings.apTimeoutMin = DEFAULT_AP_TIMEOUT_MIN;
+    if(settings.syncIntervalMin < MIN_SYNC_INTERVAL_MIN || settings.syncIntervalMin > MAX_SYNC_INTERVAL_MIN)
+        settings.syncIntervalMin = DEFAULT_SYNC_INTERVAL_MIN;
+    if(settings.syncRetryMin < MIN_SYNC_INTERVAL_MIN || settings.syncRetryMin > MAX_SYNC_INTERVAL_MIN)
+        settings.syncRetryMin = DEFAULT_SYNC_RETRY_MIN;
 }
