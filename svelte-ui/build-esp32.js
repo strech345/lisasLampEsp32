@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
@@ -16,11 +17,13 @@ const GZIP_EXT = ".gzip";
 
 /**
  * Komprimiert eine Datei mit gzip (Level 9).
+ * @param transform optional: verändert den Inhalt vor dem Komprimieren (Buffer → Buffer|String)
  * @returns {Promise<boolean>} true bei Erfolg, sonst false
  */
-async function compressFile(inputPath, outputPath) {
+async function compressFile(inputPath, outputPath, transform = null) {
   try {
-    const data = await fs.promises.readFile(inputPath);
+    let data = await fs.promises.readFile(inputPath);
+    if (transform) data = Buffer.from(transform(data));
     const compressed = await gzipAsync(data, { level: 9 });
     await fs.promises.writeFile(outputPath, compressed);
 
@@ -77,11 +80,29 @@ async function processFiles() {
     }
   });
 
+  // app.js wird von der Lampe 1 Jahr gecacht (route_handlers.cpp). Damit nach einem Update nicht die
+  // alte Oberfläche aus dem Browser-Cache weiterläuft, bekommt die Einbindung in index.html den
+  // Inhalts-Hash als Versionsparameter (/app.js?v=<hash>); die Firmware ignoriert den Parameter.
+  const appJsPath = path.join(DIST_DIR, "app.js");
+  if (!fs.existsSync(appJsPath)) {
+    console.error("❌ app.js nicht gefunden");
+    process.exit(1);
+  }
+  const appHash = crypto.createHash("sha256").update(fs.readFileSync(appJsPath)).digest("hex").slice(0, 10);
+  const addVersion = (data) => {
+    const html = data.toString("utf8");
+    const out = html.replace('src="/app.js"', `src="/app.js?v=${appHash}"`);
+    if (out === html) throw new Error('index.prod.html enthält kein src="/app.js"');
+    return out;
+  };
+  console.log(`🔖 app.js-Version: ${appHash}\n`);
+
   const jobs = [
     {
       src: indexProdSrc,
       dest: path.join(DATA_DIR, `index.html${GZIP_EXT}`),
       required: true,
+      transform: addVersion,
     },
     {
       src: path.join(DIST_DIR, "app.js"),
@@ -110,7 +131,7 @@ async function processFiles() {
       continue;
     }
 
-    if (await compressFile(job.src, job.dest)) {
+    if (await compressFile(job.src, job.dest, job.transform)) {
       processedCount++;
     } else {
       failedCount++;
